@@ -1,0 +1,15 @@
+﻿{
+  "name": "map-schematic",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-static.mjs",
+    "start": "electron .",
+    "start:dev": "npm run build && electron ."
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "typescript": "^5.4.5"
+  }
+}
