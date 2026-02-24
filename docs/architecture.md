@@ -1,6 +1,6 @@
-# 架構概覽
+﻿# 架構概覽
 
-本文件說明目前 repo 結構，以及最小 Electron 骨架的執行流程。
+本文件說明目前 repo 結構，以及 Electron MVP demo 的執行流程。
 
 ## 專案結構
 
@@ -8,36 +8,56 @@
 - `README.md`：專案簡介與文件索引。
 - `docs/`：規格與架構文件。
 - `src/`：TypeScript 原始碼。
-- `scripts/`：建置輔助腳本。
-- `geodata/`：官方資料包的本機資料根目錄（僅 repo 內）。
-- `package.json`、`tsconfig.json`：專案設定。
+- `scripts/`：建置輔助腳本（資料包建置）。
+- `geodata/`：官方資料包的本機資料根目錄（repo 內、gitignore）。
+- `geodata-source/`：原始資料來源（repo 內、gitignore）。
+- `package.json`、`tsconfig.*.json`：專案設定與建置配置。
 
-## 執行流程（骨架）
+## 執行流程（MVP）
 
-1. `npm run build` 編譯 `src/` 到 `dist/`，並複製 `src/renderer/index.html` 至 `dist/renderer/`。
-2. `npm run start` 啟動 Electron，載入 `dist/renderer/index.html`。
+1. `npm run build`
+   - 編譯 main（CommonJS）與 renderer（ESM）
+   - 複製 renderer 靜態檔到 `dist/renderer/`
+2. `npm run start`
+   - 啟動 Electron
+   - Renderer 載入並顯示 basemap + GeoNames 搜尋結果
 
-## 程式碼結構
+## 程式碼結構（目前）
 
 主程序（Main）：
 
-- `src/main/index.ts`：Electron 進入點，負責建立視窗與載入 renderer。
-- `src/main/preload.ts`：`contextBridge` 封裝，提供 renderer 使用的最小 API（目前為 `ping`）。
+- `src/main/index.ts`
+  - 建立視窗
+  - 註冊 IPC（datapack/basemap/geonames/project）
+- `src/main/preload.ts`
+  - `contextBridge` API 封裝
+- `src/main/geonames.ts`
+  - GeoNames SQLite 查詢
 
 渲染程序（Renderer）：
 
-- `src/renderer/index.html`：最小 UI 殼，確認應用啟動成功。
-- `src/renderer/index.ts`：渲染端入口，顯示 bridge 狀態。
+- `src/renderer/index.html`
+  - UI：搜尋欄、結果清單、儲存/載入按鈕
+- `src/renderer/index.ts`
+  - Basemap SVG 渲染（EPSG:4326 → 3857）
+  - GeoNames 搜尋結果列表 + 點標示
+  - `.mapproj` 儲存/載入（demo）
 
 共用模組（Shared）：
 
-- `src/shared/paths.ts`：統一解析 `geodata/` 資料目錄，避免硬編碼路徑。
+- `src/shared/paths.ts`
+  - `geodata/` 路徑解析
+- `src/shared/config.ts`
+  - 資料包 id/version 設定
+- `src/shared/datapack/*`
+  - 資料包路徑/manifest 管理
+- `src/shared/schema/*`
+  - `.mapproj` schema、驗證、IO
 
 建置與輸出：
 
-- `scripts/copy-static.mjs`：複製 renderer 靜態檔到 `dist/renderer/`。
-- `dist/`：TypeScript 編譯輸出（由 `npm run build` 產生）。
-
-資料目錄：
-
-- `geodata/`：官方資料包、本地索引、快取等資料的唯一根目錄（repo 內）。
+- `scripts/build_datapack.py`
+  - 讀取 `geodata-source/` 原始資料
+  - 產出 `geodata/packs/...` 官方資料包
+- `dist/`
+  - TypeScript 編譯輸出

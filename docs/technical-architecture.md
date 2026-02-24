@@ -398,6 +398,15 @@ SVG 用於設計軟體編輯
 - 本地索引檔
 - `datapack.json`（單一入口，描述版本、圖層、索引與校驗）
 
+目前資料包實際使用的原始檔案（MVP，解壓前）：
+
+- Natural Earth 50m Physical（zip 檔）
+  - `50m_physical.zip`
+- GeoNames
+  - `cities1000.zip`
+  - `alternateNamesV2.zip`
+  - `allCountries.zip`（可選，全量地名）
+
 ## 11.2 分發策略
 
 採用：
