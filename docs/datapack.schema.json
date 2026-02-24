@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "map-schematic/datapack.schema.json",
+  "title": "Map Schematic Data Pack",
+  "type": "object",
+  "required": ["id", "version", "createdAt", "projection", "basemap", "geonames", "files"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "minLength": 1 },
+    "projection": { "type": "string", "enum": ["EPSG:4326"] },
+    "basemap": {
+      "type": "object",
+      "required": ["format", "layers"],
+      "properties": {
+        "format": { "type": "string", "enum": ["geojson"] },
+        "layers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "path"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "path": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "geonames": {
+      "type": "object",
+      "required": ["format", "dbPath", "languages"],
+      "properties": {
+        "format": { "type": "string", "enum": ["sqlite+fts"] },
+        "dbPath": { "type": "string", "minLength": 1 },
+        "languages": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sizeBytes"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "sizeBytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string" }
+        }
+      }
+    }
+  }
+}

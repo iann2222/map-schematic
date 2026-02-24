@@ -7,8 +7,13 @@ dist/
 # Local data
 geodata/*
 !geodata/.keep
+geodata-source/*
+!geodata-source/.keep
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Editor
+.vscode/

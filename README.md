@@ -8,6 +8,10 @@
 - 技術架構與選型：`docs/technical-architecture.md`
 - 程式碼架構：`docs/architecture.md`
 
+## 資料來源與授權
+
+詳見 `ATTRIBUTIONS.md`。
+
 ## 專案狀態
 
 目前為初始骨架階段，核心模組（資料包、查詢、渲染、`.mapproj`）將依技術文件逐步實作。

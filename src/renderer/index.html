@@ -3,37 +3,151 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Map Schematic</title>
+    <title>地圖示意圖</title>
     <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --ink: #e5e7eb;
+        --muted: #9ca3af;
+        --accent: #38bdf8;
+      }
       body {
-        font-family: system-ui, sans-serif;
+        font-family: "IBM Plex Sans", system-ui, sans-serif;
         margin: 0;
-        padding: 24px;
-        color: #111;
-        background: #f6f7fb;
+        padding: 16px;
+        color: var(--ink);
+        background: linear-gradient(180deg, #0b1020 0%, #0f172a 50%, #111827 100%);
       }
-      .card {
-        max-width: 720px;
-        background: #fff;
-        border-radius: 12px;
-        padding: 20px 24px;
-        box-shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+      .layout {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: 320px 1fr;
+        min-height: calc(100vh - 32px);
       }
-      h1 {
-        margin: 0 0 8px 0;
-        font-size: 20px;
+      .panel {
+        background: var(--panel);
+        border-radius: 14px;
+        padding: 16px;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.35);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
       }
-      p {
+      .title {
+        font-size: 18px;
+        font-weight: 600;
         margin: 0;
-        color: #475467;
+      }
+      .subtitle {
+        color: var(--muted);
+        margin: 0;
+      }
+      .status {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .field {
+        display: flex;
+        gap: 8px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+      input[type="text"] {
+        flex: 1;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: #0b1020;
+        color: var(--ink);
+      }
+      button {
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: none;
+        background: var(--accent);
+        color: #0b1020;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: rgba(148, 163, 184, 0.2);
+        color: var(--ink);
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      .results {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 50vh;
+        overflow: auto;
+      }
+      .results li {
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(148, 163, 184, 0.12);
+        cursor: pointer;
+      }
+      .results li:hover {
+        background: rgba(56, 189, 248, 0.2);
+      }
+      .results .meta {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .map-wrap {
+        background: #0b1224;
+        border-radius: 14px;
+        padding: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      svg {
+        width: 100%;
+        height: calc(100vh - 64px);
+        display: block;
+        background: #0a1020;
+        border-radius: 10px;
+      }
+      @media (max-width: 960px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        svg {
+          height: 60vh;
+        }
       }
     </style>
   </head>
   <body>
-    <div class="card">
-      <h1>Map Schematic</h1>
-      <p>Skeleton app is running.</p>
+    <div class="layout">
+      <div class="panel">
+        <div>
+          <h1 class="title">地圖示意圖</h1>
+          <p class="subtitle">底圖 + 地名示範</p>
+        </div>
+        <p class="status" id="status">載入中…</p>
+        <div class="field">
+          <input id="search" type="text" placeholder="輸入地名（例如：Athens / 雅典）" />
+          <button id="searchBtn">搜尋</button>
+        </div>
+        <div class="actions">
+          <button id="saveBtn" class="secondary">儲存專案</button>
+          <button id="loadBtn" class="secondary">載入專案</button>
+        </div>
+        <ul class="results" id="results"></ul>
+      </div>
+      <div class="map-wrap">
+        <svg id="map" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
     </div>
-    <script src="./index.js"></script>
+    <script type="module" src="./index.js"></script>
   </body>
 </html>
