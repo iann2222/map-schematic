@@ -105,13 +105,9 @@ type ViewTransform = {
 
 type DragMode = "pan" | "box" | null;
 
-type TileRange = {
-  min: number;
-  max: number;
-};
-
 const statusEl = document.getElementById("status");
 const svg = document.getElementById("map") as SVGSVGElement | null;
+const canvas = document.getElementById("basemap") as HTMLCanvasElement | null;
 const searchInput = document.getElementById("search") as HTMLInputElement | null;
 const searchButton = document.getElementById("searchBtn") as HTMLButtonElement | null;
 const resultsEl = document.getElementById("results") as HTMLUListElement | null;
@@ -120,6 +116,7 @@ const loadButton = document.getElementById("loadBtn") as HTMLButtonElement | nul
 const toolZoomIn = document.getElementById("toolZoomIn") as HTMLButtonElement | null;
 const toolZoomOut = document.getElementById("toolZoomOut") as HTMLButtonElement | null;
 const toolReset = document.getElementById("toolReset") as HTMLButtonElement | null;
+const zoomIndicator = document.getElementById("zoomIndicator");
 
 const WORLD = {
   minLon: -180,
@@ -129,6 +126,10 @@ const WORLD = {
 };
 
 const RADIUS = 6378137;
+const WRAPS = [-1, 0, 1] as const;
+const MIN_SCALE = 0.4;
+const MAX_SCALE = 12;
+const ZOOM_LEVELS = [0.4, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12];
 
 const selectedMarkers: GeonamesResult[] = [];
 let currentPackVersion = "";
@@ -141,8 +142,12 @@ let dragStartScreen: { x: number; y: number } | null = null;
 let dragStartMap: { x: number; y: number } | null = null;
 let dragMode: DragMode = null;
 let dragRect: SVGRectElement | null = null;
-let cachedBasemapLayers: Array<{ id: string; geojson: any }> = [];
-let currentTiles: TileRange | null = null;
+let cachedBasemapLayers: Array<{ id: string; paths: Path2D[] }> = [];
+let basemapBuilt = false;
+let worldShift = 0;
+let basemapDrawPending = false;
+let shiftLocked = false;
+let shiftLockValue = 0;
 
 function mercatorX(lon: number): number {
   return (RADIUS * lon * Math.PI) / 180;
@@ -224,27 +229,17 @@ function geometryToPath(geometry: any, width: number, height: number): string {
   return "";
 }
 
-function applyLayerStyle(path: SVGPathElement, layerId: string): void {
-  const styles: Record<string, { fill?: string; stroke?: string; strokeWidth?: number }> = {
+type LayerStyle = { fill?: string; stroke?: string; strokeWidth?: number };
+
+function layerStyleFor(layerId: string): LayerStyle {
+  const styles: Record<string, LayerStyle> = {
     ocean: { fill: "#0f1c3f" },
     land: { fill: "#1f2937" },
     lakes: { fill: "#142247" },
     rivers: { stroke: "#3b82f6", strokeWidth: 0.6 },
     coastline: { stroke: "#cbd5f5", strokeWidth: 0.6 }
   };
-  const style = styles[layerId] ?? { stroke: "#64748b", strokeWidth: 0.4 };
-  if (style.fill) {
-    path.setAttribute("fill", style.fill);
-  } else {
-    path.setAttribute("fill", "none");
-  }
-  if (style.stroke) {
-    path.setAttribute("stroke", style.stroke);
-  }
-  if (style.strokeWidth) {
-    path.setAttribute("stroke-width", style.strokeWidth.toString());
-  }
-  path.setAttribute("vector-effect", "non-scaling-stroke");
+  return styles[layerId] ?? { stroke: "#64748b", strokeWidth: 0.4 };
 }
 
 function ensureLayer(parent: SVGElement, id: string): SVGGElement {
@@ -304,6 +299,112 @@ function applyViewTransform(): void {
   }
   const root = ensureMapRoot(svg);
   root.setAttribute("transform", `translate(${view.tx} ${view.ty}) scale(${view.scale})`);
+  updateZoomIndicator();
+  requestBasemapDraw();
+}
+
+function updateZoomIndicator(): void {
+  if (!zoomIndicator) {
+    return;
+  }
+  const percent = Math.round(view.scale * 100);
+  zoomIndicator.textContent = `${percent}%`;
+}
+
+function ensureCanvasSize(width: number, height: number): void {
+  if (!canvas) {
+    return;
+  }
+  if (canvas.width !== width) {
+    canvas.width = width;
+  }
+  if (canvas.height !== height) {
+    canvas.height = height;
+  }
+}
+
+function requestBasemapDraw(): void {
+  if (!basemapBuilt || !canvas) {
+    return;
+  }
+  if (basemapDrawPending) {
+    return;
+  }
+  basemapDrawPending = true;
+  requestAnimationFrame(() => {
+    basemapDrawPending = false;
+    drawBasemap();
+  });
+}
+
+function drawBasemap(): void {
+  if (!canvas || !svg || cachedBasemapLayers.length === 0) {
+    return;
+  }
+  const width = svg.viewBox.baseVal.width || 1200;
+  const height = svg.viewBox.baseVal.height || 800;
+  ensureCanvasSize(width, height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return;
+  }
+  ctx.clearRect(0, 0, width, height);
+  ctx.save();
+  ctx.setTransform(view.scale, 0, 0, view.scale, view.tx, view.ty);
+  const wrapShift = shiftLocked ? shiftLockValue : worldShift;
+  for (const i of WRAPS) {
+    ctx.save();
+    ctx.translate((i + wrapShift) * width, 0);
+    for (const layer of cachedBasemapLayers) {
+      const style = layerStyleFor(layer.id);
+      if (style.fill) {
+        ctx.fillStyle = style.fill;
+        for (const path of layer.paths) {
+          ctx.fill(path);
+        }
+      }
+      if (style.stroke) {
+        ctx.strokeStyle = style.stroke;
+        ctx.lineWidth = (style.strokeWidth ?? 0.4) / view.scale;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        for (const path of layer.paths) {
+          ctx.stroke(path);
+        }
+      }
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function updateWrapTransforms(forceRender = false): void {
+  if (!svg) {
+    return;
+  }
+  const width = svg.viewBox.baseVal.width || 1200;
+  if (!shiftLocked) {
+    const centerX = (width / 2 - view.tx) / view.scale;
+    const nextShift = Math.round(centerX / width);
+    if (nextShift !== worldShift) {
+      const delta = nextShift - worldShift;
+      worldShift = nextShift;
+      if (delta !== 0) {
+        view.tx -= delta * width * view.scale;
+        const root = ensureMapRoot(svg);
+        root.setAttribute("transform", `translate(${view.tx} ${view.ty}) scale(${view.scale})`);
+      }
+    }
+  }
+  const root = ensureMapRoot(svg);
+  const markerWrap = ensureMarkersContainer(root);
+  const wrapShift = shiftLocked ? shiftLockValue : worldShift;
+  for (const i of WRAPS) {
+    ensureWrapGroup(markerWrap, `marker-${i}`, (i + wrapShift) * width);
+  }
+  if (forceRender) {
+    requestBasemapDraw();
+  }
 }
 
 function clampVertical(): void {
@@ -328,61 +429,31 @@ function viewCenterLonLat(): [number, number] {
   return unproject(centerX, centerY, width, height);
 }
 
-function tileRange(): TileRange {
-  if (!svg) {
-    return { min: -1, max: 1 };
-  }
-  const width = svg.viewBox.baseVal.width || 1200;
-  const minX = (-view.tx) / view.scale;
-  const maxX = (width - view.tx) / view.scale;
-  let minTile = Math.floor(minX / width) - 1;
-  let maxTile = Math.ceil(maxX / width) + 1;
-  const maxSpan = 5;
-  if (maxTile - minTile > maxSpan) {
-    const mid = Math.floor((minTile + maxTile) / 2);
-    minTile = mid - Math.floor(maxSpan / 2);
-    maxTile = minTile + maxSpan;
-  }
-  return { min: minTile, max: maxTile };
-}
-
 async function renderBasemap() {
   if (!svg || !window.mapSchematic?.getBasemapLayers) {
     return;
   }
+  if (basemapBuilt) {
+    return;
+  }
+  basemapBuilt = true;
   const width = svg.viewBox.baseVal.width || 1200;
   const height = svg.viewBox.baseVal.height || 800;
 
-  const root = ensureMapRoot(svg);
-  const basemapWrap = ensureBasemapContainer(root);
-  basemapWrap.innerHTML = "";
-
   const rawLayers = await window.mapSchematic.getBasemapLayers();
-  cachedBasemapLayers = rawLayers.map((layer) => ({
-    id: layer.id,
-    geojson: JSON.parse(layer.geojson)
-  }));
-
-  const range = tileRange();
-  currentTiles = range;
-  for (let i = range.min; i <= range.max; i += 1) {
-    const wrap = ensureWrapGroup(basemapWrap, `wrap-${i}`, i * width);
-    const basemapLayer = ensureLayer(wrap, "basemap");
-    basemapLayer.innerHTML = "";
-    for (const layer of cachedBasemapLayers) {
-      const features = layer.geojson.features ?? [];
-      for (const feature of features) {
-        const d = geometryToPath(feature.geometry, width, height);
-        if (!d) {
-          continue;
-        }
-        const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        pathEl.setAttribute("d", d);
-        applyLayerStyle(pathEl, layer.id);
-        basemapLayer.appendChild(pathEl);
+  cachedBasemapLayers = rawLayers.map((layer) => {
+    const geojson = JSON.parse(layer.geojson);
+    const paths: Path2D[] = [];
+    for (const feature of geojson.features ?? []) {
+      const d = geometryToPath(feature.geometry, width, height);
+      if (!d) {
+        continue;
       }
+      paths.push(new Path2D(d));
     }
-  }
+    return { id: layer.id, paths };
+  });
+  drawBasemap();
 }
 
 function renderMarkers() {
@@ -393,11 +464,9 @@ function renderMarkers() {
   const height = svg.viewBox.baseVal.height || 800;
   const root = ensureMapRoot(svg);
   const markerWrap = ensureMarkersContainer(root);
-  markerWrap.innerHTML = "";
 
-  const range = currentTiles ?? tileRange();
-  for (let i = range.min; i <= range.max; i += 1) {
-    const wrap = ensureWrapGroup(markerWrap, `marker-${i}`, i * width);
+  for (const i of WRAPS) {
+    const wrap = ensureWrapGroup(markerWrap, `marker-${i}`, (i + worldShift) * width);
     wrap.innerHTML = "";
     for (const marker of selectedMarkers) {
       const [x, y] = project(marker.longitude, marker.latitude, width, height);
@@ -420,44 +489,6 @@ function renderMarkers() {
       wrap.appendChild(label);
     }
   }
-}
-
-function refreshWraps(): void {
-  if (!svg) {
-    return;
-  }
-  if (cachedBasemapLayers.length === 0) {
-    return;
-  }
-  const range = tileRange();
-  if (currentTiles && currentTiles.min === range.min && currentTiles.max === range.max) {
-    return;
-  }
-  currentTiles = range;
-  const root = ensureMapRoot(svg);
-  const basemapWrap = ensureBasemapContainer(root);
-  basemapWrap.innerHTML = "";
-  const width = svg.viewBox.baseVal.width || 1200;
-  const height = svg.viewBox.baseVal.height || 800;
-  for (let i = range.min; i <= range.max; i += 1) {
-    const wrap = ensureWrapGroup(basemapWrap, `wrap-${i}`, i * width);
-    const basemapLayer = ensureLayer(wrap, "basemap");
-    basemapLayer.innerHTML = "";
-    for (const layer of cachedBasemapLayers) {
-      const features = layer.geojson.features ?? [];
-      for (const feature of features) {
-        const d = geometryToPath(feature.geometry, width, height);
-        if (!d) {
-          continue;
-        }
-        const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        pathEl.setAttribute("d", d);
-        applyLayerStyle(pathEl, layer.id);
-        basemapLayer.appendChild(pathEl);
-      }
-    }
-  }
-  renderMarkers();
 }
 
 function haversineDistance(a: [number, number], b: [number, number]): number {
@@ -643,7 +674,7 @@ function mapPointFromEvent(event: MouseEvent): { x: number; y: number } {
 
 function zoomAt(point: { x: number; y: number }, delta: number): void {
   const prevScale = view.scale;
-  const nextScale = Math.max(0.4, Math.min(6, view.scale * delta));
+  const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * delta));
   const scaleRatio = nextScale / prevScale;
 
   view.tx = point.x - scaleRatio * (point.x - view.tx);
@@ -652,15 +683,17 @@ function zoomAt(point: { x: number; y: number }, delta: number): void {
 
   clampVertical();
   applyViewTransform();
-  refreshWraps();
+  updateWrapTransforms(true);
 }
 
 function resetView(): void {
   view.scale = 1;
   view.tx = 0;
   view.ty = 0;
+  worldShift = 0;
+  shiftLocked = false;
   applyViewTransform();
-  refreshWraps();
+  updateWrapTransforms(true);
 }
 
 function onWheel(event: WheelEvent): void {
@@ -709,6 +742,10 @@ function onMouseDown(event: MouseEvent): void {
   dragMode = event.button === 2 ? "box" : "pan";
   svg.classList.toggle("boxing", dragMode === "box");
   if (dragMode === "box") {
+    shiftLocked = true;
+    shiftLockValue = worldShift;
+  }
+  if (dragMode === "box") {
     const rect = ensureDragRect();
     if (rect && dragStartScreen) {
       rect.setAttribute("x", dragStartScreen.x.toFixed(2));
@@ -732,6 +769,7 @@ function onMouseMove(event: MouseEvent): void {
     dragStartScreen = currentScreen;
     clampVertical();
     applyViewTransform();
+    updateWrapTransforms(true);
     return;
   }
   if (dragMode === "box") {
@@ -769,19 +807,19 @@ function onMouseUp(event: MouseEvent): void {
       const height = svg.viewBox.baseVal.height || 800;
       const scaleX = width / w;
       const scaleY = height / h;
-      const nextScale = Math.min(6, Math.max(0.4, Math.min(scaleX, scaleY)));
-      const centerX = x + w / 2;
-      const centerY = y + h / 2;
-      view.tx = width / 2 - centerX * nextScale;
-      view.ty = height / 2 - centerY * nextScale;
+      const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(scaleX, scaleY)));
+      const padX = (width - w * nextScale) / 2;
+      const padY = (height - h * nextScale) / 2;
+      view.tx = padX - x * nextScale;
+      view.ty = padY - y * nextScale;
       view.scale = nextScale;
-      clampVertical();
       applyViewTransform();
-      refreshWraps();
+      updateWrapTransforms(true);
     }
   }
-  if (dragMode === "pan") {
-    refreshWraps();
+  if (dragMode === "box") {
+    shiftLocked = false;
+    updateWrapTransforms(true);
   }
   clearDragRect();
   isDragging = false;
@@ -835,21 +873,39 @@ async function boot() {
 }
 
 function hookToolbar(): void {
-  toolZoomIn?.addEventListener("click", () => {
+  function nextZoom(target: number, dir: 1 | -1): number {
+    const levels = ZOOM_LEVELS.filter((level) => level >= MIN_SCALE && level <= MAX_SCALE);
+    let nearestIndex = 0;
+    let nearestDelta = Infinity;
+    for (let i = 0; i < levels.length; i += 1) {
+      const delta = Math.abs(levels[i] - target);
+      if (delta < nearestDelta) {
+        nearestDelta = delta;
+        nearestIndex = i;
+      }
+    }
+    let nextIndex = dir > 0 ? nearestIndex + 1 : nearestIndex - 1;
+    nextIndex = Math.max(0, Math.min(levels.length - 1, nextIndex));
+    return levels[nextIndex];
+  }
+
+  function zoomToScale(targetScale: number): void {
     if (!svg) {
       return;
     }
     const width = svg.viewBox.baseVal.width || 1200;
     const height = svg.viewBox.baseVal.height || 800;
-    zoomAt({ x: width / 2, y: height / 2 }, 1.2);
+    const ratio = targetScale / view.scale;
+    zoomAt({ x: width / 2, y: height / 2 }, ratio);
+  }
+
+  toolZoomIn?.addEventListener("click", () => {
+    const target = nextZoom(view.scale, 1);
+    zoomToScale(target);
   });
   toolZoomOut?.addEventListener("click", () => {
-    if (!svg) {
-      return;
-    }
-    const width = svg.viewBox.baseVal.width || 1200;
-    const height = svg.viewBox.baseVal.height || 800;
-    zoomAt({ x: width / 2, y: height / 2 }, 0.8);
+    const target = nextZoom(view.scale, -1);
+    zoomToScale(target);
   });
   toolReset?.addEventListener("click", () => resetView());
 }

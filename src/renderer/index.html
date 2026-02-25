@@ -110,13 +110,26 @@
         border: 1px solid rgba(148, 163, 184, 0.2);
         position: relative;
       }
-      svg {
-        width: 100%;
+      .map-stage {
+        position: relative;
         height: calc(100vh - 64px);
+      }
+      canvas,
+      svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
         display: block;
-        background: #0a1020;
         border-radius: 10px;
         overflow: hidden;
+      }
+      canvas {
+        background: #0a1020;
+        pointer-events: none;
+      }
+      svg {
+        background: transparent;
         cursor: grab;
       }
       svg.dragging {
@@ -134,6 +147,20 @@
         gap: 8px;
         z-index: 2;
       }
+      .map-zoom-indicator {
+        position: absolute;
+        right: 16px;
+        bottom: 16px;
+        z-index: 2;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ink);
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        letter-spacing: 0.4px;
+      }
       .map-toolbar button {
         background: rgba(15, 23, 42, 0.85);
         color: var(--ink);
@@ -144,13 +171,17 @@
         .layout {
           grid-template-columns: 1fr;
         }
-        svg {
+        .map-stage {
           height: 60vh;
         }
         .map-toolbar {
           right: 12px;
           bottom: 12px;
           top: auto;
+        }
+        .map-zoom-indicator {
+          right: 12px;
+          bottom: 60px;
         }
       }
     </style>
@@ -179,7 +210,11 @@
           <button id="toolZoomOut">縮小</button>
           <button id="toolReset">重設</button>
         </div>
-        <svg id="map" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="map-zoom-indicator" id="zoomIndicator">100%</div>
+        <div class="map-stage">
+          <canvas id="basemap" width="1200" height="800"></canvas>
+          <svg id="map" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
       </div>
     </div>
     <script type="module" src="./index.js"></script>
