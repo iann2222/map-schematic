@@ -108,15 +108,53 @@ type DragMode = "pan" | "box" | null;
 const statusEl = document.getElementById("status");
 const svg = document.getElementById("map") as SVGSVGElement | null;
 const canvas = document.getElementById("basemap") as HTMLCanvasElement | null;
-const searchInput = document.getElementById("search") as HTMLInputElement | null;
-const searchButton = document.getElementById("searchBtn") as HTMLButtonElement | null;
-const resultsEl = document.getElementById("results") as HTMLUListElement | null;
+const searchInput0 = document.getElementById("search0") as HTMLInputElement | null;
+const searchButton0 = document.getElementById("searchBtn0") as HTMLButtonElement | null;
+const searchInput3 = document.getElementById("search3") as HTMLInputElement | null;
+const searchButton3 = document.getElementById("searchBtn3") as HTMLButtonElement | null;
+const resultsEl0 = document.getElementById("results0") as HTMLUListElement | null;
+const resultsEl3 = document.getElementById("results3") as HTMLUListElement | null;
 const saveButton = document.getElementById("saveBtn") as HTMLButtonElement | null;
 const loadButton = document.getElementById("loadBtn") as HTMLButtonElement | null;
+const clearMarkersButton = document.getElementById("clearMarkers") as HTMLButtonElement | null;
 const toolZoomIn = document.getElementById("toolZoomIn") as HTMLButtonElement | null;
 const toolZoomOut = document.getElementById("toolZoomOut") as HTMLButtonElement | null;
 const toolReset = document.getElementById("toolReset") as HTMLButtonElement | null;
 const zoomIndicator = document.getElementById("zoomIndicator");
+const stepPanels = Array.from(document.querySelectorAll<HTMLElement>(".step-panel"));
+const stepProgress = document.getElementById("stepProgress");
+const stepTitle = document.getElementById("stepTitle");
+const prevStepButton = document.getElementById("prevStep") as HTMLButtonElement | null;
+const nextStepButton = document.getElementById("nextStep") as HTMLButtonElement | null;
+const ratio169 = document.getElementById("ratio169") as HTMLButtonElement | null;
+const ratioA4 = document.getElementById("ratioA4") as HTMLButtonElement | null;
+const ratioSquare = document.getElementById("ratioSquare") as HTMLButtonElement | null;
+const ratioFree = document.getElementById("ratioFree") as HTMLButtonElement | null;
+const ratio43 = document.getElementById("ratio43") as HTMLButtonElement | null;
+const ratio34 = document.getElementById("ratio34") as HTMLButtonElement | null;
+const ratio916 = document.getElementById("ratio916") as HTMLButtonElement | null;
+const ratioOriginal = document.getElementById("ratioOriginal") as HTMLButtonElement | null;
+const ratioInputA = document.getElementById("ratioInputA") as HTMLInputElement | null;
+const ratioInputB = document.getElementById("ratioInputB") as HTMLInputElement | null;
+const ratioCustom = document.getElementById("ratioCustom") as HTMLButtonElement | null;
+const mapWrap = document.querySelector(".map-wrap") as HTMLDivElement | null;
+const ratioButtons = [
+  ratioFree,
+  ratioOriginal,
+  ratioSquare,
+  ratio34,
+  ratio43,
+  ratio169,
+  ratio916,
+  ratioA4,
+  ratioCustom
+].filter((btn): btn is HTMLButtonElement => Boolean(btn));
+const styleClean = document.getElementById("styleClean") as HTMLButtonElement | null;
+const styleClassic = document.getElementById("styleClassic") as HTMLButtonElement | null;
+const styleRetro = document.getElementById("styleRetro") as HTMLButtonElement | null;
+const toggleRelief = document.getElementById("toggleRelief") as HTMLButtonElement | null;
+const mapStage = document.querySelector(".map-stage") as HTMLDivElement | null;
+const cropFrame = document.getElementById("cropFrame") as HTMLDivElement | null;
 
 const WORLD = {
   minLon: -180,
@@ -130,6 +168,24 @@ const WRAPS = [-1, 0, 1] as const;
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 12;
 const ZOOM_LEVELS = [0.4, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12];
+const MAP_WIDTH = 1200;
+const MAP_HEIGHT = 800;
+let cropRatio = MAP_WIDTH / MAP_HEIGHT;
+let activeStep = "0";
+let ratioMode: "free" | "fixed" = "fixed";
+let originalRatio = MAP_WIDTH / MAP_HEIGHT;
+let activeRatioId: string | undefined = undefined;
+type CropBox = { left: number; top: number; width: number; height: number };
+type CropDrag = {
+  mode: "move" | "resize";
+  handle?: string;
+  startX: number;
+  startY: number;
+  startBox: CropBox;
+};
+
+let cropBox: CropBox | null = null;
+let cropDrag: CropDrag | null = null;
 
 const selectedMarkers: GeonamesResult[] = [];
 let currentPackVersion = "";
@@ -300,6 +356,7 @@ function applyViewTransform(): void {
   const root = ensureMapRoot(svg);
   root.setAttribute("transform", `translate(${view.tx} ${view.ty}) scale(${view.scale})`);
   updateZoomIndicator();
+  updateMarkerStyles();
   requestBasemapDraw();
 }
 
@@ -311,16 +368,339 @@ function updateZoomIndicator(): void {
   zoomIndicator.textContent = `${percent}%`;
 }
 
-function ensureCanvasSize(width: number, height: number): void {
-  if (!canvas) {
+function setActiveStep(stepId: string): void {
+  activeStep = stepId;
+  stepPanels.forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.stepPanel === stepId);
+  });
+  if (stepProgress) {
+    stepProgress.textContent = `步驟 ${stepId} / 3`;
+  }
+  if (stepTitle) {
+    const titles: Record<string, string> = {
+      "0": "大致定位",
+      "1": "範圍與比例",
+      "2": "底圖樣式",
+      "3": "標示與繪製"
+    };
+    stepTitle.textContent = titles[stepId] ?? "";
+  }
+  if (cropFrame) {
+    cropFrame.classList.toggle("hidden", stepId !== "1");
+    cropFrame.classList.toggle("interactive", stepId === "1");
+    cropFrame.classList.toggle("fixed", stepId === "1" && ratioMode === "fixed");
+  }
+  if (mapWrap) {
+    mapWrap.classList.toggle("step-range", stepId === "1");
+  }
+  if (stepId === "1") {
+    updateCropFrame();
+  } else {
+    positionZoomIndicator();
+  }
+  if (stepId === "0") {
+    updateWrapTransforms(true);
+  }
+  if (nextStepButton) {
+    const nextLabel = stepId === "3" ? "完成" : "下一步";
+    nextStepButton.textContent = nextLabel;
+  }
+}
+
+function setActiveRatioButton(targetId?: string): void {
+  activeRatioId = targetId;
+  ratioButtons.forEach((button) => {
+    button.classList.toggle("active", button.id === targetId);
+  });
+}
+
+function applyCanvasRatio(ratio: number, targetId?: string): void {
+  ratioMode = "fixed";
+  cropRatio = ratio;
+  cropBox = null;
+  setActiveRatioButton(targetId);
+  updateCropFrame();
+}
+
+function updateCropFrame(): void {
+  if (!cropFrame || !mapStage) {
     return;
   }
-  if (canvas.width !== width) {
-    canvas.width = width;
+  cropFrame.classList.toggle("fixed", ratioMode === "fixed");
+  const rect = mapStage.getBoundingClientRect();
+  const stageWidth = Math.max(1, rect.width);
+  const stageHeight = Math.max(1, rect.height);
+  const bottomPadding = 16;
+  const availableHeight = Math.max(1, stageHeight - bottomPadding);
+  if (!cropBox) {
+    if (ratioMode === "free") {
+      cropBox = { left: 0, top: 0, width: stageWidth, height: availableHeight };
+    } else {
+      let frameWidth = stageWidth;
+      let frameHeight = frameWidth / cropRatio;
+      if (frameHeight > availableHeight) {
+        frameHeight = availableHeight;
+        frameWidth = frameHeight * cropRatio;
+      }
+      const inset = 12;
+      frameWidth = Math.max(1, frameWidth - inset * 2);
+      frameHeight = Math.max(1, frameHeight - inset * 2);
+      const left = (stageWidth - frameWidth) / 2;
+      const top = (availableHeight - frameHeight) / 2;
+      cropBox = { left, top, width: frameWidth, height: frameHeight };
+    }
+  } else if (ratioMode === "free") {
+    cropBox.left = Math.min(Math.max(0, cropBox.left), stageWidth - cropBox.width);
+    cropBox.top = Math.min(Math.max(0, cropBox.top), availableHeight - cropBox.height);
   }
-  if (canvas.height !== height) {
-    canvas.height = height;
+  if (cropBox) {
+    cropBox.left = Math.min(Math.max(0, cropBox.left), stageWidth - cropBox.width);
+    cropBox.top = Math.min(Math.max(0, cropBox.top), availableHeight - cropBox.height);
   }
+  cropFrame.style.left = `${cropBox.left}px`;
+  cropFrame.style.top = `${cropBox.top}px`;
+  cropFrame.style.width = `${cropBox.width}px`;
+  cropFrame.style.height = `${cropBox.height}px`;
+  positionZoomIndicator();
+  requestBasemapDraw();
+}
+
+function handleRatioInput(): void {
+  if (!ratioInputA || !ratioInputB) {
+    return;
+  }
+  if (activeRatioId !== "ratioCustom") {
+    return;
+  }
+  const a = Number(ratioInputA.value);
+  const b = Number(ratioInputB.value);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) {
+    return;
+  }
+  applyCanvasRatio(a / b, "ratioCustom");
+}
+
+function pointFromEvent(event: PointerEvent): { x: number; y: number } | null {
+  if (!mapStage) {
+    return null;
+  }
+  const rect = mapStage.getBoundingClientRect();
+  return {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top
+  };
+}
+
+function clampCropBox(box: { left: number; top: number; width: number; height: number }): void {
+  if (!mapStage) {
+    return;
+  }
+  const rect = mapStage.getBoundingClientRect();
+  const stageWidth = Math.max(1, rect.width);
+  const stageHeight = Math.max(1, rect.height);
+  const bottomPadding = 16;
+  const availableHeight = Math.max(1, stageHeight - bottomPadding);
+  box.width = Math.max(40, Math.min(box.width, stageWidth));
+  box.height = Math.max(40, Math.min(box.height, availableHeight));
+  box.left = Math.min(Math.max(0, box.left), stageWidth - box.width);
+  box.top = Math.min(Math.max(0, box.top), availableHeight - box.height);
+}
+
+function attachCropInteractions(): void {
+  if (!cropFrame) {
+    return;
+  }
+  cropFrame.addEventListener("wheel", onWheel, { passive: false });
+  cropFrame.addEventListener("pointerdown", (event) => {
+    if (activeStep !== "1") {
+      return;
+    }
+    const target = event.target as HTMLElement;
+    const handle = target?.dataset?.handle;
+    const point = pointFromEvent(event);
+    if (!point || !cropBox) {
+      return;
+    }
+    event.preventDefault();
+    cropFrame.setPointerCapture(event.pointerId);
+    if (handle) {
+      if (ratioMode === "fixed" && (handle === "n" || handle === "s" || handle === "e" || handle === "w")) {
+        return;
+      }
+      cropDrag = { mode: "resize", handle, startX: point.x, startY: point.y, startBox: { ...cropBox } };
+    } else {
+      cropDrag = { mode: "move", startX: point.x, startY: point.y, startBox: { ...cropBox } };
+    }
+  });
+  cropFrame.addEventListener("pointermove", (event) => {
+    if (!cropDrag || !cropBox) {
+      return;
+    }
+    const point = pointFromEvent(event);
+    if (!point) {
+      return;
+    }
+    const dx = point.x - cropDrag.startX;
+    const dy = point.y - cropDrag.startY;
+    const start = cropDrag.startBox;
+    if (cropDrag.mode === "move") {
+      cropBox.left = start.left + dx;
+      cropBox.top = start.top + dy;
+      clampCropBox(cropBox);
+    } else if (cropDrag.mode === "resize") {
+      const handle = cropDrag.handle ?? "";
+      if (ratioMode === "fixed") {
+        const widthFromDx = handle.includes("w") ? start.width - dx : start.width + dx;
+        const heightFromDy = handle.includes("n") ? start.height - dy : start.height + dy;
+        const widthFromDy = heightFromDy * cropRatio;
+        const useWidth = Math.abs(dx) >= Math.abs(dy) ? widthFromDx : widthFromDy;
+        const nextWidth = Math.max(40, useWidth);
+        const nextHeight = nextWidth / cropRatio;
+        if (handle.includes("w")) {
+          cropBox.left = start.left + (start.width - nextWidth);
+        }
+        if (handle.includes("n")) {
+          cropBox.top = start.top + (start.height - nextHeight);
+        }
+        cropBox.width = nextWidth;
+        cropBox.height = nextHeight;
+      } else {
+        if (handle.includes("e")) {
+          cropBox.width = start.width + dx;
+        }
+        if (handle.includes("s")) {
+          cropBox.height = start.height + dy;
+        }
+        if (handle.includes("w")) {
+          cropBox.width = start.width - dx;
+          cropBox.left = start.left + dx;
+        }
+        if (handle.includes("n")) {
+          cropBox.height = start.height - dy;
+          cropBox.top = start.top + dy;
+        }
+      }
+      clampCropBox(cropBox);
+    }
+    updateCropFrame();
+  });
+  cropFrame.addEventListener("pointerup", () => {
+    cropDrag = null;
+  });
+  cropFrame.addEventListener("pointercancel", () => {
+    cropDrag = null;
+  });
+}
+
+function resolveCropFrameBox():
+  | { left: number; top: number; width: number; height: number }
+  | undefined {
+  if (!cropFrame || !mapStage || cropFrame.classList.contains("hidden")) {
+    return undefined;
+  }
+  const stageRect = mapStage.getBoundingClientRect();
+  const cropRect = cropFrame.getBoundingClientRect();
+  return {
+    left: cropRect.left - stageRect.left,
+    top: cropRect.top - stageRect.top,
+    width: cropRect.width,
+    height: cropRect.height
+  };
+}
+
+function positionZoomIndicator(): void {
+  return;
+}
+
+function hookSteps(): void {
+  nextStepButton?.addEventListener("click", () => {
+    const steps = ["0", "1", "2", "3"];
+    const index = Math.max(0, steps.indexOf(activeStep));
+    const next = steps[Math.min(steps.length - 1, index + 1)];
+    setActiveStep(next);
+  });
+  prevStepButton?.addEventListener("click", () => {
+    const steps = ["0", "1", "2", "3"];
+    const index = Math.max(0, steps.indexOf(activeStep));
+    const prev = steps[Math.max(0, index - 1)];
+    setActiveStep(prev);
+  });
+  ratioFree?.addEventListener("click", () => {
+    ratioMode = "free";
+    if (!cropBox) {
+      cropBox = null;
+    }
+    setActiveRatioButton("ratioFree");
+    updateCropFrame();
+  });
+  ratioOriginal?.addEventListener("click", () => {
+    applyCanvasRatio(originalRatio, "ratioOriginal");
+  });
+  ratioSquare?.addEventListener("click", () => {
+    applyCanvasRatio(1, "ratioSquare");
+  });
+  ratio34?.addEventListener("click", () => {
+    applyCanvasRatio(3 / 4, "ratio34");
+  });
+  ratio43?.addEventListener("click", () => {
+    applyCanvasRatio(4 / 3, "ratio43");
+  });
+  ratio169?.addEventListener("click", () => {
+    applyCanvasRatio(16 / 9, "ratio169");
+  });
+  ratio916?.addEventListener("click", () => {
+    applyCanvasRatio(9 / 16, "ratio916");
+  });
+  ratioA4?.addEventListener("click", () => {
+    applyCanvasRatio(210 / 297, "ratioA4");
+  });
+  ratioCustom?.addEventListener("click", () => {
+    ratioMode = "fixed";
+    setActiveRatioButton("ratioCustom");
+    handleRatioInput();
+  });
+  ratioInputA?.addEventListener("input", handleRatioInput);
+  ratioInputB?.addEventListener("input", handleRatioInput);
+  ratioInputA?.addEventListener("focus", () => setActiveRatioButton("ratioCustom"));
+  ratioInputB?.addEventListener("focus", () => setActiveRatioButton("ratioCustom"));
+  styleClean?.addEventListener("click", () => {});
+  styleClassic?.addEventListener("click", () => {});
+  styleRetro?.addEventListener("click", () => {});
+  toggleRelief?.addEventListener("click", () => {
+    if (!toggleRelief) {
+      return;
+    }
+    const isOff = toggleRelief.textContent?.includes("關");
+    toggleRelief.textContent = isOff ? "地形層：開" : "地形層：關";
+  });
+}
+
+function resizeCanvasToStage(): {
+  width: number;
+  height: number;
+  scaleFit: number;
+  offsetX: number;
+  offsetY: number;
+} {
+  if (!canvas || !mapStage) {
+    return { width: MAP_WIDTH, height: MAP_HEIGHT, scaleFit: 1, offsetX: 0, offsetY: 0 };
+  }
+  const rect = mapStage.getBoundingClientRect();
+  const stageWidth = Math.max(1, rect.width);
+  const stageHeight = Math.max(1, rect.height);
+  const dpr = window.devicePixelRatio || 1;
+  const targetWidth = Math.max(1, Math.round(stageWidth * dpr));
+  const targetHeight = Math.max(1, Math.round(stageHeight * dpr));
+  if (canvas.width !== targetWidth) {
+    canvas.width = targetWidth;
+  }
+  if (canvas.height !== targetHeight) {
+    canvas.height = targetHeight;
+  }
+  const scaleFit = Math.min(stageWidth / MAP_WIDTH, stageHeight / MAP_HEIGHT);
+  const offsetX = (stageWidth - MAP_WIDTH * scaleFit) / 2;
+  const offsetY = (stageHeight - MAP_HEIGHT * scaleFit) / 2;
+  return { width: stageWidth, height: stageHeight, scaleFit, offsetX, offsetY };
 }
 
 function requestBasemapDraw(): void {
@@ -341,20 +721,29 @@ function drawBasemap(): void {
   if (!canvas || !svg || cachedBasemapLayers.length === 0) {
     return;
   }
-  const width = svg.viewBox.baseVal.width || 1200;
-  const height = svg.viewBox.baseVal.height || 800;
-  ensureCanvasSize(width, height);
+  const { width: stageWidth, height: stageHeight, scaleFit, offsetX, offsetY } =
+    resizeCanvasToStage();
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     return;
   }
-  ctx.clearRect(0, 0, width, height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.save();
-  ctx.setTransform(view.scale, 0, 0, view.scale, view.tx, view.ty);
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(
+    view.scale * scaleFit * dpr,
+    0,
+    0,
+    view.scale * scaleFit * dpr,
+    (offsetX + view.tx * scaleFit) * dpr,
+    (offsetY + view.ty * scaleFit) * dpr
+  );
   const wrapShift = shiftLocked ? shiftLockValue : worldShift;
-  for (const i of WRAPS) {
+  const viewWidthMap = stageWidth / Math.max(0.0001, scaleFit * view.scale);
+  const wrapSpan = Math.min(5, Math.max(1, Math.ceil(viewWidthMap / MAP_WIDTH / 2) + 1));
+  for (let i = -wrapSpan; i <= wrapSpan; i += 1) {
     ctx.save();
-    ctx.translate((i + wrapShift) * width, 0);
+    ctx.translate((i + wrapShift) * MAP_WIDTH, 0);
     for (const layer of cachedBasemapLayers) {
       const style = layerStyleFor(layer.id);
       if (style.fill) {
@@ -387,13 +776,7 @@ function updateWrapTransforms(forceRender = false): void {
     const centerX = (width / 2 - view.tx) / view.scale;
     const nextShift = Math.round(centerX / width);
     if (nextShift !== worldShift) {
-      const delta = nextShift - worldShift;
       worldShift = nextShift;
-      if (delta !== 0) {
-        view.tx -= delta * width * view.scale;
-        const root = ensureMapRoot(svg);
-        root.setAttribute("transform", `translate(${view.tx} ${view.ty}) scale(${view.scale})`);
-      }
     }
   }
   const root = ensureMapRoot(svg);
@@ -422,8 +805,8 @@ function viewCenterLonLat(): [number, number] {
   if (!svg) {
     return [0, 0];
   }
-  const width = svg.viewBox.baseVal.width || 1200;
-  const height = svg.viewBox.baseVal.height || 800;
+  const width = MAP_WIDTH;
+  const height = MAP_HEIGHT;
   const centerX = (width / 2 - view.tx) / view.scale;
   const centerY = (height / 2 - view.ty) / view.scale;
   return unproject(centerX, centerY, width, height);
@@ -473,22 +856,46 @@ function renderMarkers() {
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       circle.setAttribute("cx", (x).toFixed(2));
       circle.setAttribute("cy", (y).toFixed(2));
-      circle.setAttribute("r", "4");
+      circle.setAttribute("data-marker", "dot");
+      circle.setAttribute("data-base", "4");
+      circle.setAttribute("r", (4 / view.scale).toFixed(2));
       circle.setAttribute("fill", "#f97316");
       circle.setAttribute("stroke", "#fff7ed");
-      circle.setAttribute("stroke-width", "1.2");
+      circle.setAttribute("stroke-width", (1.2 / view.scale).toFixed(2));
       wrap.appendChild(circle);
 
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
       label.setAttribute("x", (x + 6).toFixed(2));
       label.setAttribute("y", (y - 6).toFixed(2));
+      label.setAttribute("data-marker", "label");
+      label.setAttribute("data-base", "12");
       label.setAttribute("fill", "#fde68a");
-      label.setAttribute("font-size", "12");
+      label.setAttribute("font-size", (12 / view.scale).toFixed(2));
       label.setAttribute("font-family", "IBM Plex Sans, sans-serif");
       label.textContent = marker.name;
       wrap.appendChild(label);
     }
   }
+}
+
+function updateMarkerStyles(): void {
+  if (!svg) {
+    return;
+  }
+  const root = ensureMapRoot(svg);
+  const markerWrap = ensureMarkersContainer(root);
+  const dots = markerWrap.querySelectorAll<SVGCircleElement>("circle[data-marker=\"dot\"]");
+  dots.forEach((dot) => {
+    const base = Number(dot.getAttribute("data-base") ?? "4");
+    dot.setAttribute("r", (base / view.scale).toFixed(2));
+    dot.setAttribute("stroke-width", (1.2 / view.scale).toFixed(2));
+  });
+  const labels = markerWrap.querySelectorAll<SVGTextElement>("text[data-marker=\"label\"]");
+  labels.forEach((label) => {
+    const base = Number(label.getAttribute("data-base") ?? "13");
+    const scale = Math.max(0.5, Math.min(1.6, Math.pow(view.scale, 0.35)));
+    label.setAttribute("font-size", (base * scale).toFixed(2));
+  });
 }
 
 function haversineDistance(a: [number, number], b: [number, number]): number {
@@ -517,11 +924,8 @@ function sortResults(results: GeonamesResult[]): GeonamesResult[] {
   });
 }
 
-function renderResults(results: GeonamesResult[]) {
-  if (!resultsEl) {
-    return;
-  }
-  resultsEl.innerHTML = "";
+function renderResults(results: GeonamesResult[], target: HTMLUListElement) {
+  target.innerHTML = "";
   const sorted = sortResults(results);
   sorted.forEach((result) => {
     const item = document.createElement("li");
@@ -536,24 +940,26 @@ function renderResults(results: GeonamesResult[]) {
       selectedMarkers.push(result);
       renderMarkers();
     });
-    resultsEl.appendChild(item);
+    target.appendChild(item);
   });
 }
 
-async function handleSearch() {
-  if (!searchInput || !searchButton) {
-    return;
-  }
-  const query = searchInput.value.trim();
+async function handleSearch(input: HTMLInputElement, button: HTMLButtonElement) {
+  const query = input.value.trim();
   if (!query) {
     return;
   }
-  searchButton.disabled = true;
+  button.disabled = true;
   try {
     const results = await window.mapSchematic?.searchGeonames?.(query, 10);
-    renderResults(results ?? []);
+    if (resultsEl0) {
+      renderResults(results ?? [], resultsEl0);
+    }
+    if (resultsEl3) {
+      renderResults(results ?? [], resultsEl3);
+    }
   } finally {
-    searchButton.disabled = false;
+    button.disabled = false;
   }
 }
 
@@ -647,6 +1053,11 @@ async function handleLoad() {
   if (statusEl) {
     statusEl.textContent = `專案已載入：${result.path}`;
   }
+}
+
+function handleClearMarkers(): void {
+  selectedMarkers.splice(0, selectedMarkers.length);
+  renderMarkers();
 }
 
 function svgPointFromEvent(event: MouseEvent): { x: number; y: number } {
@@ -859,11 +1270,15 @@ async function boot() {
     await renderBasemap();
     renderMarkers();
     applyViewTransform();
+    updateWrapTransforms(true);
+    updateCropFrame();
+    positionZoomIndicator();
+    setActiveStep("0");
     attachMapInteractions();
     if (datapack) {
       currentPackId = datapack.id;
       currentPackVersion = datapack.version;
-      statusEl.textContent = `資料包 ${datapack.id} ${datapack.version} 已載入。`;
+      statusEl.textContent = `載入資料包 ${datapack.id} ${datapack.version}使用`;
     } else {
       statusEl.textContent = "資料包不可用。";
     }
@@ -910,14 +1325,37 @@ function hookToolbar(): void {
   toolReset?.addEventListener("click", () => resetView());
 }
 
-searchButton?.addEventListener("click", handleSearch);
-searchInput?.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    handleSearch();
+searchButton0?.addEventListener("click", () => {
+  if (searchInput0 && searchButton0) {
+    handleSearch(searchInput0, searchButton0);
+  }
+});
+searchInput0?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && searchInput0 && searchButton0) {
+    handleSearch(searchInput0, searchButton0);
+  }
+});
+searchButton3?.addEventListener("click", () => {
+  if (searchInput3 && searchButton3) {
+    handleSearch(searchInput3, searchButton3);
+  }
+});
+searchInput3?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && searchInput3 && searchButton3) {
+    handleSearch(searchInput3, searchButton3);
   }
 });
 saveButton?.addEventListener("click", handleSave);
 loadButton?.addEventListener("click", handleLoad);
+clearMarkersButton?.addEventListener("click", handleClearMarkers);
 
 hookToolbar();
+hookSteps();
+attachCropInteractions();
 boot();
+
+window.addEventListener("resize", () => {
+  updateCropFrame();
+  requestBasemapDraw();
+  positionZoomIndicator();
+});

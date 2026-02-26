@@ -34,6 +34,77 @@
         flex-direction: column;
         gap: 12px;
       }
+      .step-header {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: rgba(15, 23, 42, 0.7);
+      }
+      .step-progress {
+        font-size: 12px;
+        color: var(--muted);
+        letter-spacing: 0.4px;
+      }
+      .step-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .step-panel {
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .step-panel.active {
+        display: flex;
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .option-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .option-row .secondary.active {
+        border: 1px solid rgba(56, 189, 248, 0.9);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+      }
+      .ratio-button {
+        min-width: 64px;
+        height: 34px;
+        padding: 6px 10px;
+        font-size: 14px;
+      }
+      .ratio-label {
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(148, 163, 184, 0.2);
+        color: var(--ink);
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .ratio-input {
+        width: 36px;
+        padding: 6px 6px;
+        text-align: center;
+        font-size: 14px;
+      }
+      .ratio-input::-webkit-outer-spin-button,
+      .ratio-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      .ratio-input {
+        appearance: textfield;
+        -moz-appearance: textfield;
+      }
       .title {
         font-size: 18px;
         font-weight: 600;
@@ -112,7 +183,9 @@
       }
       .map-stage {
         position: relative;
-        height: calc(100vh - 64px);
+        height: calc(100vh - 140px);
+        width: 100%;
+        overflow: hidden;
       }
       canvas,
       svg {
@@ -149,8 +222,6 @@
       }
       .map-zoom-indicator {
         position: absolute;
-        right: 16px;
-        bottom: 16px;
         z-index: 2;
         padding: 6px 10px;
         border-radius: 999px;
@@ -160,6 +231,57 @@
         background: rgba(15, 23, 42, 0.85);
         border: 1px solid rgba(148, 163, 184, 0.35);
         letter-spacing: 0.4px;
+        right: 12px;
+        bottom: 12px;
+      }
+      .crop-frame {
+        position: absolute;
+        z-index: 1;
+        border: 2px solid rgba(56, 189, 248, 0.9);
+        box-shadow: 0 0 0 2000px rgba(15, 23, 42, 0.55);
+        pointer-events: none;
+      }
+      .crop-frame.interactive {
+        pointer-events: auto;
+        cursor: move;
+      }
+      .crop-handle {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        background: #38bdf8;
+        border: 1px solid rgba(15, 23, 42, 0.8);
+        border-radius: 0;
+      }
+      .crop-handle.nw { left: -4px; top: -4px; cursor: nwse-resize; }
+      .crop-handle.ne { right: -4px; top: -4px; cursor: nesw-resize; }
+      .crop-handle.sw { left: -4px; bottom: -4px; cursor: nesw-resize; }
+      .crop-handle.se { right: -4px; bottom: -4px; cursor: nwse-resize; }
+      .crop-handle.n { left: 50%; top: -4px; transform: translateX(-50%); cursor: ns-resize; }
+      .crop-handle.s { left: 50%; bottom: -4px; transform: translateX(-50%); cursor: ns-resize; }
+      .crop-handle.w { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+      .crop-handle.e { right: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+      .crop-frame.fixed .crop-handle.n,
+      .crop-frame.fixed .crop-handle.s,
+      .crop-frame.fixed .crop-handle.w,
+      .crop-frame.fixed .crop-handle.e {
+        display: none;
+      }
+      .map-wrap.step-range .map-toolbar {
+        display: none;
+      }
+      .map-footer {
+        margin-top: 16px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+      }
+      .map-footer button {
+        padding: 12px 22px;
+        font-size: 14px;
+      }
+      .crop-frame.hidden {
+        display: none;
       }
       .map-toolbar button {
         background: rgba(15, 23, 42, 0.85);
@@ -191,18 +313,66 @@
       <div class="panel">
         <div>
           <h1 class="title">地圖示意圖</h1>
-          <p class="subtitle">底圖 + 地名示範</p>
+          <p class="subtitle">地圖示意製作工具</p>
         </div>
         <p class="status" id="status">載入中…</p>
-        <div class="field">
-          <input id="search" type="text" placeholder="輸入地名（例如：Athens / 雅典）" />
-          <button id="searchBtn">搜尋</button>
+        <div class="step-header">
+          <div class="step-progress" id="stepProgress">步驟 0 / 3</div>
+          <div class="step-title" id="stepTitle">大致定位</div>
         </div>
-        <div class="actions">
-          <button id="saveBtn" class="secondary">儲存專案</button>
-          <button id="loadBtn" class="secondary">載入專案</button>
+        <div class="step-panel active" data-step-panel="0">
+          <div class="hint">請先大致定位，確定要包含的區域，可透過地名搜尋幫助判斷。</div>
+          <div class="field">
+            <input id="search0" type="text" placeholder="輸入地名（例如：Athens / 雅典）" />
+            <button id="searchBtn0">搜尋</button>
+          </div>
+          <ul class="results" id="results0"></ul>
         </div>
-        <ul class="results" id="results"></ul>
+        <div class="step-panel" data-step-panel="1">
+          <div class="hint">使用右鍵拖曳框選範圍，確定示意圖的視窗。</div>
+          <div class="option-row">
+            <button class="secondary ratio-button" id="ratioFree">自由</button>
+            <button class="secondary ratio-button" id="ratioOriginal">原始</button>
+            <button class="secondary ratio-button" id="ratioSquare">1:1</button>
+            <button class="secondary ratio-button" id="ratio34">3:4</button>
+            <button class="secondary ratio-button" id="ratio43">4:3</button>
+            <button class="secondary ratio-button" id="ratio169">16:9</button>
+            <button class="secondary ratio-button" id="ratio916">9:16</button>
+            <button class="secondary ratio-button" id="ratioA4">A4</button>
+          </div>
+          <div class="option-row">
+            <button class="secondary ratio-button" id="ratioCustom">長寬比</button>
+            <input id="ratioInputA" class="ratio-input" type="number" min="1" />
+            <span class="hint">:</span>
+            <input id="ratioInputB" class="ratio-input" type="number" min="1" />
+          </div>
+          <div class="hint">下一步：選擇是否要地形與底圖樣式。</div>
+        </div>
+        <div class="step-panel" data-step-panel="2">
+          <div class="hint">底圖樣式（先做 UI，效果後續接上）。</div>
+          <div class="option-row">
+            <button class="secondary" id="styleClean">清爽</button>
+            <button class="secondary" id="styleClassic">教材</button>
+            <button class="secondary" id="styleRetro">復古</button>
+          </div>
+          <div class="option-row">
+            <button class="secondary" id="toggleRelief">地形層：關</button>
+          </div>
+          <div class="hint">下一步：加入地名標示或文字。</div>
+        </div>
+        <div class="step-panel" data-step-panel="3">
+          <div class="hint">標示工具（示範版）。</div>
+          <div class="field">
+            <input id="search3" type="text" placeholder="輸入地名（例如：Athens / 雅典）" />
+            <button id="searchBtn3">搜尋</button>
+          </div>
+          <ul class="results" id="results3"></ul>
+          <div class="actions">
+            <button id="saveBtn" class="secondary">儲存專案</button>
+            <button id="loadBtn" class="secondary">載入專案</button>
+            <button id="clearMarkers" class="secondary">清除地標</button>
+          </div>
+        </div>
       </div>
       <div class="map-wrap">
         <div class="map-toolbar">
@@ -210,10 +380,24 @@
           <button id="toolZoomOut">縮小</button>
           <button id="toolReset">重設</button>
         </div>
-        <div class="map-zoom-indicator" id="zoomIndicator">100%</div>
         <div class="map-stage">
           <canvas id="basemap" width="1200" height="800"></canvas>
           <svg id="map" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="crop-frame hidden" id="cropFrame">
+            <div class="crop-handle nw" data-handle="nw"></div>
+            <div class="crop-handle ne" data-handle="ne"></div>
+            <div class="crop-handle sw" data-handle="sw"></div>
+            <div class="crop-handle se" data-handle="se"></div>
+            <div class="crop-handle n" data-handle="n"></div>
+            <div class="crop-handle s" data-handle="s"></div>
+            <div class="crop-handle w" data-handle="w"></div>
+            <div class="crop-handle e" data-handle="e"></div>
+          </div>
+          <div class="map-zoom-indicator" id="zoomIndicator">100%</div>
+        </div>
+        <div class="map-footer">
+          <button id="prevStep" class="secondary">返回</button>
+          <button id="nextStep">下一步</button>
         </div>
       </div>
     </div>
