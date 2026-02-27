@@ -53,6 +53,11 @@
         font-weight: 700;
         color: var(--ink);
       }
+      .step-subtitle {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
       .step-panel {
         display: none;
         flex-direction: column;
@@ -236,7 +241,7 @@
       }
       .crop-frame {
         position: absolute;
-        z-index: 1;
+        z-index: 2;
         border: 2px solid rgba(56, 189, 248, 0.9);
         box-shadow: 0 0 0 2000px rgba(15, 23, 42, 0.55);
         pointer-events: none;
@@ -252,23 +257,44 @@
         background: #38bdf8;
         border: 1px solid rgba(15, 23, 42, 0.8);
         border-radius: 0;
+        box-sizing: border-box;
       }
-      .crop-handle.nw { left: -4px; top: -4px; cursor: nwse-resize; }
-      .crop-handle.ne { right: -4px; top: -4px; cursor: nesw-resize; }
-      .crop-handle.sw { left: -4px; bottom: -4px; cursor: nesw-resize; }
-      .crop-handle.se { right: -4px; bottom: -4px; cursor: nwse-resize; }
-      .crop-handle.n { left: 50%; top: -4px; transform: translateX(-50%); cursor: ns-resize; }
-      .crop-handle.s { left: 50%; bottom: -4px; transform: translateX(-50%); cursor: ns-resize; }
-      .crop-handle.w { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
-      .crop-handle.e { right: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+      .crop-handle::before {
+        content: "";
+        position: absolute;
+        inset: -6px;
+        background: transparent;
+      }
+      .crop-handle.nw { left: -4px; top: -4px; cursor: nwse-resize !important; }
+      .crop-handle.ne { right: -4px; top: -4px; cursor: nesw-resize !important; }
+      .crop-handle.sw { left: -4px; bottom: -4px; cursor: nesw-resize !important; }
+      .crop-handle.se { right: -4px; bottom: -4px; cursor: nwse-resize !important; }
+      .crop-handle.n { left: 50%; top: -4px; transform: translateX(-50%); cursor: ns-resize !important; }
+      .crop-handle.s { left: 50%; bottom: -4px; transform: translateX(-50%); cursor: ns-resize !important; }
+      .crop-handle.w { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize !important; }
+      .crop-handle.e { right: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize !important; }
       .crop-frame.fixed .crop-handle.n,
       .crop-frame.fixed .crop-handle.s,
       .crop-frame.fixed .crop-handle.w,
       .crop-frame.fixed .crop-handle.e {
+        display: block;
+      }
+      .map-wrap.step-range .map-toolbar,
+      .map-wrap.step-locked .map-toolbar {
         display: none;
       }
-      .map-wrap.step-range .map-toolbar {
+      .crop-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+      }
+      .crop-overlay.hidden {
         display: none;
+      }
+      .crop-mask {
+        position: absolute;
+        background: #05070f;
       }
       .map-footer {
         margin-top: 16px;
@@ -319,6 +345,7 @@
         <div class="step-header">
           <div class="step-progress" id="stepProgress">步驟 0 / 3</div>
           <div class="step-title" id="stepTitle">大致定位</div>
+          <div class="step-subtitle" id="stepSubtitle"></div>
         </div>
         <div class="step-panel active" data-step-panel="0">
           <div class="hint">請先大致定位，確定要包含的區域，可透過地名搜尋幫助判斷。</div>
@@ -329,10 +356,10 @@
           <ul class="results" id="results0"></ul>
         </div>
         <div class="step-panel" data-step-panel="1">
-          <div class="hint">使用右鍵拖曳框選範圍，確定示意圖的視窗。</div>
+          <div class="hint">框選比例：</div>
           <div class="option-row">
+            <button class="secondary ratio-button" id="ratioOriginal">預設</button>
             <button class="secondary ratio-button" id="ratioFree">自由</button>
-            <button class="secondary ratio-button" id="ratioOriginal">原始</button>
             <button class="secondary ratio-button" id="ratioSquare">1:1</button>
             <button class="secondary ratio-button" id="ratio34">3:4</button>
             <button class="secondary ratio-button" id="ratio43">4:3</button>
@@ -349,14 +376,24 @@
           <div class="hint">下一步：選擇是否要地形與底圖樣式。</div>
         </div>
         <div class="step-panel" data-step-panel="2">
-          <div class="hint">底圖樣式（先做 UI，效果後續接上）。</div>
+          <div class="hint">底圖視覺風格：</div>
           <div class="option-row">
-            <button class="secondary" id="styleClean">清爽</button>
-            <button class="secondary" id="styleClassic">教材</button>
-            <button class="secondary" id="styleRetro">復古</button>
+            <button class="secondary ratio-button" id="styleOriginal">預設</button>
+            <button class="secondary ratio-button" id="styleMinimal">極簡</button>
+            <button class="secondary ratio-button" id="styleDefault">淺色</button>
+            <button class="secondary ratio-button" id="styleDark">深色</button>
+            <button class="secondary ratio-button" id="styleOutline">輪廓</button>
+            <button class="secondary ratio-button" id="styleSoft">柔和</button>
           </div>
+          <div class="hint">地形陰影：</div>
           <div class="option-row">
-            <button class="secondary" id="toggleRelief">地形層：關</button>
+            <button class="secondary" data-relief="off">關閉</button>
+            <button class="secondary" data-relief="source-over">覆蓋</button>
+            <button class="secondary" data-relief="multiply">加深</button>
+            <button class="secondary" data-relief="screen">濾色</button>
+            <button class="secondary active" data-relief="overlay">疊加</button>
+            <button class="secondary" data-relief="soft-light">柔光</button>
+            <button class="secondary" data-relief="hard-light">強光</button>
           </div>
           <div class="hint">下一步：加入地名標示或文字。</div>
         </div>
@@ -383,6 +420,12 @@
         <div class="map-stage">
           <canvas id="basemap" width="1200" height="800"></canvas>
           <svg id="map" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="crop-overlay hidden" id="cropOverlay">
+            <div class="crop-mask" id="cropMaskTop"></div>
+            <div class="crop-mask" id="cropMaskLeft"></div>
+            <div class="crop-mask" id="cropMaskRight"></div>
+            <div class="crop-mask" id="cropMaskBottom"></div>
+          </div>
           <div class="crop-frame hidden" id="cropFrame">
             <div class="crop-handle nw" data-handle="nw"></div>
             <div class="crop-handle ne" data-handle="ne"></div>

@@ -10,6 +10,7 @@ declare global {
         basemap: { format: string; layers: Array<{ id: string; path: string }> };
       }>;
       getBasemapLayers?: () => Promise<Array<{ id: string; geojson: string }>>;
+      getRelief?: () => Promise<{ path: string; projection: string | null } | null>;
       searchGeonames?: (
         query: string,
         limit?: number
@@ -124,6 +125,7 @@ const zoomIndicator = document.getElementById("zoomIndicator");
 const stepPanels = Array.from(document.querySelectorAll<HTMLElement>(".step-panel"));
 const stepProgress = document.getElementById("stepProgress");
 const stepTitle = document.getElementById("stepTitle");
+const stepSubtitle = document.getElementById("stepSubtitle");
 const prevStepButton = document.getElementById("prevStep") as HTMLButtonElement | null;
 const nextStepButton = document.getElementById("nextStep") as HTMLButtonElement | null;
 const ratio169 = document.getElementById("ratio169") as HTMLButtonElement | null;
@@ -149,12 +151,30 @@ const ratioButtons = [
   ratioA4,
   ratioCustom
 ].filter((btn): btn is HTMLButtonElement => Boolean(btn));
-const styleClean = document.getElementById("styleClean") as HTMLButtonElement | null;
-const styleClassic = document.getElementById("styleClassic") as HTMLButtonElement | null;
-const styleRetro = document.getElementById("styleRetro") as HTMLButtonElement | null;
-const toggleRelief = document.getElementById("toggleRelief") as HTMLButtonElement | null;
+const styleOriginal = document.getElementById("styleOriginal") as HTMLButtonElement | null;
+const styleDefault = document.getElementById("styleDefault") as HTMLButtonElement | null;
+const styleMinimal = document.getElementById("styleMinimal") as HTMLButtonElement | null;
+const styleDark = document.getElementById("styleDark") as HTMLButtonElement | null;
+const styleOutline = document.getElementById("styleOutline") as HTMLButtonElement | null;
+const styleSoft = document.getElementById("styleSoft") as HTMLButtonElement | null;
+const reliefBlendButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-relief]")
+);
 const mapStage = document.querySelector(".map-stage") as HTMLDivElement | null;
 const cropFrame = document.getElementById("cropFrame") as HTMLDivElement | null;
+const cropOverlay = document.getElementById("cropOverlay") as HTMLDivElement | null;
+const cropMaskTop = document.getElementById("cropMaskTop") as HTMLDivElement | null;
+const cropMaskLeft = document.getElementById("cropMaskLeft") as HTMLDivElement | null;
+const cropMaskRight = document.getElementById("cropMaskRight") as HTMLDivElement | null;
+const cropMaskBottom = document.getElementById("cropMaskBottom") as HTMLDivElement | null;
+const styleButtons = [
+  styleOriginal,
+  styleDefault,
+  styleMinimal,
+  styleDark,
+  styleOutline,
+  styleSoft
+].filter((btn): btn is HTMLButtonElement => Boolean(btn));
 
 const WORLD = {
   minLon: -180,
@@ -167,6 +187,7 @@ const RADIUS = 6378137;
 const WRAPS = [-1, 0, 1] as const;
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 12;
+const MAX_SCALE_CROP = 50;
 const ZOOM_LEVELS = [0.4, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12];
 const MAP_WIDTH = 1200;
 const MAP_HEIGHT = 800;
@@ -175,6 +196,9 @@ let activeStep = "0";
 let ratioMode: "free" | "fixed" = "fixed";
 let originalRatio = MAP_WIDTH / MAP_HEIGHT;
 let activeRatioId: string | undefined = undefined;
+let activeStyleId = "styleOriginal";
+let mapLocked = false;
+let cropBBox: { x: number; y: number; width: number; height: number } | null = null;
 type CropBox = { left: number; top: number; width: number; height: number };
 type CropDrag = {
   mode: "move" | "resize";
@@ -204,6 +228,11 @@ let worldShift = 0;
 let basemapDrawPending = false;
 let shiftLocked = false;
 let shiftLockValue = 0;
+let hillshadeEnabled = false;
+let hillshadeBlend: GlobalCompositeOperation = "overlay";
+let hillshadeImage: HTMLImageElement | null = null;
+let hillshadeTexture: HTMLCanvasElement | null = null;
+let hillshadeProjection: string | null = null;
 
 function mercatorX(lon: number): number {
   return (RADIUS * lon * Math.PI) / 180;
@@ -288,14 +317,111 @@ function geometryToPath(geometry: any, width: number, height: number): string {
 type LayerStyle = { fill?: string; stroke?: string; strokeWidth?: number };
 
 function layerStyleFor(layerId: string): LayerStyle {
-  const styles: Record<string, LayerStyle> = {
-    ocean: { fill: "#0f1c3f" },
-    land: { fill: "#1f2937" },
-    lakes: { fill: "#142247" },
-    rivers: { stroke: "#3b82f6", strokeWidth: 0.6 },
-    coastline: { stroke: "#cbd5f5", strokeWidth: 0.6 }
+  const presets: Record<string, Record<string, LayerStyle>> = {
+    styleOriginal: {
+      ocean: { fill: "#0f1c3f" },
+      land: { fill: "#1f2937" },
+      lakes: { fill: "#142247" },
+      rivers: { stroke: "#3b82f6", strokeWidth: 0.6 },
+      coastline: { stroke: "#cbd5f5", strokeWidth: 0.6 }
+    },
+    styleDefault: {
+      ocean: { fill: "#dbeafe" },
+      land: { fill: "#f1f5f9" },
+      lakes: { fill: "#bfdbfe" },
+      rivers: { stroke: "#60a5fa", strokeWidth: 0.6 },
+      coastline: { stroke: "#94a3b8", strokeWidth: 0.6 },
+      borders: { stroke: "#cbd5f5", strokeWidth: 0.4 }
+    },
+    styleMinimal: {
+      ocean: { fill: "#f8fafc" },
+      land: { fill: "#f8fafc" },
+      lakes: { fill: "#f1f5f9" },
+      rivers: { stroke: "none", strokeWidth: 0 },
+      coastline: { stroke: "#e2e8f0", strokeWidth: 0.4 },
+      borders: { stroke: "none", strokeWidth: 0 }
+    },
+    styleDark: {
+      ocean: { fill: "#0b1020" },
+      land: { fill: "#1f2a44" },
+      lakes: { fill: "#101a33" },
+      rivers: { stroke: "#3b82f6", strokeWidth: 0.6 },
+      coastline: { stroke: "#cbd5f5", strokeWidth: 0.6 },
+      borders: { stroke: "#64748b", strokeWidth: 0.4 }
+    },
+    styleOutline: {
+      ocean: { fill: "none" },
+      land: { fill: "none" },
+      lakes: { fill: "none" },
+      rivers: { stroke: "none", strokeWidth: 0 },
+      coastline: { stroke: "#0f172a", strokeWidth: 0.8 },
+      borders: { stroke: "#0f172a", strokeWidth: 0.5 }
+    },
+    styleSoft: {
+      ocean: { fill: "#e0f2fe" },
+      land: { fill: "#fef3c7" },
+      lakes: { fill: "#bae6fd" },
+      rivers: { stroke: "#7dd3fc", strokeWidth: 0.6 },
+      coastline: { stroke: "#cbd5f5", strokeWidth: 0.5 },
+      borders: { stroke: "#e5e7eb", strokeWidth: 0.3 }
+    }
   };
+  const styles = presets[activeStyleId] ?? presets.styleOriginal;
   return styles[layerId] ?? { stroke: "#64748b", strokeWidth: 0.4 };
+}
+
+function buildHillshadeTexture(image: HTMLImageElement): HTMLCanvasElement {
+  const canvasEl = document.createElement("canvas");
+  canvasEl.width = MAP_WIDTH;
+  canvasEl.height = MAP_HEIGHT;
+  const ctx = canvasEl.getContext("2d");
+  if (!ctx) {
+    return canvasEl;
+  }
+  const imgW = image.naturalWidth || image.width;
+  const imgH = image.naturalHeight || image.height;
+  for (let y = 0; y < MAP_HEIGHT; y += 1) {
+    const [, lat] = unproject(0, y, MAP_WIDTH, MAP_HEIGHT);
+    const clampedLat = Math.max(-85, Math.min(85, lat));
+    const srcY = ((90 - clampedLat) / 180) * imgH;
+    ctx.drawImage(image, 0, srcY, imgW, 1, 0, y, MAP_WIDTH, 1);
+  }
+  return canvasEl;
+}
+
+async function loadHillshadeTexture(
+  path: string,
+  projection: string | null
+): Promise<HTMLCanvasElement | null> {
+  try {
+    if (projection === "EPSG:3857" && "createImageBitmap" in window) {
+      const response = await fetch(path);
+      const blob = await response.blob();
+      const bitmap = await createImageBitmap(blob, {
+        resizeWidth: MAP_WIDTH,
+        resizeHeight: MAP_HEIGHT,
+        resizeQuality: "high"
+      });
+      const canvasEl = document.createElement("canvas");
+      canvasEl.width = MAP_WIDTH;
+      canvasEl.height = MAP_HEIGHT;
+      const ctx = canvasEl.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(bitmap, 0, 0, MAP_WIDTH, MAP_HEIGHT);
+      }
+      if ("close" in bitmap) {
+        try {
+          bitmap.close();
+        } catch {
+          // ignore
+        }
+      }
+      return canvasEl;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function ensureLayer(parent: SVGElement, id: string): SVGGElement {
@@ -369,6 +495,7 @@ function updateZoomIndicator(): void {
 }
 
 function setActiveStep(stepId: string): void {
+  const previousStep = activeStep;
   activeStep = stepId;
   stepPanels.forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.stepPanel === stepId);
@@ -385,6 +512,13 @@ function setActiveStep(stepId: string): void {
     };
     stepTitle.textContent = titles[stepId] ?? "";
   }
+  if (stepSubtitle) {
+    const subtitles: Record<string, string> = {
+      "1": "使用右鍵拖曳框選範圍，確定示意圖的視窗。",
+      "2": "決定底圖樣式結果。"
+    };
+    stepSubtitle.textContent = subtitles[stepId] ?? "";
+  }
   if (cropFrame) {
     cropFrame.classList.toggle("hidden", stepId !== "1");
     cropFrame.classList.toggle("interactive", stepId === "1");
@@ -392,15 +526,32 @@ function setActiveStep(stepId: string): void {
   }
   if (mapWrap) {
     mapWrap.classList.toggle("step-range", stepId === "1");
+    mapWrap.classList.toggle("step-locked", stepId === "2" || stepId === "3");
   }
+  mapLocked = stepId === "2" || stepId === "3";
   if (stepId === "1") {
     updateCropFrame();
+    if (!activeRatioId) {
+      setActiveRatioButton("ratioOriginal");
+    }
   } else {
     positionZoomIndicator();
   }
   if (stepId === "0") {
     updateWrapTransforms(true);
   }
+  if (stepId === "2" || stepId === "3") {
+    if (!cropBox) {
+      updateCropFrame();
+    } else if (!cropBBox) {
+      updateCropBBox();
+    }
+    if (previousStep !== stepId) {
+      zoomToCropBounds();
+    }
+  }
+  applyMapClip();
+  updateCropOverlay();
   if (nextStepButton) {
     const nextLabel = stepId === "3" ? "完成" : "下一步";
     nextStepButton.textContent = nextLabel;
@@ -412,6 +563,14 @@ function setActiveRatioButton(targetId?: string): void {
   ratioButtons.forEach((button) => {
     button.classList.toggle("active", button.id === targetId);
   });
+}
+
+function setActiveStyleButton(targetId: string): void {
+  activeStyleId = targetId;
+  styleButtons.forEach((button) => {
+    button.classList.toggle("active", button.id === targetId);
+  });
+  requestBasemapDraw();
 }
 
 function applyCanvasRatio(ratio: number, targetId?: string): void {
@@ -461,8 +620,146 @@ function updateCropFrame(): void {
   cropFrame.style.top = `${cropBox.top}px`;
   cropFrame.style.width = `${cropBox.width}px`;
   cropFrame.style.height = `${cropBox.height}px`;
+  updateCropBBox();
   positionZoomIndicator();
   requestBasemapDraw();
+  applyMapClip();
+  updateCropOverlay();
+}
+
+function updateCropBBox(): void {
+  if (!cropBox || !mapStage) {
+    cropBBox = null;
+    return;
+  }
+  const { scaleFit, offsetX, offsetY } = resizeCanvasToStage();
+  const mapX = (cropBox.left - offsetX) / scaleFit;
+  const mapY = (cropBox.top - offsetY) / scaleFit;
+  const mapW = cropBox.width / scaleFit;
+  const mapH = cropBox.height / scaleFit;
+  const x = (mapX - view.tx) / view.scale;
+  const y = (mapY - view.ty) / view.scale;
+  const width = mapW / view.scale;
+  const height = mapH / view.scale;
+  cropBBox = { x, y, width, height };
+}
+
+function zoomToCropBounds(): void {
+  if (!cropBBox || !mapStage) {
+    return;
+  }
+  const rect = mapStage.getBoundingClientRect();
+  const stageWidth = Math.max(1, rect.width);
+  const stageHeight = Math.max(1, rect.height);
+  if (cropBBox.width <= 0 || cropBBox.height <= 0) {
+    return;
+  }
+  const { scaleFit, offsetX, offsetY } = resizeCanvasToStage();
+  const nextScale = Math.min(
+    stageWidth / (cropBBox.width * scaleFit),
+    stageHeight / (cropBBox.height * scaleFit)
+  );
+  const scaleCap = activeStep === "2" || activeStep === "3" ? MAX_SCALE_CROP : MAX_SCALE;
+  view.scale = Math.max(MIN_SCALE, Math.min(scaleCap, nextScale));
+  const cropScreenWidth = cropBBox.width * view.scale * scaleFit;
+  const cropScreenHeight = cropBBox.height * view.scale * scaleFit;
+  const desiredLeft = (stageWidth - cropScreenWidth) / 2;
+  const desiredTop = (stageHeight - cropScreenHeight) / 2;
+  view.tx = (desiredLeft - offsetX) / scaleFit - cropBBox.x * view.scale;
+  view.ty = (desiredTop - offsetY) / scaleFit - cropBBox.y * view.scale;
+  applyViewTransform();
+  updateWrapTransforms(true);
+}
+
+function applyMapClip(): void {
+  if (!svg || !mapStage) {
+    return;
+  }
+  const defsId = "map-clip";
+  let defs = svg.querySelector("defs");
+  if (!defs) {
+    defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    svg.appendChild(defs);
+  }
+  let clip = defs.querySelector(`#${defsId}`) as SVGClipPathElement | null;
+  if (!clip) {
+    clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+    clip.setAttribute("id", defsId);
+    defs.appendChild(clip);
+  }
+  clip.innerHTML = "";
+  const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  const stageRect = mapStage.getBoundingClientRect();
+  const width = svg.viewBox.baseVal.width || MAP_WIDTH;
+  const height = svg.viewBox.baseVal.height || MAP_HEIGHT;
+  const scaleX = width / stageRect.width;
+  const scaleY = height / stageRect.height;
+  rect.setAttribute("x", "0");
+  rect.setAttribute("y", "0");
+  rect.setAttribute("width", width.toFixed(2));
+  rect.setAttribute("height", height.toFixed(2));
+  clip.appendChild(rect);
+  const root = ensureMapRoot(svg);
+  root.setAttribute("clip-path", `url(#${defsId})`);
+}
+
+function updateCropOverlay(): void {
+  if (!mapStage || !cropOverlay) {
+    return;
+  }
+  if ((activeStep !== "2" && activeStep !== "3") || (!cropBox && !cropBBox)) {
+    cropOverlay.classList.add("hidden");
+    return;
+  }
+  const stageRect = mapStage.getBoundingClientRect();
+  const stageWidth = Math.max(1, stageRect.width);
+  const stageHeight = Math.max(1, stageRect.height);
+  let left = 0;
+  let top = 0;
+  let right = stageWidth;
+  let bottom = stageHeight;
+  if (cropBBox) {
+    const { scaleFit, offsetX, offsetY } = resizeCanvasToStage();
+    left = (cropBBox.x * view.scale + view.tx) * scaleFit + offsetX;
+    top = (cropBBox.y * view.scale + view.ty) * scaleFit + offsetY;
+    right = ((cropBBox.x + cropBBox.width) * view.scale + view.tx) * scaleFit + offsetX;
+    bottom = ((cropBBox.y + cropBBox.height) * view.scale + view.ty) * scaleFit + offsetY;
+  } else if (cropBox) {
+    left = cropBox.left;
+    top = cropBox.top;
+    right = cropBox.left + cropBox.width;
+    bottom = cropBox.top + cropBox.height;
+  }
+  left = Math.max(0, Math.min(left, stageWidth));
+  top = Math.max(0, Math.min(top, stageHeight));
+  right = Math.max(0, Math.min(right, stageWidth));
+  bottom = Math.max(0, Math.min(bottom, stageHeight));
+
+  if (!cropMaskTop || !cropMaskLeft || !cropMaskRight || !cropMaskBottom) {
+    return;
+  }
+
+  cropMaskTop.style.left = "0px";
+  cropMaskTop.style.top = "0px";
+  cropMaskTop.style.width = `${stageWidth}px`;
+  cropMaskTop.style.height = `${top}px`;
+
+  cropMaskLeft.style.left = "0px";
+  cropMaskLeft.style.top = `${top}px`;
+  cropMaskLeft.style.width = `${left}px`;
+  cropMaskLeft.style.height = `${Math.max(0, bottom - top)}px`;
+
+  cropMaskRight.style.left = `${right}px`;
+  cropMaskRight.style.top = `${top}px`;
+  cropMaskRight.style.width = `${Math.max(0, stageWidth - right)}px`;
+  cropMaskRight.style.height = `${Math.max(0, bottom - top)}px`;
+
+  cropMaskBottom.style.left = "0px";
+  cropMaskBottom.style.top = `${bottom}px`;
+  cropMaskBottom.style.width = `${stageWidth}px`;
+  cropMaskBottom.style.height = `${Math.max(0, stageHeight - bottom)}px`;
+
+  cropOverlay.classList.remove("hidden");
 }
 
 function handleRatioInput(): void {
@@ -524,11 +821,13 @@ function attachCropInteractions(): void {
     event.preventDefault();
     cropFrame.setPointerCapture(event.pointerId);
     if (handle) {
-      if (ratioMode === "fixed" && (handle === "n" || handle === "s" || handle === "e" || handle === "w")) {
-        return;
-      }
+      const cursor = handleToCursor(handle);
+      cropFrame.classList.add("resizing");
+      cropFrame.style.cursor = cursor;
       cropDrag = { mode: "resize", handle, startX: point.x, startY: point.y, startBox: { ...cropBox } };
     } else {
+      cropFrame.classList.remove("resizing");
+      cropFrame.style.cursor = "move";
       cropDrag = { mode: "move", startX: point.x, startY: point.y, startBox: { ...cropBox } };
     }
   });
@@ -586,10 +885,33 @@ function attachCropInteractions(): void {
   });
   cropFrame.addEventListener("pointerup", () => {
     cropDrag = null;
+    cropFrame.classList.remove("resizing");
+    cropFrame.style.cursor = "move";
   });
   cropFrame.addEventListener("pointercancel", () => {
     cropDrag = null;
+    cropFrame.classList.remove("resizing");
+    cropFrame.style.cursor = "move";
   });
+}
+
+function handleToCursor(handle: string): string {
+  switch (handle) {
+    case "nw":
+    case "se":
+      return "nwse-resize";
+    case "ne":
+    case "sw":
+      return "nesw-resize";
+    case "n":
+    case "s":
+      return "ns-resize";
+    case "e":
+    case "w":
+      return "ew-resize";
+    default:
+      return "move";
+  }
 }
 
 function resolveCropFrameBox():
@@ -663,15 +985,25 @@ function hookSteps(): void {
   ratioInputB?.addEventListener("input", handleRatioInput);
   ratioInputA?.addEventListener("focus", () => setActiveRatioButton("ratioCustom"));
   ratioInputB?.addEventListener("focus", () => setActiveRatioButton("ratioCustom"));
-  styleClean?.addEventListener("click", () => {});
-  styleClassic?.addEventListener("click", () => {});
-  styleRetro?.addEventListener("click", () => {});
-  toggleRelief?.addEventListener("click", () => {
-    if (!toggleRelief) {
-      return;
-    }
-    const isOff = toggleRelief.textContent?.includes("關");
-    toggleRelief.textContent = isOff ? "地形層：開" : "地形層：關";
+  styleOriginal?.addEventListener("click", () => setActiveStyleButton("styleOriginal"));
+  styleDefault?.addEventListener("click", () => setActiveStyleButton("styleDefault"));
+  styleMinimal?.addEventListener("click", () => setActiveStyleButton("styleMinimal"));
+  styleDark?.addEventListener("click", () => setActiveStyleButton("styleDark"));
+  styleOutline?.addEventListener("click", () => setActiveStyleButton("styleOutline"));
+  styleSoft?.addEventListener("click", () => setActiveStyleButton("styleSoft"));
+  reliefBlendButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const value = button.dataset.relief ?? "off";
+      reliefBlendButtons.forEach((btn) => btn.classList.toggle("active", btn === button));
+      if (value === "off") {
+        hillshadeEnabled = false;
+        requestBasemapDraw();
+        return;
+      }
+      hillshadeEnabled = true;
+      hillshadeBlend = value as GlobalCompositeOperation;
+      requestBasemapDraw();
+    });
   });
 }
 
@@ -728,8 +1060,8 @@ function drawBasemap(): void {
     return;
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.save();
   const dpr = window.devicePixelRatio || 1;
+  ctx.save();
   ctx.setTransform(
     view.scale * scaleFit * dpr,
     0,
@@ -746,13 +1078,13 @@ function drawBasemap(): void {
     ctx.translate((i + wrapShift) * MAP_WIDTH, 0);
     for (const layer of cachedBasemapLayers) {
       const style = layerStyleFor(layer.id);
-      if (style.fill) {
+      if (style.fill && style.fill !== "none") {
         ctx.fillStyle = style.fill;
         for (const path of layer.paths) {
           ctx.fill(path);
         }
       }
-      if (style.stroke) {
+      if (style.stroke && style.stroke !== "none") {
         ctx.strokeStyle = style.stroke;
         ctx.lineWidth = (style.strokeWidth ?? 0.4) / view.scale;
         ctx.lineJoin = "round";
@@ -765,6 +1097,29 @@ function drawBasemap(): void {
     ctx.restore();
   }
   ctx.restore();
+  if (hillshadeEnabled && hillshadeTexture) {
+    ctx.save();
+    ctx.setTransform(
+      view.scale * scaleFit * dpr,
+      0,
+      0,
+      view.scale * scaleFit * dpr,
+      (offsetX + view.tx * scaleFit) * dpr,
+      (offsetY + view.ty * scaleFit) * dpr
+    );
+    ctx.globalCompositeOperation = hillshadeBlend;
+    ctx.globalAlpha = 0.45;
+    const wrapShift = shiftLocked ? shiftLockValue : worldShift;
+    const viewWidthMap = stageWidth / Math.max(0.0001, scaleFit * view.scale);
+    const wrapSpan = Math.min(5, Math.max(1, Math.ceil(viewWidthMap / MAP_WIDTH / 2) + 1));
+    for (let i = -wrapSpan; i <= wrapSpan; i += 1) {
+      ctx.save();
+      ctx.translate((i + wrapShift) * MAP_WIDTH, 0);
+      ctx.drawImage(hillshadeTexture, 0, 0, MAP_WIDTH, MAP_HEIGHT);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
 }
 
 function updateWrapTransforms(forceRender = false): void {
@@ -1111,6 +1466,9 @@ function onWheel(event: WheelEvent): void {
   if (!svg) {
     return;
   }
+  if (mapLocked) {
+    return;
+  }
   event.preventDefault();
   const delta = Math.sign(event.deltaY);
   const zoomFactor = delta > 0 ? 0.9 : 1.1;
@@ -1143,6 +1501,9 @@ function onMouseDown(event: MouseEvent): void {
   if (!svg) {
     return;
   }
+  if (mapLocked) {
+    return;
+  }
   if (event.button !== 0 && event.button !== 2) {
     return;
   }
@@ -1169,6 +1530,9 @@ function onMouseDown(event: MouseEvent): void {
 
 function onMouseMove(event: MouseEvent): void {
   if (!isDragging || !dragStartScreen || !svg) {
+    return;
+  }
+  if (mapLocked) {
     return;
   }
   const currentScreen = svgPointFromEvent(event);
@@ -1204,6 +1568,14 @@ function onMouseUp(event: MouseEvent): void {
     isDragging = false;
     dragMode = null;
     svg?.classList.remove("dragging");
+    return;
+  }
+  if (mapLocked) {
+    clearDragRect();
+    isDragging = false;
+    dragMode = null;
+    svg.classList.remove("dragging");
+    svg.classList.remove("boxing");
     return;
   }
   const endMap = mapPointFromEvent(event);
@@ -1267,8 +1639,27 @@ async function boot() {
   statusEl.textContent = `橋接：${ping}。載入資料包中...`;
   try {
     const datapack = await window.mapSchematic?.getDatapack?.();
+    const relief = await window.mapSchematic?.getRelief?.();
+    if (relief?.path) {
+      hillshadeProjection = relief.projection ?? null;
+      const texture = await loadHillshadeTexture(relief.path, hillshadeProjection);
+      if (texture) {
+        hillshadeTexture = texture;
+        requestBasemapDraw();
+      } else {
+        hillshadeImage = new Image();
+        hillshadeImage.src = relief.path;
+        hillshadeImage.onload = () => {
+          if (hillshadeImage) {
+            hillshadeTexture = buildHillshadeTexture(hillshadeImage);
+            requestBasemapDraw();
+          }
+        };
+      }
+    }
     await renderBasemap();
     renderMarkers();
+    setActiveStyleButton("styleOriginal");
     applyViewTransform();
     updateWrapTransforms(true);
     updateCropFrame();

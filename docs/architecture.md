@@ -59,5 +59,6 @@
 - `scripts/build_datapack.py`
   - 讀取 `geodata-source/` 原始資料
   - 產出 `geodata/packs/...` 官方資料包
+  - 若提供 `geodata-source/hillshade.png`，會直接納入地形陰影層（避免大型 GeoTIFF 轉檔不穩）
 - `dist/`
   - TypeScript 編譯輸出

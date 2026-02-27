@@ -2,10 +2,15 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 import pathlib
 import sqlite3
 import time
 import zipfile
+import tempfile
+import warnings
+import shutil
+import subprocess
 from typing import Dict, Iterable, List, Optional, Tuple
 
 
@@ -16,6 +21,9 @@ BASEMAP_LAYERS = [
     ("rivers", "ne_50m_rivers_lake_centerlines.shp"),
     ("coastline", "ne_50m_coastline.shp"),
 ]
+
+HILLSHADE_WIDTH = 1200
+HILLSHADE_HEIGHT = 800
 
 
 def sha256_file(path: pathlib.Path) -> str:
@@ -68,6 +76,15 @@ def try_import_shapely():
         return None, None, str(exc)
 
 
+def try_import_pil():
+    try:
+        from PIL import Image  # type: ignore
+
+        return Image, None
+    except Exception as exc:
+        return None, str(exc)
+
+
 def split_antimeridian(geometry, splitter_180, splitter_neg_180, split_fn):
     try:
         if geometry is None:
@@ -114,6 +131,157 @@ def build_basemap(
         gdf.to_file(out_path, driver="GeoJSON")
         layers.append({"id": layer_id, "path": f"basemap/{layer_id}.geojson"})
     return layers
+
+
+def resolve_hillshade_zip(raw_root: pathlib.Path) -> Optional[pathlib.Path]:
+    candidates = [
+        raw_root / "MSR_50M.zip",
+        raw_root / "US_MSR_10M.zip",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    for path in raw_root.glob("*.zip"):
+        name = path.name.lower()
+        if "msr" in name and "10m" in name:
+            return path
+        if "msr" in name and "50m" in name:
+            return path
+    return None
+
+
+def resolve_hillshade_image(raw_root: pathlib.Path) -> Optional[pathlib.Path]:
+    candidates = [
+        raw_root / "hillshade_3857.png",
+        raw_root / "hillshade.png",
+        raw_root / "hillshade.jpg",
+        raw_root / "hillshade.jpeg",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def resolve_gdalwarp() -> Optional[str]:
+    env_path = os.getenv("MAPSCHEM_GDALWARP")
+    if env_path and pathlib.Path(env_path).exists():
+        return env_path
+    return shutil.which("gdalwarp")
+
+
+def build_hillshade_gdal(
+    source_zip: pathlib.Path, out_dir: pathlib.Path, width: int, height: int
+) -> Optional[pathlib.Path]:
+    gdalwarp = resolve_gdalwarp()
+    if not gdalwarp:
+        return None
+    with zipfile.ZipFile(source_zip, "r") as archive:
+        tif_names = [name for name in archive.namelist() if name.lower().endswith(".tif")]
+    if not tif_names:
+        return None
+    tif_name = tif_names[0]
+    src_path = f"/vsizip/{source_zip.as_posix()}/{tif_name}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "hillshade_3857.png"
+    bounds = [
+        "-20037508.342789244",
+        "-20037508.342789244",
+        "20037508.342789244",
+        "20037508.342789244",
+    ]
+    cmd = [
+        gdalwarp,
+        "-t_srs",
+        "EPSG:3857",
+        "-te",
+        *bounds,
+        "-ts",
+        str(width),
+        str(height),
+        "-r",
+        "bilinear",
+        "-of",
+        "PNG",
+        src_path,
+        str(out_path),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except Exception as exc:
+        print(f"Hillshade GDAL warp failed: {exc}.")
+        return None
+    return out_path
+
+
+def build_hillshade(raw_root: pathlib.Path, out_dir: pathlib.Path) -> Optional[Dict[str, str]]:
+    image_source = resolve_hillshade_image(raw_root)
+    if image_source:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / image_source.name
+        shutil.copyfile(image_source, out_path)
+        projection = "EPSG:3857" if image_source.name.endswith("_3857.png") else "EPSG:4326"
+        return {
+            "format": image_source.suffix.lstrip(".").lower(),
+            "path": f"relief/{image_source.name}",
+            "source": image_source.name,
+            "projection": projection,
+        }
+
+    source_zip = resolve_hillshade_zip(raw_root)
+    if not source_zip:
+        print("Hillshade skipped (MSR zip missing).")
+        return None
+    gdal_output = build_hillshade_gdal(source_zip, out_dir, HILLSHADE_WIDTH, HILLSHADE_HEIGHT)
+    if gdal_output:
+        return {
+            "format": "png",
+            "path": f"relief/{gdal_output.name}",
+            "source": source_zip.name,
+            "projection": "EPSG:3857",
+        }
+    if os.getenv("MAPSCHEM_ENABLE_TIFF") != "1":
+        print("Hillshade skipped (provide hillshade.png or set MAPSCHEM_ENABLE_TIFF=1).")
+        return None
+    Image, pil_error = try_import_pil()
+    if not Image:
+        print(f"Hillshade skipped (Pillow missing: {pil_error}).")
+        return None
+    Image.MAX_IMAGE_PIXELS = None
+    warnings.simplefilter("ignore", Image.DecompressionBombWarning)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with zipfile.ZipFile(source_zip, "r") as archive:
+            tif_names = [name for name in archive.namelist() if name.lower().endswith(".tif")]
+            if not tif_names:
+                print("Hillshade skipped (no .tif in MSR zip).")
+                return None
+            tif_name = tif_names[0]
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_dir_path = pathlib.Path(temp_dir)
+                archive.extract(tif_name, temp_dir)
+                tif_path = temp_dir_path / tif_name
+                out_path = out_dir / "hillshade.png"
+                try:
+                    with Image.open(tif_path) as img:
+                        img = img.convert("L")
+                        img.draft("L", (HILLSHADE_WIDTH, HILLSHADE_HEIGHT))
+                        img.thumbnail((HILLSHADE_WIDTH, HILLSHADE_HEIGHT))
+                        if img.size != (HILLSHADE_WIDTH, HILLSHADE_HEIGHT):
+                            img = img.resize((HILLSHADE_WIDTH, HILLSHADE_HEIGHT))
+                        img.save(out_path, "PNG", optimize=True)
+                except Exception as exc:
+                    print(f"Hillshade skipped (convert failed: {exc}).")
+                    return None
+    except Exception as exc:
+        print(f"Hillshade skipped (read failed: {exc}).")
+        return None
+    return {
+        "format": "png",
+        "path": "relief/hillshade.png",
+        "source": source_zip.name,
+        "projection": "EPSG:4326",
+    }
 
 
 def open_geonames_zip(zip_path: pathlib.Path, candidate_txt: str) -> Iterable[List[str]]:
@@ -307,39 +475,53 @@ def main() -> None:
     raw_root = pathlib.Path(args.raw).resolve()
     out_root = pathlib.Path(args.out).resolve()
     pack_root = out_root / args.version
+    manifest_only = os.getenv("MAPSCHEM_MANIFEST_ONLY") == "1"
 
     basemap_dir = pack_root / "basemap"
     geonames_dir = pack_root / "geonames"
+    relief_dir = pack_root / "relief"
     basemap_dir.mkdir(parents=True, exist_ok=True)
     geonames_dir.mkdir(parents=True, exist_ok=True)
 
-    geopandas_module, geopandas_error = try_import_geopandas()
     basemap_layers: List[Dict[str, str]] = []
     basemap_source = raw_root / "50m_physical"
-    if geopandas_module and basemap_source.exists():
-        basemap_layers = build_basemap(geopandas_module, basemap_source, basemap_dir)
+    if manifest_only:
+        for layer_id, _ in BASEMAP_LAYERS:
+            candidate = basemap_dir / f"{layer_id}.geojson"
+            if candidate.exists():
+                basemap_layers.append({"id": layer_id, "path": f"basemap/{layer_id}.geojson"})
     else:
-        reason = []
-        if not geopandas_module:
-            reason.append(f"geopandas import failed: {geopandas_error}")
-        if not basemap_source.exists():
-            reason.append(f"missing source: {basemap_source}")
-        detail = "; ".join(reason) if reason else "unknown"
-        print(f"Basemap skipped ({detail}).")
+        geopandas_module, geopandas_error = try_import_geopandas()
+        if geopandas_module and basemap_source.exists():
+            basemap_layers = build_basemap(geopandas_module, basemap_source, basemap_dir)
+        else:
+            reason = []
+            if not geopandas_module:
+                reason.append(f"geopandas import failed: {geopandas_error}")
+            if not basemap_source.exists():
+                reason.append(f"missing source: {basemap_source}")
+            detail = "; ".join(reason) if reason else "unknown"
+            print(f"Basemap skipped ({detail}).")
 
     geonames_source = resolve_geonames_source(raw_root, args.geonames)
     alternate_zip = raw_root / "alternateNamesV2.zip"
     geonames_db = geonames_dir / "geonames.sqlite"
-    if geonames_source.exists() and alternate_zip.exists():
-        build_geonames_sqlite(
-            geonames_source,
-            alternate_zip,
-            geonames_db,
-            ["en", "zh", "zh-TW"],
-            args.force,
-        )
+    if manifest_only:
+        if not geonames_db.exists():
+            print("GeoNames skipped (geonames.sqlite missing).")
     else:
-        print("GeoNames skipped (source zip missing).")
+        if geonames_source.exists() and alternate_zip.exists():
+            build_geonames_sqlite(
+                geonames_source,
+                alternate_zip,
+                geonames_db,
+                ["en", "zh", "zh-TW"],
+                args.force,
+            )
+        else:
+            print("GeoNames skipped (source zip missing).")
+
+    hillshade_info = build_hillshade(raw_root, relief_dir)
 
     datapack = {
         "id": args.id,
@@ -355,6 +537,7 @@ def main() -> None:
             "dbPath": "geonames/geonames.sqlite",
             "languages": ["en", "zh-TW", "zh"],
         },
+        "relief": hillshade_info,
         "files": [],
     }
 

@@ -17,3 +17,4 @@ yarn-error.log*
 
 # Editor
 .vscode/
+__pycache__/

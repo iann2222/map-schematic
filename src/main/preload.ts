@@ -12,6 +12,11 @@ type DatapackInfo = {
     dbPath: string;
     languages: string[];
   };
+  relief?: {
+    format?: string;
+    path?: string;
+    projection?: string | null;
+  } | null;
 };
 
 type BasemapLayerPayload = {
@@ -84,6 +89,8 @@ contextBridge.exposeInMainWorld("mapSchematic", {
   getDatapack: (): Promise<DatapackInfo> => ipcRenderer.invoke("datapack:get"),
   getBasemapLayers: (): Promise<BasemapLayerPayload[]> =>
     ipcRenderer.invoke("basemap:get"),
+  getRelief: (): Promise<{ path: string; projection: string | null } | null> =>
+    ipcRenderer.invoke("relief:get"),
   searchGeonames: (query: string, limit = 10): Promise<GeonamesResult[]> =>
     ipcRenderer.invoke("geonames:search", query, limit),
   saveProject: (project: MapProject) => ipcRenderer.invoke("project:save", project),

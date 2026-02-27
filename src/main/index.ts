@@ -10,6 +10,11 @@ type Datapack = {
   basemap?: {
     layers?: Array<{ id: string; path: string }>;
   };
+  relief?: {
+    format?: string;
+    path?: string;
+    projection?: string | null;
+  } | null;
 };
 
 type SaveResult = {
@@ -123,6 +128,20 @@ app.whenReady().then(() => {
       payload.push({ id: layer.id, geojson });
     }
     return payload;
+  });
+  ipcMain.handle("relief:get", async () => {
+    const datapack = await loadDatapack();
+    const packRoot = resolvePackRoot();
+    const reliefPath = datapack?.relief?.path;
+    if (!reliefPath) {
+      return null;
+    }
+    const filePath = path.join(packRoot, reliefPath);
+    const { pathToFileURL } = await import("url");
+    return {
+      path: pathToFileURL(filePath).toString(),
+      projection: datapack?.relief?.projection ?? null
+    };
   });
   ipcMain.handle("geonames:search", async (_event, query: string, limit: number) =>
     searchGeonames(query, limit)

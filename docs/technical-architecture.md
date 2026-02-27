@@ -224,7 +224,7 @@ Natural Earth 為公開可自由使用資料集，適合製圖用途。
 方案：
 
 - 使用公開 DEM（數值高程模型）生成 hillshade
-- 或使用製圖級 hillshade 資料
+- 或使用製圖級 hillshade 資料（Natural Earth Shaded Relief / MSR）
 - 作為獨立圖層
 
 特性：
@@ -234,6 +234,11 @@ Natural Earth 為公開可自由使用資料集，適合製圖用途。
 - 不與底圖耦合
 
 地形層與底圖資料一併納入官方資料包。
+
+補充（目前實作）：
+
+- 可使用 Natural Earth 的 `MSR_50M.zip` 或 `US_MSR_10M.zip` 作為來源。
+- 為避免超大 GeoTIFF 造成建置不穩定，建議先轉成 `hillshade.png` 放入 `geodata-source/`，建置時直接採用。
 
 ---
 
