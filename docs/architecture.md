@@ -42,6 +42,7 @@
   - Basemap SVG 渲染（EPSG:4326 → 3857）
   - GeoNames 搜尋結果列表 + 點標示
   - `.mapproj` 儲存/載入（demo）
+  - 地形陰影：讀取資料包 relief，採 EPSG:3857 紋理與可切換混合模式顯示
 
 共用模組（Shared）：
 
