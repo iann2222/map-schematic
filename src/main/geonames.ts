@@ -7,6 +7,7 @@ import { resolvePackRoot } from "../shared/datapack/resolve";
 export type GeonamesResult = {
   id: number;
   name: string;
+  nameAlt: string | null;
   latitude: number;
   longitude: number;
   featureClass: string | null;
@@ -46,6 +47,14 @@ export function searchGeonames(query: string, limit: number): GeonamesResult[] {
     `
     SELECT g.geonameid as id,
            g.name as name,
+           COALESCE(
+             (SELECT name FROM alternatenames a
+              WHERE a.geonameid = g.geonameid
+                AND a.lang IN ('zh-TW','zh','zh-Hant','zh_Hant')
+              ORDER BY a.is_preferred DESC, a.is_short DESC, a.is_colloquial DESC, a.is_historic ASC
+              LIMIT 1),
+             g.name
+           ) as nameAlt,
            g.latitude as latitude,
            g.longitude as longitude,
            g.feature_class as featureClass,

@@ -41,12 +41,47 @@ declare global {
 type GeonamesResult = {
   id: number;
   name: string;
+  nameAlt: string | null;
   latitude: number;
   longitude: number;
   featureClass: string | null;
   featureCode: string | null;
   countryCode: string | null;
   population: number | null;
+};
+
+type MarkerStyle = {
+  dotSize: number;
+  textSize: number;
+  dotColor: string;
+  textColor: string;
+};
+
+type Marker = {
+  id: string;
+  name: string;
+  nameAlt?: string;
+  latitude: number;
+  longitude: number;
+  sourceId?: string;
+  style: MarkerStyle;
+};
+
+type SliderControl = {
+  root: HTMLDivElement;
+  track: HTMLDivElement;
+  fill: HTMLDivElement;
+  thumb: HTMLDivElement;
+  marks: HTMLDivElement;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  dragging: boolean;
+  rect: DOMRect | null;
+  marksValues: number[] | null;
+  marksPercents: number[] | null;
+  onChange: (value: number) => void;
 };
 
 type MapProject = {
@@ -113,11 +148,22 @@ const searchInput0 = document.getElementById("search0") as HTMLInputElement | nu
 const searchButton0 = document.getElementById("searchBtn0") as HTMLButtonElement | null;
 const searchInput3 = document.getElementById("search3") as HTMLInputElement | null;
 const searchButton3 = document.getElementById("searchBtn3") as HTMLButtonElement | null;
+const coordInput0 = document.getElementById("coord0") as HTMLInputElement | null;
+const coordButton0 = document.getElementById("coordBtn0") as HTMLButtonElement | null;
+const coordInput3 = document.getElementById("coord3") as HTMLInputElement | null;
+const coordButton3 = document.getElementById("coordBtn3") as HTMLButtonElement | null;
 const resultsEl0 = document.getElementById("results0") as HTMLUListElement | null;
 const resultsEl3 = document.getElementById("results3") as HTMLUListElement | null;
 const saveButton = document.getElementById("saveBtn") as HTMLButtonElement | null;
 const loadButton = document.getElementById("loadBtn") as HTMLButtonElement | null;
 const clearMarkersButton = document.getElementById("clearMarkers") as HTMLButtonElement | null;
+const markerDotSize = document.getElementById("markerDotSize") as HTMLDivElement | null;
+const markerTextSize = document.getElementById("markerTextSize") as HTMLDivElement | null;
+const markerDotColor = document.getElementById("markerDotColor") as HTMLInputElement | null;
+const markerTextColor = document.getElementById("markerTextColor") as HTMLInputElement | null;
+const markerList = document.getElementById("markerList") as HTMLDivElement | null;
+let dotSizeSlider: SliderControl | null = null;
+let textSizeSlider: SliderControl | null = null;
 const toolZoomIn = document.getElementById("toolZoomIn") as HTMLButtonElement | null;
 const toolZoomOut = document.getElementById("toolZoomOut") as HTMLButtonElement | null;
 const toolReset = document.getElementById("toolReset") as HTMLButtonElement | null;
@@ -211,7 +257,8 @@ type CropDrag = {
 let cropBox: CropBox | null = null;
 let cropDrag: CropDrag | null = null;
 
-const selectedMarkers: GeonamesResult[] = [];
+const selectedMarkers: Marker[] = [];
+let selectedMarkerId: string | null = null;
 let currentPackVersion = "";
 let currentPackId = "";
 let currentProject: MapProject | null = null;
@@ -529,6 +576,10 @@ function setActiveStep(stepId: string): void {
     mapWrap.classList.toggle("step-locked", stepId === "2" || stepId === "3");
   }
   mapLocked = stepId === "2" || stepId === "3";
+  if (svg) {
+    svg.classList.remove("dragging", "boxing");
+    svg.style.cursor = mapLocked ? "default" : "grab";
+  }
   if (stepId === "1") {
     updateCropFrame();
     if (!activeRatioId) {
@@ -552,6 +603,9 @@ function setActiveStep(stepId: string): void {
   }
   applyMapClip();
   updateCropOverlay();
+  if (stepId === "3") {
+    syncMarkerControls(getSelectedMarker());
+  }
   if (nextStepButton) {
     const nextLabel = stepId === "3" ? "完成" : "下一步";
     nextStepButton.textContent = nextLabel;
@@ -1212,22 +1266,42 @@ function renderMarkers() {
       circle.setAttribute("cx", (x).toFixed(2));
       circle.setAttribute("cy", (y).toFixed(2));
       circle.setAttribute("data-marker", "dot");
-      circle.setAttribute("data-base", "4");
-      circle.setAttribute("r", (4 / view.scale).toFixed(2));
-      circle.setAttribute("fill", "#f97316");
-      circle.setAttribute("stroke", "#fff7ed");
+      circle.setAttribute("data-id", marker.id);
+      circle.setAttribute("data-base", String(marker.style.dotSize));
+      circle.setAttribute("r", (marker.style.dotSize / view.scale).toFixed(2));
+      circle.setAttribute("fill", marker.style.dotColor);
+      circle.setAttribute("stroke", marker.id === selectedMarkerId ? "#38bdf8" : "#fff7ed");
       circle.setAttribute("stroke-width", (1.2 / view.scale).toFixed(2));
+      circle.addEventListener("click", (event) => {
+        if (activeStep !== "3") {
+          return;
+        }
+        event.stopPropagation();
+        selectMarker(marker.id);
+      });
       wrap.appendChild(circle);
 
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      label.setAttribute("x", (x + 6).toFixed(2));
-      label.setAttribute("y", (y - 6).toFixed(2));
+      const scale = Math.max(0.5, Math.min(1.6, Math.pow(view.scale, 0.35)));
+      const offset = Math.max(3, 5 * scale);
+      label.setAttribute("data-x", x.toFixed(2));
+      label.setAttribute("data-y", y.toFixed(2));
+      label.setAttribute("x", (x + offset).toFixed(2));
+      label.setAttribute("y", (y - offset).toFixed(2));
       label.setAttribute("data-marker", "label");
-      label.setAttribute("data-base", "12");
-      label.setAttribute("fill", "#fde68a");
-      label.setAttribute("font-size", (12 / view.scale).toFixed(2));
+      label.setAttribute("data-id", marker.id);
+      label.setAttribute("data-base", String(marker.style.textSize));
+      label.setAttribute("fill", marker.style.textColor);
+      label.setAttribute("font-size", (marker.style.textSize * scale).toFixed(2));
       label.setAttribute("font-family", "IBM Plex Sans, sans-serif");
       label.textContent = marker.name;
+      label.addEventListener("click", (event) => {
+        if (activeStep !== "3") {
+          return;
+        }
+        event.stopPropagation();
+        selectMarker(marker.id);
+      });
       wrap.appendChild(label);
     }
   }
@@ -1244,12 +1318,19 @@ function updateMarkerStyles(): void {
     const base = Number(dot.getAttribute("data-base") ?? "4");
     dot.setAttribute("r", (base / view.scale).toFixed(2));
     dot.setAttribute("stroke-width", (1.2 / view.scale).toFixed(2));
+    const id = dot.getAttribute("data-id");
+    dot.setAttribute("stroke", id && id === selectedMarkerId ? "#38bdf8" : "#fff7ed");
   });
   const labels = markerWrap.querySelectorAll<SVGTextElement>("text[data-marker=\"label\"]");
   labels.forEach((label) => {
     const base = Number(label.getAttribute("data-base") ?? "13");
     const scale = Math.max(0.5, Math.min(1.6, Math.pow(view.scale, 0.35)));
     label.setAttribute("font-size", (base * scale).toFixed(2));
+    const baseX = Number(label.getAttribute("data-x") ?? "0");
+    const baseY = Number(label.getAttribute("data-y") ?? "0");
+    const offset = Math.max(3, 5 * scale);
+    label.setAttribute("x", (baseX + offset).toFixed(2));
+    label.setAttribute("y", (baseY - offset).toFixed(2));
   });
 }
 
@@ -1285,18 +1366,232 @@ function renderResults(results: GeonamesResult[], target: HTMLUListElement) {
   sorted.forEach((result) => {
     const item = document.createElement("li");
     const title = document.createElement("div");
-    title.textContent = result.name;
+    title.textContent = result.nameAlt && result.nameAlt !== result.name
+      ? `${result.nameAlt} / ${result.name}`
+      : result.name;
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = `${result.featureClass ?? ""}${result.featureCode ?? ""} · ${result.countryCode ?? ""} · pop ${result.population ?? 0}`;
+    const lat = result.latitude.toFixed(4);
+    const lon = result.longitude.toFixed(4);
+    const country = result.countryCode ?? "";
+    meta.textContent = `${title.textContent} · ${country} (${lat}, ${lon})`;
     item.appendChild(title);
     item.appendChild(meta);
     item.addEventListener("click", () => {
-      selectedMarkers.push(result);
-      renderMarkers();
+      addMarkerFromGeonames(result);
     });
     target.appendChild(item);
   });
+}
+
+function parseLatLon(value: string): { lat: number; lon: number } | null {
+  const normalized = value
+    .trim()
+    .replace(/[，；]/g, ",")
+    .replace(/，/g, ",")
+    .replace(/　/g, " ");
+  const dd = normalized
+    .split(/[,\s]+/)
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (dd.length >= 2) {
+    const lat = Number(dd[0]);
+    const lon = Number(dd[1]);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+        return { lat, lon };
+      }
+    }
+  }
+  const dmsMatches = normalized
+    .replace(/º/g, "°")
+    .replace(/″/g, "\"")
+    .replace(/′/g, "'")
+    .match(
+      /([NS])?\s*(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)?\s*'?\s*(\d+(?:\.\d+)?)?\s*\"?\s*([NS])?.*?([EW])?\s*(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)?\s*'?\s*(\d+(?:\.\d+)?)?\s*\"?\s*([EW])?/i
+    );
+  if (!dmsMatches) {
+    return null;
+  }
+  const latDir = (dmsMatches[1] || dmsMatches[5] || "").toUpperCase();
+  const latDeg = Number(dmsMatches[2]);
+  const latMin = Number(dmsMatches[3] || "0");
+  const latSec = Number(dmsMatches[4] || "0");
+  const lonDir = (dmsMatches[6] || dmsMatches[10] || "").toUpperCase();
+  const lonDeg = Number(dmsMatches[7]);
+  const lonMin = Number(dmsMatches[8] || "0");
+  const lonSec = Number(dmsMatches[9] || "0");
+  if (!Number.isFinite(latDeg) || !Number.isFinite(lonDeg)) {
+    return null;
+  }
+  let lat = latDeg + latMin / 60 + latSec / 3600;
+  let lon = lonDeg + lonMin / 60 + lonSec / 3600;
+  if (latDir === "S") {
+    lat = -lat;
+  }
+  if (lonDir === "W") {
+    lon = -lon;
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null;
+  }
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    return null;
+  }
+  return { lat, lon };
+}
+
+function addMarkerFromCoords(input: HTMLInputElement | null): void {
+  if (!input) {
+    return;
+  }
+  const value = input.value.trim();
+  if (!value) {
+    return;
+  }
+  const parsed = parseLatLon(value);
+  if (!parsed) {
+    if (statusEl) {
+      statusEl.textContent = "經緯度格式錯誤，請輸入「緯度, 經度」。";
+    }
+    return;
+  }
+  const marker: Marker = {
+    id: `coord-${Date.now()}`,
+    name: `(${parsed.lat.toFixed(4)}, ${parsed.lon.toFixed(4)})`,
+    nameAlt: `(${parsed.lat.toFixed(4)}, ${parsed.lon.toFixed(4)})`,
+    latitude: parsed.lat,
+    longitude: parsed.lon,
+    sourceId: undefined,
+    style: defaultMarkerStyle()
+  };
+  if (hasDuplicateMarker(marker)) {
+    return;
+  }
+  selectedMarkers.push(marker);
+  if (activeStep === "3") {
+    selectMarker(marker.id);
+  }
+  renderMarkers();
+  renderMarkerList();
+  input.value = "";
+  if (statusEl) {
+    statusEl.textContent = `已新增座標：${marker.name}`;
+  }
+}
+function defaultMarkerStyle(): MarkerStyle {
+  return {
+    dotSize: 4,
+    textSize: 14,
+    dotColor: "#f97316",
+    textColor: "#fde68a"
+  };
+}
+
+function markerKey(marker: { name: string; latitude: number; longitude: number }): string {
+  return `${marker.name}|${marker.latitude.toFixed(6)}|${marker.longitude.toFixed(6)}`;
+}
+
+function hasDuplicateMarker(candidate: { name: string; latitude: number; longitude: number }): boolean {
+  const key = markerKey(candidate);
+  return selectedMarkers.some((marker) => markerKey(marker) === key);
+}
+
+function addMarkerFromGeonames(result: GeonamesResult): void {
+  if (hasDuplicateMarker(result)) {
+    return;
+  }
+  const nameLocal = result.nameAlt ?? result.name;
+  const nameOriginal = result.name;
+  const marker: Marker = {
+    id: `geo-${result.id}-${Date.now()}`,
+    name: nameLocal,
+    nameAlt: nameOriginal,
+    latitude: result.latitude,
+    longitude: result.longitude,
+    sourceId: String(result.id),
+    style: defaultMarkerStyle()
+  };
+  selectedMarkers.push(marker);
+  if (activeStep === "3") {
+    selectMarker(marker.id);
+  }
+  renderMarkers();
+  renderMarkerList();
+}
+
+function getSelectedMarker(): Marker | null {
+  if (!selectedMarkerId) {
+    return null;
+  }
+  return selectedMarkers.find((marker) => marker.id === selectedMarkerId) ?? null;
+}
+
+function syncMarkerControls(marker: Marker | null): void {
+  if (!markerDotSize || !markerTextSize || !markerDotColor || !markerTextColor) {
+    return;
+  }
+  if (!marker) {
+    dotSizeSlider && setSliderValue(dotSizeSlider, 4, true);
+    textSizeSlider && setSliderValue(textSizeSlider, 12, true);
+    markerDotColor.value = "#f97316";
+    markerTextColor.value = "#fde68a";
+    return;
+  }
+  dotSizeSlider && setSliderValue(dotSizeSlider, marker.style.dotSize, true);
+  textSizeSlider && setSliderValue(textSizeSlider, marker.style.textSize, true);
+  markerDotColor.value = marker.style.dotColor;
+  markerTextColor.value = marker.style.textColor;
+}
+
+function selectMarker(markerId: string | null): void {
+  selectedMarkerId = markerId;
+  syncMarkerControls(getSelectedMarker());
+  updateMarkerStyles();
+}
+
+function renderMarkerList(): void {
+  if (!markerList) {
+    return;
+  }
+  markerList.innerHTML = "";
+  const seen = new Set<string>();
+  selectedMarkers.forEach((marker) => {
+    const key = markerKey(marker);
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    const row = document.createElement("div");
+    row.className = "marker-item";
+    const title = document.createElement("span");
+    const alt = marker.nameAlt && marker.nameAlt !== marker.name ? marker.nameAlt : marker.name;
+    title.textContent = `${marker.name} / ${alt}`;
+    const btn = document.createElement("button");
+    btn.className = "secondary";
+    btn.textContent = "清除";
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteMarker(marker.id);
+    });
+    row.appendChild(title);
+    row.appendChild(btn);
+    row.addEventListener("click", () => selectMarker(marker.id));
+    markerList.appendChild(row);
+  });
+}
+
+function deleteMarker(markerId: string): void {
+  const index = selectedMarkers.findIndex((marker) => marker.id === markerId);
+  if (index >= 0) {
+    selectedMarkers.splice(index, 1);
+  }
+  if (selectedMarkerId === markerId) {
+    selectedMarkerId = null;
+    syncMarkerControls(null);
+  }
+  renderMarkers();
+  renderMarkerList();
 }
 
 async function handleSearch(input: HTMLInputElement, button: HTMLButtonElement) {
@@ -1308,10 +1603,10 @@ async function handleSearch(input: HTMLInputElement, button: HTMLButtonElement) 
   try {
     const results = await window.mapSchematic?.searchGeonames?.(query, 10);
     if (resultsEl0) {
-      renderResults(results ?? [], resultsEl0);
+      renderResults((results ?? []) as GeonamesResult[], resultsEl0);
     }
     if (resultsEl3) {
-      renderResults(results ?? [], resultsEl3);
+      renderResults((results ?? []) as GeonamesResult[], resultsEl3);
     }
   } finally {
     button.disabled = false;
@@ -1346,13 +1641,18 @@ function buildProject(): MapProject | null {
       }
     ],
     objects: selectedMarkers.map((marker, index) => ({
-      id: `obj-${index + 1}`,
+      id: marker.id || `obj-${index + 1}`,
       type: "pointLabel",
       layerId: "layer-1",
-      style: { fill: "#f97316" },
+      style: {
+        dotColor: marker.style.dotColor,
+        textColor: marker.style.textColor,
+        dotSize: marker.style.dotSize,
+        textSize: marker.style.textSize
+      },
       geometry: { kind: "point", lon: marker.longitude, lat: marker.latitude },
       text: marker.name,
-      provenance: { source: "geonames", sourceId: String(marker.id) }
+      provenance: { source: "geonames", sourceId: marker.sourceId ?? String(marker.id) }
     }))
   };
 }
@@ -1392,19 +1692,24 @@ async function handleLoad() {
   selectedMarkers.splice(0, selectedMarkers.length);
   for (const obj of project.objects ?? []) {
     if (obj.geometry?.kind === "point" && obj.geometry.lon != null && obj.geometry.lat != null) {
+      const style = (obj.style ?? {}) as Record<string, unknown>;
       selectedMarkers.push({
-        id: Number(obj.provenance?.sourceId ?? 0),
+        id: obj.id ?? `obj-${selectedMarkers.length + 1}`,
         name: obj.text ?? "",
         latitude: obj.geometry.lat,
         longitude: obj.geometry.lon,
-        featureClass: null,
-        featureCode: null,
-        countryCode: null,
-        population: null
+        sourceId: obj.provenance?.sourceId,
+        style: {
+          dotColor: String(style.dotColor ?? "#f97316"),
+          textColor: String(style.textColor ?? "#fde68a"),
+          dotSize: Number(style.dotSize ?? 4),
+          textSize: Number(style.textSize ?? 12)
+        }
       });
     }
   }
   renderMarkers();
+  renderMarkerList();
   if (statusEl) {
     statusEl.textContent = `專案已載入：${result.path}`;
   }
@@ -1412,7 +1717,241 @@ async function handleLoad() {
 
 function handleClearMarkers(): void {
   selectedMarkers.splice(0, selectedMarkers.length);
+  selectedMarkerId = null;
+  syncMarkerControls(null);
   renderMarkers();
+  renderMarkerList();
+}
+
+function attachMarkerControls(): void {
+  const update = () => {
+    updateMarkerFromControls();
+  };
+
+  markerDotColor?.addEventListener("input", update);
+  markerTextColor?.addEventListener("input", update);
+
+  document.querySelectorAll<HTMLButtonElement>(".color-swatch").forEach((swatch) => {
+    swatch.addEventListener("click", () => {
+      const color = swatch.dataset.color ?? "";
+      const target = swatch.dataset.colorTarget ?? "";
+      const marker = getSelectedMarker();
+      if (!marker || !color) {
+        return;
+      }
+      if (target === "dot" && markerDotColor) {
+        marker.style.dotColor = color;
+        markerDotColor.value = color;
+      }
+      if (target === "text" && markerTextColor) {
+        marker.style.textColor = color;
+        markerTextColor.value = color;
+      }
+      renderMarkers();
+    });
+  });
+}
+
+function updateMarkerFromControls(): void {
+  const marker = getSelectedMarker();
+  if (!marker) {
+    return;
+  }
+  if (dotSizeSlider) {
+    marker.style.dotSize = dotSizeSlider.value;
+  }
+  if (textSizeSlider) {
+    marker.style.textSize = textSizeSlider.value;
+  }
+  if (markerDotColor) {
+    marker.style.dotColor = markerDotColor.value;
+  }
+  if (markerTextColor) {
+    marker.style.textColor = markerTextColor.value;
+  }
+  renderMarkers();
+}
+
+function initSlider(root: HTMLDivElement | null, initialValue: number, onChange: (value: number) => void): SliderControl | null {
+  if (!root) {
+    return null;
+  }
+  const track = root.querySelector(".slider-track") as HTMLDivElement | null;
+  const fill = root.querySelector(".slider-fill") as HTMLDivElement | null;
+  const thumb = root.querySelector(".slider-thumb") as HTMLDivElement | null;
+  const marks = root.querySelector(".slider-marks") as HTMLDivElement | null;
+  if (!track || !fill || !thumb || !marks) {
+    return null;
+  }
+  const min = Number(root.dataset.min || "0");
+  const max = Number(root.dataset.max || "100");
+  const step = Number(root.dataset.step || "1");
+  const control: SliderControl = {
+    root,
+    track,
+    fill,
+    thumb,
+    marks,
+    min,
+    max,
+    step,
+    value: initialValue,
+    dragging: false,
+    rect: null,
+    marksValues: null,
+    marksPercents: null,
+    onChange
+  };
+  root.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    control.dragging = true;
+    control.rect = control.track.getBoundingClientRect();
+    control.root.classList.add("dragging");
+    control.root.setPointerCapture(event.pointerId);
+    updateSliderFromPointer(control, event.clientX);
+  });
+  root.addEventListener("pointermove", (event) => {
+    if (!control.dragging) {
+      return;
+    }
+    updateSliderFromPointer(control, event.clientX);
+  });
+  root.addEventListener("pointerup", (event) => {
+    if (!control.dragging) {
+      return;
+    }
+    control.dragging = false;
+    control.root.classList.remove("dragging");
+    control.root.releasePointerCapture(event.pointerId);
+  });
+  root.addEventListener("pointercancel", () => {
+    control.dragging = false;
+    control.root.classList.remove("dragging");
+  });
+  thumb.addEventListener("keydown", (event) => {
+    let nextValue = control.value;
+    if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+      nextValue += control.step;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+      nextValue -= control.step;
+    } else if (event.key === "Home") {
+      nextValue = control.min;
+    } else if (event.key === "End") {
+      nextValue = control.max;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    setSliderValue(control, nextValue);
+  });
+  renderSliderMarks(control);
+  setSliderValue(control, initialValue, true);
+  return control;
+}
+
+function updateSliderFromPointer(control: SliderControl, clientX: number): void {
+  if (!control.rect) {
+    control.rect = control.track.getBoundingClientRect();
+  }
+  const rect = control.rect;
+  const ratio = (clientX - rect.left) / rect.width;
+  const clamped = Math.max(0, Math.min(1, ratio));
+  const raw = control.min + clamped * (control.max - control.min);
+  const snapped = snapSliderValue(control, raw);
+  setSliderValue(control, snapped);
+}
+
+function snapSliderValue(control: SliderControl, raw: number): number {
+  if (!Number.isFinite(raw)) {
+    return control.value;
+  }
+  if (control.marksValues && control.marksValues.length > 1) {
+    let nearest = control.marksValues[0];
+    let best = Math.abs(raw - nearest);
+    for (const value of control.marksValues) {
+      const dist = Math.abs(raw - value);
+      if (dist < best) {
+        best = dist;
+        nearest = value;
+      }
+    }
+    return Math.max(control.min, Math.min(control.max, nearest));
+  }
+  const index = Math.round((raw - control.min) / control.step);
+  const snapped = control.min + index * control.step;
+  return Math.max(control.min, Math.min(control.max, snapped));
+}
+
+function setSliderValue(control: SliderControl, value: number, silent = false): void {
+  const next = Math.max(control.min, Math.min(control.max, value));
+  if (next === control.value && !silent) {
+    return;
+  }
+  control.value = next;
+  updateSliderUI(control);
+  if (!silent) {
+    control.onChange(next);
+  }
+}
+
+function updateSliderUI(control: SliderControl): void {
+  let percent = 0;
+  if (control.marksValues && control.marksPercents) {
+    let nearestIndex = 0;
+    let best = Math.abs(control.value - control.marksValues[0]);
+    control.marksValues.forEach((value, index) => {
+      const dist = Math.abs(control.value - value);
+      if (dist < best) {
+        best = dist;
+        nearestIndex = index;
+      }
+    });
+    percent = (control.marksPercents[nearestIndex] ?? 0) * 100;
+  } else {
+    const ratio = (control.value - control.min) / (control.max - control.min);
+    percent = Math.max(0, Math.min(1, ratio)) * 100;
+  }
+  control.thumb.style.left = `${percent}%`;
+  control.fill.style.width = `${percent}%`;
+  control.thumb.setAttribute("role", "slider");
+  control.thumb.setAttribute("aria-valuemin", String(control.min));
+  control.thumb.setAttribute("aria-valuemax", String(control.max));
+  control.thumb.setAttribute("aria-valuenow", String(control.value));
+  const marks = Array.from(control.marks.children) as HTMLDivElement[];
+  marks.forEach((mark) => {
+    const markValue = Number(mark.dataset.value || "0");
+    mark.classList.toggle("active", markValue <= control.value);
+  });
+}
+
+function renderSliderMarks(control: SliderControl): void {
+  control.marks.innerHTML = "";
+  control.marksValues = null;
+  control.marksPercents = null;
+  const marksCountRaw = control.root.dataset.marks;
+  const marksCount = marksCountRaw ? Math.max(2, Number(marksCountRaw)) : 0;
+  const count = marksCount ? marksCount - 1 : Math.max(1, Math.round((control.max - control.min) / control.step));
+  const values: number[] = [];
+  const percents: number[] = [];
+  for (let i = 0; i <= count; i += 1) {
+    const ratio = count === 0 ? 0 : i / count;
+    const value = control.min + ratio * (control.max - control.min);
+    const snapped = snapSliderValue(control, value);
+    values.push(snapped);
+    percents.push(ratio);
+    const mark = document.createElement("div");
+    mark.className = "slider-mark";
+    mark.dataset.value = String(snapped);
+    mark.style.left = `${ratio * 100}%`;
+    const tick = document.createElement("div");
+    tick.className = "tick";
+    mark.appendChild(tick);
+    control.marks.appendChild(mark);
+  }
+  control.marksValues = values;
+  control.marksPercents = percents;
 }
 
 function svgPointFromEvent(event: MouseEvent): { x: number; y: number } {
@@ -1736,17 +2275,44 @@ searchInput3?.addEventListener("keydown", (event) => {
     handleSearch(searchInput3, searchButton3);
   }
 });
+coordButton0?.addEventListener("click", () => addMarkerFromCoords(coordInput0));
+coordInput0?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    addMarkerFromCoords(coordInput0);
+  }
+});
+coordButton3?.addEventListener("click", () => addMarkerFromCoords(coordInput3));
+coordInput3?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    addMarkerFromCoords(coordInput3);
+  }
+});
 saveButton?.addEventListener("click", handleSave);
 loadButton?.addEventListener("click", handleLoad);
 clearMarkersButton?.addEventListener("click", handleClearMarkers);
 
 hookToolbar();
 hookSteps();
-attachCropInteractions();
-boot();
+  attachCropInteractions();
+  attachMarkerControls();
+  dotSizeSlider = initSlider(markerDotSize, 4, () => {
+    updateMarkerFromControls();
+  });
+  textSizeSlider = initSlider(markerTextSize, 12, () => {
+    updateMarkerFromControls();
+  });
+  boot();
 
 window.addEventListener("resize", () => {
   updateCropFrame();
   requestBasemapDraw();
   positionZoomIndicator();
+  if (dotSizeSlider) {
+    dotSizeSlider.rect = null;
+    updateSliderUI(dotSizeSlider);
+  }
+  if (textSizeSlider) {
+    textSizeSlider.rect = null;
+    updateSliderUI(textSizeSlider);
+  }
 });

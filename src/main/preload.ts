@@ -27,6 +27,7 @@ type BasemapLayerPayload = {
 type GeonamesResult = {
   id: number;
   name: string;
+  nameAlt: string | null;
   latitude: number;
   longitude: number;
   featureClass: string | null;
