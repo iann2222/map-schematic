@@ -153,6 +153,13 @@ type MapProject = {
   }>;
 };
 
+type BBox = {
+  minLon: number;
+  minLat: number;
+  maxLon: number;
+  maxLat: number;
+};
+
 type ViewTransform = {
   scale: number;
   tx: number;
@@ -298,6 +305,8 @@ const selectedMarkers: Marker[] = [];
 let selectedMarkerId: string | null = null;
 let previewMarker: Marker | null = null;
 let currentProjectPath: string | null = null;
+let lastStageRect: DOMRect | null = null;
+let lastScaleFit = 1;
 let currentPackVersion = "";
 let currentPackId = "";
 let currentProject: MapProject | null = null;
@@ -632,7 +641,7 @@ function setActiveStep(stepId: string): void {
     updateWrapTransforms(true);
   }
   if (stepId === "2" || stepId === "3") {
-    if (!cropBox) {
+    if (!cropBox && !cropBBox) {
       updateCropFrame();
     } else if (!cropBBox) {
       updateCropBBox();
@@ -685,6 +694,18 @@ function updateCropFrame(): void {
   }
   cropFrame.classList.toggle("fixed", ratioMode === "fixed");
   const rect = mapStage.getBoundingClientRect();
+  if (lastStageRect && cropBox) {
+    const scaleX = rect.width / Math.max(1, lastStageRect.width);
+    const scaleY = rect.height / Math.max(1, lastStageRect.height);
+    cropBox = {
+      left: cropBox.left * scaleX,
+      top: cropBox.top * scaleY,
+      width: cropBox.width * scaleX,
+      height: cropBox.height * scaleY
+    };
+    clampCropBox(cropBox);
+  }
+  lastStageRect = rect;
   const stageWidth = Math.max(1, rect.width);
   const stageHeight = Math.max(1, rect.height);
   const bottomPadding = 16;
@@ -740,6 +761,26 @@ function updateCropBBox(): void {
   const width = mapW / view.scale;
   const height = mapH / view.scale;
   cropBBox = { x, y, width, height };
+}
+
+function syncStageSize(): void {
+  if (!mapStage || !canvas || !svg) {
+    return;
+  }
+  const center = viewCenterLonLat();
+  const { scaleFit } = resizeCanvasToStage();
+  if (lastScaleFit > 0 && scaleFit > 0) {
+    view.scale = view.scale * (lastScaleFit / scaleFit);
+  }
+  lastScaleFit = scaleFit;
+  const [centerX, centerY] = project(center[0], center[1], MAP_WIDTH, MAP_HEIGHT);
+  view.tx = MAP_WIDTH / 2 - centerX * view.scale;
+  view.ty = MAP_HEIGHT / 2 - centerY * view.scale;
+  applyViewTransform();
+  updateWrapTransforms(true);
+  updateCropFrame();
+  updateCropOverlay();
+  applyMapClip();
 }
 
 function zoomToCropBounds(): void {
@@ -1854,6 +1895,27 @@ async function handleSearch(input: HTMLInputElement, button: HTMLButtonElement) 
   }
 }
 
+function unprojectBBox(box: { x: number; y: number; width: number; height: number }): BBox {
+  const [minLon, minLat] = unproject(box.x, box.y + box.height, MAP_WIDTH, MAP_HEIGHT);
+  const [maxLon, maxLat] = unproject(box.x + box.width, box.y, MAP_WIDTH, MAP_HEIGHT);
+  return {
+    minLon: Math.min(minLon, maxLon),
+    minLat: Math.min(minLat, maxLat),
+    maxLon: Math.max(minLon, maxLon),
+    maxLat: Math.max(minLat, maxLat)
+  };
+}
+
+function currentSelectionBBox(): BBox {
+  if (!cropBBox && cropBox) {
+    updateCropBBox();
+  }
+  if (cropBBox) {
+    return unprojectBBox(cropBBox);
+  }
+  return { ...WORLD };
+}
+
 function buildProject(): MapProject | null {
   if (!currentPackVersion || !currentPackId) {
     return null;
@@ -1868,7 +1930,7 @@ function buildProject(): MapProject | null {
     dataPackId: currentPackId,
     canvas: { width: 1200, height: 800, unit: "px" },
     viewport: {
-      bbox: { ...WORLD },
+      bbox: currentSelectionBBox(),
       projection: "EPSG:4326"
     },
     layers: [
@@ -1949,13 +2011,25 @@ async function handleLoad() {
     }
     return;
   }
-  const project = result.project;
-  currentProject = project;
+  const loadedProject = result.project;
+  currentProject = loadedProject;
   currentProjectPath = result.path ?? null;
   selectedMarkers.splice(0, selectedMarkers.length);
   selectedMarkerId = null;
   previewMarker = null;
-  for (const obj of project.objects ?? []) {
+  cropBox = null;
+  if (loadedProject.viewport?.bbox) {
+    const bbox = loadedProject.viewport.bbox;
+    const min = project(bbox.minLon, bbox.minLat, MAP_WIDTH, MAP_HEIGHT);
+    const max = project(bbox.maxLon, bbox.maxLat, MAP_WIDTH, MAP_HEIGHT);
+    cropBBox = {
+      x: Math.min(min[0], max[0]),
+      y: Math.min(min[1], max[1]),
+      width: Math.abs(max[0] - min[0]),
+      height: Math.abs(max[1] - min[1])
+    };
+  }
+  for (const obj of loadedProject.objects ?? []) {
     if (obj.geometry?.kind === "point" && obj.geometry.lon != null && obj.geometry.lat != null) {
       const style = (obj.style ?? {}) as Record<string, unknown>;
       const sourceType =
@@ -1993,6 +2067,12 @@ async function handleLoad() {
   renderMarkers();
   renderMarkerList();
   syncMarkerControls(getSelectedMarker());
+  setActiveStep("3");
+  if (cropBBox) {
+    zoomToCropBounds();
+    updateCropOverlay();
+    applyMapClip();
+  }
   if (statusEl) {
     statusEl.textContent = `專案已載入：${result.path}`;
   }
@@ -2625,6 +2705,7 @@ async function boot() {
     positionZoomIndicator();
     setActiveStep("0");
     attachMapInteractions();
+    lastScaleFit = resizeCanvasToStage().scaleFit;
     if (datapack) {
       currentPackId = datapack.id;
       currentPackVersion = datapack.version;
@@ -2754,6 +2835,7 @@ hookSteps();
   boot();
 
 window.addEventListener("resize", () => {
+  syncStageSize();
   updateCropFrame();
   requestBasemapDraw();
   positionZoomIndicator();
