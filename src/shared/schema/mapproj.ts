@@ -42,6 +42,10 @@ export type TextStyle = {
   fill?: string;
   stroke?: string;
   strokeWidth?: number;
+  textOffsetX?: number;
+  textOffsetY?: number;
+  labelMode?: "name" | "coords";
+  labelName?: string;
 };
 
 export type StrokeStyle = {

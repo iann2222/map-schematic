@@ -206,6 +206,10 @@
       .slider-mark.active {
         opacity: 0;
       }
+      #map text[data-marker="label"][data-dragging="true"] {
+        outline: 1px dashed rgba(56, 189, 248, 0.9);
+        outline-offset: 2px;
+      }
       .color-palette {
         display: flex;
         gap: 6px;
@@ -233,9 +237,44 @@
         background: rgba(148, 163, 184, 0.12);
         font-size: 12px;
       }
+      .marker-item .marker-actions {
+        display: flex;
+        gap: 6px;
+      }
       .marker-item button {
         padding: 4px 8px;
         font-size: 12px;
+      }
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(3, 7, 18, 0.65);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+      }
+      .modal-backdrop.active {
+        display: flex;
+      }
+      .modal {
+        width: 360px;
+        background: #0f172a;
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .modal .modal-title {
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .modal .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
       }
       .title {
         font-size: 18px;
@@ -254,12 +293,23 @@
         display: flex;
         gap: 8px;
       }
+      .field.inline-actions {
+        align-items: center;
+      }
       .actions {
         display: flex;
         gap: 8px;
         margin-top: 12px;
       }
       input[type="text"] {
+        flex: 1;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: #0b1020;
+        color: var(--ink);
+      }
+      select {
         flex: 1;
         padding: 10px 12px;
         border-radius: 10px;
@@ -299,6 +349,34 @@
         border-radius: 10px;
         background: rgba(148, 163, 184, 0.12);
         cursor: pointer;
+      }
+      .results li.result-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .result-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .result-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .icon-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(56, 189, 248, 0.2);
+        color: var(--ink);
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
       .results li:hover {
         background: rgba(56, 189, 248, 0.2);
@@ -516,13 +594,16 @@
           <div class="hint">
             請先大致定位，確定要包含的區域，可透過地名搜尋幫助判斷。
           </div>
+          <div class="field inline-actions">
+            <button id="loadBtn0" class="secondary">載入專案</button>
+          </div>
           <div class="field">
             <input
               id="search0"
               type="text"
               placeholder="輸入地名（例如：台北 / Taipei）"
             />
-            <button id="searchBtn0">搜尋</button>
+            <button id="searchBtn0">地名搜尋</button>
           </div>
           <div class="field">
             <input
@@ -530,7 +611,7 @@
               type="text"
               placeholder="輸入經緯度（例如：25.034, 121.564）"
             />
-            <button id="coordBtn0">新增座標</button>
+            <button id="coordBtn0">座標搜尋</button>
           </div>
           <ul class="results" id="results0"></ul>
         </div>
@@ -596,7 +677,7 @@
               type="text"
               placeholder="輸入地名（如：台北 / Taipei）"
             />
-            <button id="searchBtn3">搜尋</button>
+            <button id="searchBtn3">地名搜尋</button>
           </div>
           <div class="field">
             <input
@@ -604,7 +685,7 @@
               type="text"
               placeholder="輸入經緯度（例如：25.034, 121.564）"
             />
-            <button id="coordBtn3">新增座標</button>
+            <button id="coordBtn3">座標搜尋</button>
           </div>
           <ul class="results" id="results3"></ul>
           <div class="hint">標示設定：</div>
@@ -617,6 +698,7 @@
               data-max="16"
               data-step="1"
               data-marks="9"
+              data-default-index="3"
             >
               <div class="slider-track">
                 <div class="slider-fill"></div>
@@ -630,10 +712,11 @@
             <div
               class="slider"
               id="markerTextSize"
-              data-min="6"
-              data-max="20"
+              data-min="4"
+              data-max="12"
               data-step="1"
               data-marks="9"
+              data-default-index="3"
             >
               <div class="slider-track">
                 <div class="slider-fill"></div>
@@ -641,6 +724,16 @@
               </div>
               <div class="slider-marks"></div>
             </div>
+          </div>
+          <div class="option-row">
+            <label class="ratio-label">字體</label>
+            <select id="markerFont">
+              <option value="IBM Plex Sans, sans-serif">IBM Plex Sans</option>
+              <option value="Noto Sans TC, sans-serif">Noto Sans TC</option>
+              <option value="Microsoft JhengHei, sans-serif">Microsoft JhengHei</option>
+              <option value="PingFang TC, sans-serif">PingFang TC</option>
+              <option value="serif">Serif</option>
+            </select>
           </div>
           <div class="option-row">
             <label class="ratio-label">點顏色</label>
@@ -750,13 +843,9 @@
               ></button>
             </div>
           </div>
-          <div class="section-title">地標清單</div>
+          <div class="section-title">標示清單</div>
           <div class="marker-list" id="markerList"></div>
           <button id="clearMarkers" class="secondary">清除全部</button>
-          <div class="actions">
-            <button id="saveBtn" class="secondary">儲存專案</button>
-            <button id="loadBtn" class="secondary">載入專案</button>
-          </div>
         </div>
       </div>
       <div class="map-wrap">
@@ -793,6 +882,20 @@
         <div class="map-footer">
           <button id="prevStep" class="secondary">返回</button>
           <button id="nextStep">下一步</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="coordEditModal">
+      <div class="modal">
+        <div class="modal-title">編輯座標標示</div>
+        <input id="coordLabelInput" type="text" placeholder="輸入文字標示名稱（可留空）" />
+        <div class="option-row">
+          <label><input type="radio" name="coordLabelMode" value="name" /> 顯示文字</label>
+          <label><input type="radio" name="coordLabelMode" value="coords" /> 顯示經緯度</label>
+        </div>
+        <div class="modal-actions">
+          <button id="coordEditCancel" class="secondary">取消</button>
+          <button id="coordEditSave">儲存</button>
         </div>
       </div>
     </div>

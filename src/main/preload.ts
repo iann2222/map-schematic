@@ -94,6 +94,18 @@ contextBridge.exposeInMainWorld("mapSchematic", {
     ipcRenderer.invoke("relief:get"),
   searchGeonames: (query: string, limit = 10): Promise<GeonamesResult[]> =>
     ipcRenderer.invoke("geonames:search", query, limit),
-  saveProject: (project: MapProject) => ipcRenderer.invoke("project:save", project),
-  loadProject: () => ipcRenderer.invoke("project:load")
+  saveProject: (payload: { project: MapProject; path?: string | null; saveAs?: boolean }) =>
+    ipcRenderer.invoke("project:save", payload),
+  loadProject: () => ipcRenderer.invoke("project:load"),
+  exportProject: (payload: {
+    format: "png" | "svg" | "pdf";
+    data: string;
+    width: number;
+    height: number;
+  }) => ipcRenderer.invoke("project:export", payload),
+  onMenuAction: (handler: (action: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, action: string) => handler(action);
+    ipcRenderer.on("menu:action", listener);
+    return () => ipcRenderer.removeListener("menu:action", listener);
+  }
 });

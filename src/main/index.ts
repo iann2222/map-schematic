@@ -1,5 +1,6 @@
 ﻿import { app, BrowserWindow, Menu, ipcMain } from "electron";
 import fs from "fs/promises";
+import { dialog } from "electron";
 import path from "path";
 import { loadProjectFromFile, saveProjectToFile } from "../shared/schema/io";
 import { resolvePackRoot } from "../shared/datapack/resolve";
@@ -21,6 +22,7 @@ type SaveResult = {
   ok: boolean;
   errors?: string[];
   path?: string;
+  canceled?: boolean;
 };
 
 type LoadResult = {
@@ -29,6 +31,14 @@ type LoadResult = {
   project?: unknown;
   validation?: { valid: boolean; errors: Array<{ path: string; message: string }> };
   error?: string;
+  canceled?: boolean;
+};
+
+type ExportResult = {
+  ok: boolean;
+  path?: string;
+  error?: string;
+  canceled?: boolean;
 };
 
 function createMainWindow() {
@@ -63,6 +73,32 @@ function buildAppMenu(): Menu {
     {
       label: "檔案",
       submenu: [
+        {
+          label: "載入專案",
+          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "project:open")
+        },
+        {
+          label: "儲存專案",
+          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "project:save")
+        },
+        {
+          label: "另存新檔",
+          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "project:saveAs")
+        },
+        { type: "separator" },
+        {
+          label: "匯出 PNG",
+          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "export:png")
+        },
+        {
+          label: "匯出 SVG",
+          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "export:svg")
+        },
+        {
+          label: "匯出 PDF",
+          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "export:pdf")
+        },
+        { type: "separator" },
         { role: "close", label: "關閉視窗" },
         { role: "quit", label: "結束程式" }
       ]
@@ -108,9 +144,13 @@ function buildAppMenu(): Menu {
   ]);
 }
 
-function projectFilePath(): string {
+function projectFilesRoot(): string {
   const dataRoot = resolveDataRoot();
-  return path.join(dataRoot, "projects", "demo.mapproj");
+  return path.join(dataRoot, "project-files");
+}
+
+function defaultProjectPath(): string {
+  return path.join(projectFilesRoot(), "untitled.mapproj");
 }
 
 app.whenReady().then(() => {
@@ -146,21 +186,98 @@ app.whenReady().then(() => {
   ipcMain.handle("geonames:search", async (_event, query: string, limit: number) =>
     searchGeonames(query, limit)
   );
-  ipcMain.handle("project:save", async (_event, project: unknown): Promise<SaveResult> => {
-    const filePath = projectFilePath();
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await saveProjectToFile(filePath, project as any);
+  ipcMain.handle("project:save", async (_event, payload: unknown): Promise<SaveResult> => {
+    const data = payload as { project: unknown; path?: string | null; saveAs?: boolean };
+    const root = projectFilesRoot();
+    await fs.mkdir(root, { recursive: true });
+    let filePath = data.path ?? null;
+    if (!filePath || data.saveAs) {
+      const result = await dialog.showSaveDialog({
+        title: "儲存專案",
+        defaultPath: filePath ?? defaultProjectPath(),
+        filters: [{ name: "Map Project", extensions: ["mapproj"] }]
+      });
+      if (result.canceled || !result.filePath) {
+        return { ok: false, canceled: true };
+      }
+      filePath = result.filePath;
+    }
+    await saveProjectToFile(filePath, data.project as any);
     return { ok: true, path: filePath };
   });
   ipcMain.handle("project:load", async (): Promise<LoadResult> => {
-    const filePath = projectFilePath();
     try {
+      const root = projectFilesRoot();
+      await fs.mkdir(root, { recursive: true });
+      const result = await dialog.showOpenDialog({
+        title: "載入專案",
+        defaultPath: root,
+        filters: [{ name: "Map Project", extensions: ["mapproj"] }],
+        properties: ["openFile"]
+      });
+      if (result.canceled || result.filePaths.length === 0) {
+        return { ok: false, canceled: true };
+      }
+      const filePath = result.filePaths[0];
       const { project, validation } = await loadProjectFromFile(filePath);
       return { ok: true, path: filePath, project, validation };
     } catch (err) {
-      return { ok: false, error: String(err), path: filePath };
+      return { ok: false, error: String(err) };
     }
   });
+  ipcMain.handle(
+    "project:export",
+    async (
+      _event,
+      payload: { format: "png" | "svg" | "pdf"; data: string; width: number; height: number }
+    ): Promise<ExportResult> => {
+      try {
+        const root = projectFilesRoot();
+        await fs.mkdir(root, { recursive: true });
+        const extension = payload.format;
+        const result = await dialog.showSaveDialog({
+          title: "匯出檔案",
+          defaultPath: path.join(root, `export.${extension}`),
+          filters: [{ name: payload.format.toUpperCase(), extensions: [extension] }]
+        });
+        if (result.canceled || !result.filePath) {
+          return { ok: false, canceled: true };
+        }
+        if (payload.format === "pdf") {
+          const win = new BrowserWindow({
+            width: 800,
+            height: 600,
+            show: false,
+            webPreferences: { contextIsolation: true }
+          });
+          const html = `<html><body style="margin:0;background:#000;"><img src="${payload.data}" style="width:100%;height:100%;object-fit:contain"/></body></html>`;
+          await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+          const micronsPerPx = 25400 / 96;
+          const pdfData = await win.webContents.printToPDF({
+            printBackground: true,
+            pageSize: {
+              width: Math.round(payload.width * micronsPerPx),
+              height: Math.round(payload.height * micronsPerPx)
+            }
+          });
+          await fs.writeFile(result.filePath, pdfData);
+          win.destroy();
+        } else {
+          let buffer: Buffer;
+          if (payload.data.startsWith("data:")) {
+            const base64 = payload.data.split(",")[1] ?? "";
+            buffer = Buffer.from(base64, "base64");
+          } else {
+            buffer = Buffer.from(payload.data, "utf8");
+          }
+          await fs.writeFile(result.filePath, buffer);
+        }
+        return { ok: true, path: result.filePath };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    }
+  );
 });
 
 app.whenReady().then(() => {
