@@ -1,6 +1,5 @@
-﻿import { app, BrowserWindow, Menu, ipcMain } from "electron";
+import { app, BrowserWindow, Menu, ipcMain, dialog, screen } from "electron";
 import fs from "fs/promises";
-import { dialog } from "electron";
 import path from "path";
 import { loadProjectFromFile, saveProjectToFile } from "../shared/schema/io";
 import { resolvePackRoot } from "../shared/datapack/resolve";
@@ -8,6 +7,8 @@ import { resolveDataRoot } from "../shared/paths";
 import { searchGeonames } from "./geonames";
 
 type Datapack = {
+  id?: string;
+  version?: string;
   basemap?: {
     layers?: Array<{ id: string; path: string }>;
   };
@@ -75,14 +76,17 @@ function buildAppMenu(): Menu {
       submenu: [
         {
           label: "載入專案",
+          accelerator: "CommandOrControl+O",
           click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "project:open")
         },
         {
           label: "儲存專案",
+          accelerator: "CommandOrControl+S",
           click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "project:save")
         },
         {
           label: "另存新檔",
+          accelerator: "CommandOrControl+Shift+S",
           click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "project:saveAs")
         },
         { type: "separator" },
@@ -105,35 +109,50 @@ function buildAppMenu(): Menu {
     },
     {
       label: "編輯",
-      submenu: [
-        { role: "undo", label: "復原" },
-        { role: "redo", label: "重做" },
-        { type: "separator" },
-        { role: "cut", label: "剪下" },
-        { role: "copy", label: "複製" },
-        { role: "paste", label: "貼上" },
-        { role: "selectAll", label: "全選" }
-      ]
+      submenu: [{ role: "undo", label: "復原" }, { role: "redo", label: "取消復原" }]
     },
     {
       label: "檢視",
       submenu: [
         { role: "reload", label: "重新載入" },
         { role: "forceReload", label: "強制重新載入" },
-        { role: "toggleDevTools", label: "開發者工具" },
-        { type: "separator" },
-        { role: "resetZoom", label: "重設縮放" },
-        { role: "zoomIn", label: "放大" },
-        { role: "zoomOut", label: "縮小" },
-        { type: "separator" },
-        { role: "togglefullscreen", label: "全螢幕" }
+        { role: "toggleDevTools", label: "開發者工具" }
       ]
     },
     {
       label: "視窗",
       submenu: [
         { role: "minimize", label: "最小化" },
-        { role: "zoom", label: "縮放" },
+        {
+          label: "最大化",
+          click: () => {
+            const win = BrowserWindow.getFocusedWindow();
+            if (!win) {
+              return;
+            }
+            win.maximize();
+          }
+        },
+        { role: "togglefullscreen", label: "全螢幕" },
+        {
+          label: "回到預設視窗",
+          click: () => {
+            const win = BrowserWindow.getFocusedWindow();
+            if (!win) {
+              return;
+            }
+            if (win.isFullScreen()) {
+              win.setFullScreen(false);
+            }
+            if (win.isMaximized()) {
+              win.unmaximize();
+            }
+            const display = screen.getDisplayNearestPoint(win.getBounds());
+            const x = Math.round(display.bounds.x + (display.bounds.width - 1200) / 2);
+            const y = Math.round(display.bounds.y + (display.bounds.height - 800) / 2);
+            win.setBounds({ x, y, width: 1200, height: 800 });
+          }
+        },
         { role: "close", label: "關閉" }
       ]
     },
@@ -145,8 +164,7 @@ function buildAppMenu(): Menu {
 }
 
 function projectFilesRoot(): string {
-  const dataRoot = resolveDataRoot();
-  return path.join(dataRoot, "project-files");
+  return path.join(app.getAppPath(), "project_files");
 }
 
 function defaultProjectPath(): string {
@@ -278,6 +296,29 @@ app.whenReady().then(() => {
       }
     }
   );
+
+  const aboutBase = {
+    applicationName: "map-schematic",
+    applicationVersion: "",
+    version: "",
+    credits:
+      "資料包：未載入\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief",
+    copyright: ""
+  };
+  app.setAboutPanelOptions(aboutBase);
+  loadDatapack()
+    .then((datapack) => {
+      const id = datapack?.id ?? "unknown";
+      const version = datapack?.version ?? "unknown";
+      app.setAboutPanelOptions({
+        ...aboutBase,
+        version: "",
+        credits: `資料包：${id} ${version}\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief`
+      });
+    })
+    .catch(() => {
+      app.setAboutPanelOptions(aboutBase);
+    });
 });
 
 app.whenReady().then(() => {
@@ -295,3 +336,4 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+

@@ -7,8 +7,10 @@ dist/
 # Local data
 geodata/*
 !geodata/.keep
-geodata-source/*
-!geodata-source/.keep
+geodata_source/*
+!geodata_source/.keep
+project_files/*
+!project_files/.keep
 
 # Logs
 npm-debug.log*

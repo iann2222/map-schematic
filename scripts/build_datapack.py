@@ -455,7 +455,7 @@ def resolve_geonames_source(raw_root: pathlib.Path, mode: str) -> pathlib.Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build map-schematic datapack.")
-    parser.add_argument("--raw", default="geodata-source", help="Raw data root")
+    parser.add_argument("--raw", default="geodata_source", help="Raw data root")
     parser.add_argument("--out", default="geodata/packs/standard", help="Output root")
     parser.add_argument("--id", default="standard", help="Data pack id")
     parser.add_argument("--version", default=time.strftime("%Y.%m"), help="Data pack version")
