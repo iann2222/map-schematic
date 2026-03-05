@@ -239,6 +239,19 @@ Natural Earth 為公開可自由使用資料集，適合製圖用途。
 
 - 可使用 Natural Earth 的 `MSR_50M.zip` 或 `US_MSR_10M.zip` 作為來源。
 - 為避免超大 GeoTIFF 造成建置不穩定，建議先轉成 `hillshade.png` 放入 `geodata_source/`，建置時直接採用。
+
+## 專案檔與匯出路徑
+
+- 專案檔與匯出結果預設存放於 `project_files/`（repo 內、gitignore）。
+- 目前採固定路徑策略，避免 OS userData 路徑差異造成測試不一致。
+- 若日後進入正式發佈版本，需改為可寫入位置（避免安裝包或唯讀路徑寫入失敗）。
+
+## 資料包載入失敗處理（待完善）
+
+目前若資料包缺失會直接讀檔失敗。未來需補：
+
+- 明確錯誤提示（缺少資料包 / 版本不相容 / 解壓失敗）
+- 引導使用者前往下載或重新初始化
 - 正式使用建議以 GDAL 轉成 `EPSG:3857` 的 `hillshade_3857.png`，確保與渲染投影一致。
 - 地形陰影顯示採 Canvas 混合模式（如 `overlay` / `multiply` / `screen`）可調，以平衡可讀性與清晰度。
 

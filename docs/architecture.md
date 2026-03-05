@@ -11,6 +11,7 @@
 - `scripts/`：建置輔助腳本（資料包建置）。
 - `geodata/`：官方資料包的本機資料根目錄（repo 內、gitignore）。
 - `geodata_source/`：原始資料來源（repo 內、gitignore）。
+- `project_files/`：專案檔與匯出結果的固定存放目錄（repo 內、gitignore）。
 - `package.json`、`tsconfig.*.json`：專案設定與建置配置。
 
 ## 執行流程（MVP）
@@ -61,5 +62,7 @@
   - 讀取 `geodata_source/` 原始資料
   - 產出 `geodata/packs/...` 官方資料包
   - 若提供 `geodata_source/hillshade.png`，會直接納入地形陰影層（避免大型 GeoTIFF 轉檔不穩）
+- `project_files/`
+  - `.mapproj` 專案檔與匯出檔的預設存放位置
 - `dist/`
   - TypeScript 編譯輸出
