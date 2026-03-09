@@ -252,6 +252,28 @@ Natural Earth 為公開可自由使用資料集，適合製圖用途。
 
 - 明確錯誤提示（缺少資料包 / 版本不相容 / 解壓失敗）
 - 引導使用者前往下載或重新初始化
+
+## 資料包發佈與下載設定
+
+- 下載資訊集中於 `pack-release.json`（repo 根目錄）
+- App 啟動時若發現本機資料包不存在，會讀取 `pack-release.json` 進行下載、校驗、解壓
+- `pack-release.json` 內容包含：
+  - `id`
+  - `version`
+  - `url`（Release asset 直連）
+  - `sha256`（校驗用）
+  - `sourceFiles`（本次資料包來源檔案清單）
+- 每次發布新的資料包版本時，需同步更新 `pack-release.json`
+
+## 資料包發布與下載流程（概略）
+
+1. 原始資料放入 `geodata_source/`
+2. 執行 `scripts/build_datapack.py` 產出 `geodata/packs/{id}/{version}/`
+3. 將該資料包打包成 zip 並發布到 GitHub Releases（tag 對應資料包版本）
+4. 同步更新 `pack-release.json`（含 url 與 sha256）
+5. App 啟動時若偵測本機缺少資料包：
+   - 下載 zip → 驗證 sha256 → 解壓到 `geodata/packs/{id}/{version}/`
+   - 解壓完成後刪除暫存 zip
 - 正式使用建議以 GDAL 轉成 `EPSG:3857` 的 `hillshade_3857.png`，確保與渲染投影一致。
 - 地形陰影顯示採 Canvas 混合模式（如 `overlay` / `multiply` / `screen`）可調，以平衡可讀性與清晰度。
 

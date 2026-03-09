@@ -5,6 +5,7 @@ import { loadProjectFromFile, saveProjectToFile } from "../shared/schema/io";
 import { resolvePackRoot } from "../shared/datapack/resolve";
 import { resolveDataRoot } from "../shared/paths";
 import { searchGeonames } from "./geonames";
+import { ensureDatapackReady } from "./datapack-download";
 
 type Datapack = {
   id?: string;
@@ -63,6 +64,7 @@ function createMainWindow() {
 }
 
 async function loadDatapack(): Promise<Datapack> {
+  await ensureDatapackReady();
   const packRoot = resolvePackRoot();
   const datapackPath = path.join(packRoot, "datapack.json");
   const raw = await fs.readFile(datapackPath, "utf8");

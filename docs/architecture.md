@@ -13,6 +13,7 @@
 - `geodata_source/`：原始資料來源（repo 內、gitignore）。
 - `project_files/`：專案檔與匯出結果的固定存放目錄（repo 內、gitignore）。
 - `package.json`、`tsconfig.*.json`：專案設定與建置配置。
+- `pack-release.json`：資料包下載設定（Release 直連與校驗資訊）。
 
 ## 執行流程（MVP）
 

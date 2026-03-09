@@ -1,0 +1,14 @@
+{
+  "id": "standard",
+  "version": "2026.02",
+  "url": "https://github.com/iann2222/map-schematic/releases/download/datapack-standard-2026.02/datapack-standard-2026.02.zip",
+  "sha256": "585813e8c1f5dc26e0d1277e2693fc10d597c9364d3d026c85ef882cf4ba0cd5",
+  "sourceFiles": [
+    "geodata_source/50m_physical/ (Natural Earth 50m physical)",
+    "geodata_source/allCountries.zip (GeoNames allCountries)",
+    "geodata_source/alternateNamesV2.zip (GeoNames alternate names)",
+    "geodata_source/cities1000.zip (GeoNames cities1000)",
+    "geodata_source/SR_HR.zip (Natural Earth 10m shaded relief)",
+    "geodata_source/hillshade_3857.png (derived hillshade, EPSG:3857)"
+  ]
+}

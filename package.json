@@ -10,9 +10,11 @@
     "start:dev": "npm run build && electron ."
   },
   "dependencies": {
+    "adm-zip": "^0.5.12",
     "better-sqlite3": "^9.4.3"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.5",
     "@types/better-sqlite3": "^7.6.10",
     "@types/node": "^20.11.30",
     "electron": "^30.0.0",
