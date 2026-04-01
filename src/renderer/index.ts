@@ -81,9 +81,32 @@ type Marker = {
   longitude: number;
   sourceId?: string;
   style: MarkerStyle;
-  sourceType: "geonames" | "coords";
+  sourceType: "geonames" | "coords" | "manual";
   labelMode: "name" | "coords";
   labelName?: string;
+  showLabel?: boolean;
+  kind?: "label" | "point";
+};
+
+type ShapeStyle = {
+  strokeColor: string;
+  strokeWidth: number;
+  fillColor: string;
+  fillOpacity: number;
+  textColor: string;
+  textSize: number;
+  fontFamily: string;
+};
+
+type ShapeItem = {
+  id: string;
+  type: "line" | "area" | "text" | "arrow";
+  longitude: number;
+  latitude: number;
+  width: number;
+  height: number;
+  text?: string;
+  style: ShapeStyle;
 };
 
 type SliderControl = {
@@ -174,8 +197,23 @@ type LabelDrag = {
   startOffsetX: number;
   startOffsetY: number;
 };
+type MarkerDrag = {
+  markerId: string;
+  startX: number;
+  startY: number;
+  startLon: number;
+  startLat: number;
+};
+type ShapeDrag = {
+  shapeId: string;
+  startX: number;
+  startY: number;
+  startLon: number;
+  startLat: number;
+};
 
 const statusEl = document.getElementById("status");
+const layoutEl = document.getElementById("layout");
 const svg = document.getElementById("map") as SVGSVGElement | null;
 const canvas = document.getElementById("basemap") as HTMLCanvasElement | null;
 const searchInput0 = document.getElementById("search0") as HTMLInputElement | null;
@@ -200,14 +238,43 @@ const markerDotSize = document.getElementById("markerDotSize") as HTMLDivElement
 const markerTextSize = document.getElementById("markerTextSize") as HTMLDivElement | null;
 const markerDotColor = document.getElementById("markerDotColor") as HTMLInputElement | null;
 const markerTextColor = document.getElementById("markerTextColor") as HTMLInputElement | null;
+const markerDotHex = document.getElementById("markerDotHex") as HTMLInputElement | null;
+const markerTextHex = document.getElementById("markerTextHex") as HTMLInputElement | null;
+const dotColorChip = document.getElementById("dotColorChip") as HTMLSpanElement | null;
+const textColorChip = document.getElementById("textColorChip") as HTMLSpanElement | null;
 const markerFont = document.getElementById("markerFont") as HTMLSelectElement | null;
+const markerLabelInput = document.getElementById("markerLabelInput") as HTMLInputElement | null;
+const shapeTextInput = document.getElementById("shapeTextInput") as HTMLInputElement | null;
+const shapeTextSize = document.getElementById("shapeTextSize") as HTMLDivElement | null;
+const shapeTextColor = document.getElementById("shapeTextColor") as HTMLInputElement | null;
+const shapeTextFont = document.getElementById("shapeTextFont") as HTMLSelectElement | null;
+const shapeLineWidth = document.getElementById("shapeLineWidth") as HTMLDivElement | null;
+const shapeLineColor = document.getElementById("shapeLineColor") as HTMLInputElement | null;
+const shapeArrowWidth = document.getElementById("shapeArrowWidth") as HTMLDivElement | null;
+const shapeArrowColor = document.getElementById("shapeArrowColor") as HTMLInputElement | null;
+const shapeAreaFill = document.getElementById("shapeAreaFill") as HTMLInputElement | null;
+const shapeAreaOpacity = document.getElementById("shapeAreaOpacity") as HTMLDivElement | null;
+const shapeAreaStroke = document.getElementById("shapeAreaStroke") as HTMLInputElement | null;
+const shapeAreaStrokeWidth = document.getElementById("shapeAreaStrokeWidth") as HTMLDivElement | null;
 const markerList = document.getElementById("markerList") as HTMLDivElement | null;
 const coordEditModal = document.getElementById("coordEditModal") as HTMLDivElement | null;
 const coordLabelInput = document.getElementById("coordLabelInput") as HTMLInputElement | null;
 const coordEditCancel = document.getElementById("coordEditCancel") as HTMLButtonElement | null;
 const coordEditSave = document.getElementById("coordEditSave") as HTMLButtonElement | null;
+const settingsEmpty = document.getElementById("settingsEmpty");
+const pointSettings = document.getElementById("pointSettings");
+const pointTextControls = document.getElementById("pointTextControls");
+const textSettings = document.getElementById("textSettings");
+const lineSettings = document.getElementById("lineSettings");
+const arrowSettings = document.getElementById("arrowSettings");
+const areaSettings = document.getElementById("areaSettings");
 let dotSizeSlider: SliderControl | null = null;
 let textSizeSlider: SliderControl | null = null;
+let shapeTextSizeSlider: SliderControl | null = null;
+let shapeLineWidthSlider: SliderControl | null = null;
+let shapeArrowWidthSlider: SliderControl | null = null;
+let shapeAreaOpacitySlider: SliderControl | null = null;
+let shapeAreaStrokeWidthSlider: SliderControl | null = null;
 const toolZoomIn = document.getElementById("toolZoomIn") as HTMLButtonElement | null;
 const toolZoomOut = document.getElementById("toolZoomOut") as HTMLButtonElement | null;
 const toolReset = document.getElementById("toolReset") as HTMLButtonElement | null;
@@ -304,6 +371,12 @@ let cropDrag: CropDrag | null = null;
 const selectedMarkers: Marker[] = [];
 let selectedMarkerId: string | null = null;
 let previewMarker: Marker | null = null;
+const shapes: ShapeItem[] = [];
+let selectedShapeId: string | null = null;
+let activeTool: "marker" | "line" | "area" | "text" | "arrow" = "marker";
+let manualMarkerCount = 0;
+let previewToolMarker: Marker | null = null;
+let previewShape: ShapeItem | null = null;
 let currentProjectPath: string | null = null;
 let lastStageRect: DOMRect | null = null;
 let lastScaleFit = 1;
@@ -318,6 +391,8 @@ let dragStartMap: { x: number; y: number } | null = null;
 let dragMode: DragMode = null;
 let dragRect: SVGRectElement | null = null;
 let labelDrag: LabelDrag | null = null;
+let markerDrag: MarkerDrag | null = null;
+let shapeDrag: ShapeDrag | null = null;
 let cachedBasemapLayers: Array<{ id: string; paths: Path2D[] }> = [];
 let basemapBuilt = false;
 let worldShift = 0;
@@ -560,6 +635,16 @@ function ensureMarkersContainer(root: SVGGElement): SVGGElement {
   return container;
 }
 
+function ensureShapesContainer(root: SVGGElement): SVGGElement {
+  let container = root.querySelector("g[data-layer=\"shapes-wrap\"]") as SVGGElement | null;
+  if (!container) {
+    container = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    container.setAttribute("data-layer", "shapes-wrap");
+    root.appendChild(container);
+  }
+  return container;
+}
+
 function ensureWrapGroup(container: SVGGElement, id: string, offsetX: number): SVGGElement {
   let group = container.querySelector(`g[data-wrap=\"${id}\"]`) as SVGGElement | null;
   if (!group) {
@@ -596,6 +681,12 @@ function setActiveStep(stepId: string): void {
   stepPanels.forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.stepPanel === stepId);
   });
+  if (layoutEl) {
+    layoutEl.classList.toggle("step-3", stepId === "3");
+  }
+  if (layoutEl) {
+    layoutEl.classList.toggle("step-3", stepId === "3");
+  }
   if (stepProgress) {
     stepProgress.textContent = `步驟 ${stepId} / 3`;
   }
@@ -1144,6 +1235,24 @@ function hookSteps(): void {
       requestBasemapDraw();
     });
   });
+  document.querySelectorAll<HTMLButtonElement>(".tool-select").forEach((button) => {
+    button.addEventListener("click", () => {
+      const tool = button.dataset.tool as typeof activeTool | undefined;
+      if (tool) {
+        setActiveTool(tool);
+      }
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>(".tool-add").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const tool = button.dataset.addTool as typeof activeTool | undefined;
+      if (!tool) {
+        return;
+      }
+      addToolItem(tool);
+    });
+  });
 }
 
 function resizeCanvasToStage(): {
@@ -1275,9 +1384,11 @@ function updateWrapTransforms(forceRender = false): void {
   }
   const root = ensureMapRoot(svg);
   const markerWrap = ensureMarkersContainer(root);
+  const shapeWrap = ensureShapesContainer(root);
   const wrapShift = shiftLocked ? shiftLockValue : worldShift;
   for (const i of WRAPS) {
     ensureWrapGroup(markerWrap, `marker-${i}`, (i + wrapShift) * width);
+    ensureWrapGroup(shapeWrap, `shape-${i}`, (i + wrapShift) * width);
   }
   if (forceRender) {
     requestBasemapDraw();
@@ -1304,6 +1415,70 @@ function viewCenterLonLat(): [number, number] {
   const centerX = (width / 2 - view.tx) / view.scale;
   const centerY = (height / 2 - view.ty) / view.scale;
   return unproject(centerX, centerY, width, height);
+}
+
+function setActiveTool(tool: typeof activeTool): void {
+  activeTool = tool;
+  document.querySelectorAll<HTMLButtonElement>(".tool-select").forEach((button) => {
+    button.classList.toggle("active", button.dataset.tool === tool);
+  });
+  const [lon, lat] = viewCenterLonLat();
+  if (tool === "marker") {
+    previewShape = null;
+    previewToolMarker = buildPreviewMarkerAt({ lon, lat });
+  } else {
+    previewToolMarker = null;
+    previewShape = buildShapeAt(tool, { lon, lat });
+  }
+  renderMarkers();
+}
+
+function addToolItem(tool: typeof activeTool): void {
+  if (activeStep !== "3") {
+    return;
+  }
+  const [lon, lat] = viewCenterLonLat();
+  if (tool === "marker") {
+    const marker = buildManualMarkerAt({ lon, lat });
+    if (hasDuplicateMarker(marker)) {
+      return;
+    }
+    selectedMarkers.push(marker);
+    previewMarker = null;
+    previewToolMarker = null;
+    selectMarker(marker.id);
+    renderMarkers();
+    renderMarkerList();
+    return;
+  }
+  if (tool === "text" || tool === "line" || tool === "area" || tool === "arrow") {
+    const shape = buildShapeAt(tool, { lon, lat });
+    if (hasDuplicateShape(shape)) {
+      return;
+    }
+    shapes.push(shape);
+    previewShape = null;
+    selectShape(shape.id);
+    renderMarkerList();
+    return;
+  }
+}
+
+function syncManualMarkerCount(): void {
+  let maxIndex = 0;
+  selectedMarkers.forEach((marker) => {
+    if (!marker.name.startsWith("點標示")) {
+      return;
+    }
+    const match = marker.name.match(/點標示(\d+)/);
+    if (match) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value)) {
+        maxIndex = Math.max(maxIndex, value);
+      }
+    }
+  });
+  manualMarkerCount = maxIndex;
 }
 
 async function renderBasemap() {
@@ -1347,6 +1522,9 @@ function renderMarkers() {
   if (previewMarker) {
     renderItems.push({ marker: previewMarker, preview: true });
   }
+  if (previewToolMarker) {
+    renderItems.push({ marker: previewToolMarker, preview: true });
+  }
 
   for (const i of WRAPS) {
     const wrap = ensureWrapGroup(markerWrap, `marker-${i}`, (i + worldShift) * width);
@@ -1367,6 +1545,15 @@ function renderMarkers() {
       if (item.preview) {
         circle.setAttribute("opacity", "0.7");
       }
+      const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      const hitRadius = Math.max(14, marker.style.dotSize * 3) / view.scale;
+      hit.setAttribute("cx", x.toFixed(2));
+      hit.setAttribute("cy", y.toFixed(2));
+      hit.setAttribute("r", hitRadius.toFixed(2));
+      hit.setAttribute("fill", "transparent");
+      hit.setAttribute("data-marker", "dot-hit");
+      hit.setAttribute("data-id", marker.id);
+      hit.style.pointerEvents = "all";
       circle.addEventListener("click", (event) => {
         if (activeStep !== "3") {
           return;
@@ -1376,8 +1563,27 @@ function renderMarkers() {
           selectMarker(marker.id);
         }
       });
+      hit.addEventListener("mousedown", (event) => {
+        if (activeStep !== "3" || item.preview) {
+          return;
+        }
+        event.stopPropagation();
+        selectMarker(marker.id);
+        const start = mapPointFromEvent(event);
+        markerDrag = {
+          markerId: marker.id,
+          startX: start.x,
+          startY: start.y,
+          startLon: marker.longitude,
+          startLat: marker.latitude
+        };
+      });
+      wrap.appendChild(hit);
       wrap.appendChild(circle);
 
+      if (marker.showLabel === false) {
+        continue;
+      }
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
       const scale = Math.max(0.5, Math.min(1.6, Math.pow(view.scale, 0.35)));
       const offsetX = marker.style.textOffsetX;
@@ -1423,6 +1629,328 @@ function renderMarkers() {
         };
       });
       wrap.appendChild(label);
+    }
+  }
+  renderShapes();
+}
+
+function renderShapes(): void {
+  if (!svg) {
+    return;
+  }
+  const width = svg.viewBox.baseVal.width || 1200;
+  const height = svg.viewBox.baseVal.height || 800;
+  const root = ensureMapRoot(svg);
+  const shapeWrap = ensureShapesContainer(root);
+  const renderItems: Array<{ shape: ShapeItem; preview: boolean }> = [
+    ...shapes.map((shape) => ({ shape, preview: false }))
+  ];
+  if (previewShape) {
+    renderItems.push({ shape: previewShape, preview: true });
+  }
+  for (const i of WRAPS) {
+    const wrap = ensureWrapGroup(shapeWrap, `shape-${i}`, (i + worldShift) * width);
+    wrap.innerHTML = "";
+    for (const item of renderItems) {
+      const shape = item.shape;
+      const [x, y] = project(shape.longitude, shape.latitude, width, height);
+      if (shape.type === "line") {
+        const half = shape.width / 2;
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", (x - half).toFixed(2));
+        line.setAttribute("y1", y.toFixed(2));
+        line.setAttribute("x2", (x + half).toFixed(2));
+        line.setAttribute("y2", y.toFixed(2));
+        line.setAttribute("stroke", shape.style.strokeColor);
+        line.setAttribute("stroke-width", (shape.style.strokeWidth / view.scale).toFixed(2));
+        line.setAttribute("stroke-linecap", "round");
+        line.setAttribute("data-shape", "line");
+        line.setAttribute("data-id", shape.id);
+        if (item.preview) {
+          line.setAttribute("opacity", "0.6");
+        }
+        const hit = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        hit.setAttribute("x1", (x - half).toFixed(2));
+        hit.setAttribute("y1", y.toFixed(2));
+        hit.setAttribute("x2", (x + half).toFixed(2));
+        hit.setAttribute("y2", y.toFixed(2));
+        hit.setAttribute("stroke", "transparent");
+        hit.setAttribute("stroke-width", (Math.max(14, shape.style.strokeWidth * 4) / view.scale).toFixed(2));
+        hit.setAttribute("stroke-linecap", "round");
+        hit.setAttribute("data-shape", "line");
+        hit.setAttribute("data-id", shape.id);
+        line.addEventListener("click", (event) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (!item.preview) {
+            selectShape(shape.id);
+          }
+        });
+        const onDragStart = (event: MouseEvent) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (item.preview) {
+            return;
+          }
+          const start = mapPointFromEvent(event);
+          shapeDrag = {
+            shapeId: shape.id,
+            startX: start.x,
+            startY: start.y,
+            startLon: shape.longitude,
+            startLat: shape.latitude
+          };
+        };
+        line.addEventListener("mousedown", onDragStart);
+        hit.addEventListener("mousedown", onDragStart);
+        hit.addEventListener("click", (event) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (!item.preview) {
+            selectShape(shape.id);
+          }
+        });
+        wrap.appendChild(hit);
+        wrap.appendChild(line);
+      } else if (shape.type === "arrow") {
+        const half = shape.width / 2;
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", (x - half).toFixed(2));
+        line.setAttribute("y1", y.toFixed(2));
+        line.setAttribute("x2", (x + half).toFixed(2));
+        line.setAttribute("y2", y.toFixed(2));
+        line.setAttribute("stroke", shape.style.strokeColor);
+        line.setAttribute("stroke-width", (shape.style.strokeWidth / view.scale).toFixed(2));
+        line.setAttribute("stroke-linecap", "round");
+        line.setAttribute("data-shape", "arrow");
+        line.setAttribute("data-id", shape.id);
+        const headSize = Math.max(6, shape.style.strokeWidth * 2) / view.scale;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const x2 = x + half;
+        const y2 = y;
+        const d = `M ${x2.toFixed(2)} ${y2.toFixed(2)} L ${(x2 - headSize).toFixed(
+          2
+        )} ${(y2 - headSize * 0.6).toFixed(2)} L ${(x2 - headSize).toFixed(
+          2
+        )} ${(y2 + headSize * 0.6).toFixed(2)} Z`;
+        path.setAttribute("d", d);
+        path.setAttribute("fill", shape.style.strokeColor);
+        path.setAttribute("data-shape", "arrow");
+        path.setAttribute("data-id", shape.id);
+        const onClick = (event: MouseEvent) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (!item.preview) {
+            selectShape(shape.id);
+          }
+        };
+        const onDragStart = (event: MouseEvent) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (item.preview) {
+            return;
+          }
+          const start = mapPointFromEvent(event);
+          shapeDrag = {
+            shapeId: shape.id,
+            startX: start.x,
+            startY: start.y,
+            startLon: shape.longitude,
+            startLat: shape.latitude
+          };
+        };
+        line.addEventListener("click", onClick);
+        path.addEventListener("click", onClick);
+        line.addEventListener("mousedown", onDragStart);
+        path.addEventListener("mousedown", onDragStart);
+        const hit = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        hit.setAttribute("x1", (x - half).toFixed(2));
+        hit.setAttribute("y1", y.toFixed(2));
+        hit.setAttribute("x2", (x + half).toFixed(2));
+        hit.setAttribute("y2", y.toFixed(2));
+        hit.setAttribute("stroke", "transparent");
+        hit.setAttribute("stroke-width", (Math.max(14, shape.style.strokeWidth * 4) / view.scale).toFixed(2));
+        hit.setAttribute("stroke-linecap", "round");
+        hit.setAttribute("data-shape", "arrow");
+        hit.setAttribute("data-id", shape.id);
+        if (!item.preview) {
+          hit.addEventListener("mousedown", onDragStart);
+          hit.addEventListener("click", onClick);
+        }
+        wrap.appendChild(hit);
+        wrap.appendChild(line);
+        wrap.appendChild(path);
+      } else if (shape.type === "area") {
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("x", (x - shape.width / 2).toFixed(2));
+        rect.setAttribute("y", (y - shape.height / 2).toFixed(2));
+        rect.setAttribute("width", shape.width.toFixed(2));
+        rect.setAttribute("height", shape.height.toFixed(2));
+        rect.setAttribute("fill", shape.style.fillColor);
+        rect.setAttribute("fill-opacity", shape.style.fillOpacity.toFixed(2));
+        rect.setAttribute("stroke", shape.style.strokeColor);
+        rect.setAttribute("stroke-width", (shape.style.strokeWidth / view.scale).toFixed(2));
+        rect.setAttribute("data-shape", "area");
+        rect.setAttribute("data-id", shape.id);
+        if (item.preview) {
+          rect.setAttribute("opacity", "0.6");
+        }
+        rect.addEventListener("click", (event) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (!item.preview) {
+            selectShape(shape.id);
+          }
+        });
+        rect.addEventListener("mousedown", (event) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (item.preview) {
+            return;
+          }
+          const start = mapPointFromEvent(event);
+          shapeDrag = {
+            shapeId: shape.id,
+            startX: start.x,
+            startY: start.y,
+            startLon: shape.longitude,
+            startLat: shape.latitude
+          };
+        });
+        const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        hit.setAttribute("x", (x - shape.width / 2 - 6).toFixed(2));
+        hit.setAttribute("y", (y - shape.height / 2 - 6).toFixed(2));
+        hit.setAttribute("width", (shape.width + 12).toFixed(2));
+        hit.setAttribute("height", (shape.height + 12).toFixed(2));
+        hit.setAttribute("fill", "transparent");
+        hit.setAttribute("data-shape", "area");
+        hit.setAttribute("data-id", shape.id);
+        hit.addEventListener("mousedown", (event) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (item.preview) {
+            return;
+          }
+          const start = mapPointFromEvent(event);
+          shapeDrag = {
+            shapeId: shape.id,
+            startX: start.x,
+            startY: start.y,
+            startLon: shape.longitude,
+            startLat: shape.latitude
+          };
+        });
+        hit.addEventListener("click", (event) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (!item.preview) {
+            selectShape(shape.id);
+          }
+        });
+        wrap.appendChild(hit);
+        wrap.appendChild(rect);
+      } else if (shape.type === "text") {
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        const scale = Math.max(0.6, Math.min(1.6, Math.pow(view.scale, 0.35)));
+        label.setAttribute("x", x.toFixed(2));
+        label.setAttribute("y", y.toFixed(2));
+        label.setAttribute("fill", shape.style.textColor);
+        label.setAttribute(
+          "font-size",
+          (shape.style.textSize * scale).toFixed(2)
+        );
+        label.setAttribute("font-family", shape.style.fontFamily);
+        label.setAttribute("data-shape", "text");
+        label.setAttribute("data-id", shape.id);
+        label.textContent = shape.text ?? "文字標示";
+        if (item.preview) {
+          label.setAttribute("opacity", "0.6");
+        }
+        label.addEventListener("click", (event) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (!item.preview) {
+            selectShape(shape.id);
+          }
+        });
+        label.addEventListener("mousedown", (event) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (item.preview) {
+            return;
+          }
+          const start = mapPointFromEvent(event);
+          shapeDrag = {
+            shapeId: shape.id,
+            startX: start.x,
+            startY: start.y,
+            startLon: shape.longitude,
+            startLat: shape.latitude
+          };
+        });
+        const approxWidth =
+          Math.max(40, (shape.text ?? "文字標示").length * shape.style.textSize * 0.6) /
+          view.scale;
+        const approxHeight = Math.max(18, shape.style.textSize * 1.4) / view.scale;
+        const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        hit.setAttribute("x", (x - approxWidth / 2).toFixed(2));
+        hit.setAttribute("y", (y - approxHeight).toFixed(2));
+        hit.setAttribute("width", approxWidth.toFixed(2));
+        hit.setAttribute("height", approxHeight.toFixed(2));
+        hit.setAttribute("fill", "transparent");
+        hit.setAttribute("data-shape", "text");
+        hit.setAttribute("data-id", shape.id);
+        hit.addEventListener("mousedown", (event) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (item.preview) {
+            return;
+          }
+          const start = mapPointFromEvent(event);
+          shapeDrag = {
+            shapeId: shape.id,
+            startX: start.x,
+            startY: start.y,
+            startLon: shape.longitude,
+            startLat: shape.latitude
+          };
+        });
+        hit.addEventListener("click", (event) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (!item.preview) {
+            selectShape(shape.id);
+          }
+        });
+        wrap.appendChild(hit);
+        wrap.appendChild(label);
+      }
     }
   }
 }
@@ -1576,7 +2104,9 @@ function setPreviewMarker(result: GeonamesResult): void {
     sourceId: String(result.id),
     style: defaultMarkerStyle(),
     sourceType: "geonames",
-    labelMode: "name"
+    labelMode: "name",
+    showLabel: true,
+    kind: "label"
   };
   renderMarkers();
   syncMarkerControls(previewMarker);
@@ -1650,7 +2180,9 @@ function buildCoordMarker(parsed: { lat: number; lon: number }, idPrefix = "coor
     sourceId: undefined,
     style: defaultMarkerStyle(),
     sourceType: "coords",
-    labelMode: "coords"
+    labelMode: "coords",
+    showLabel: true,
+    kind: "label"
   };
 }
 
@@ -1705,6 +2237,69 @@ function defaultMarkerStyle(): MarkerStyle {
   };
 }
 
+function defaultShapeStyle(type: ShapeItem["type"]): ShapeStyle {
+  const base: ShapeStyle = {
+    strokeColor: "#38bdf8",
+    strokeWidth: 2,
+    fillColor: "#38bdf8",
+    fillOpacity: 0.35,
+    textColor: "#fde68a",
+    textSize: 16,
+    fontFamily: "IBM Plex Sans, sans-serif"
+  };
+  if (type === "area") {
+    base.fillOpacity = 0.4;
+  }
+  return base;
+}
+
+function buildManualMarkerAt(center: { lon: number; lat: number }): Marker {
+  manualMarkerCount += 1;
+  return {
+    id: `manual-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    name: `點標示${manualMarkerCount}`,
+    latitude: center.lat,
+    longitude: center.lon,
+    style: defaultMarkerStyle(),
+    sourceType: "manual",
+    labelMode: "name",
+    showLabel: false,
+    kind: "point"
+  };
+}
+
+function buildPreviewMarkerAt(center: { lon: number; lat: number }): Marker {
+  return {
+    id: "preview-tool-marker",
+    name: "點標示",
+    latitude: center.lat,
+    longitude: center.lon,
+    style: defaultMarkerStyle(),
+    sourceType: "manual",
+    labelMode: "name",
+    showLabel: false,
+    kind: "point"
+  };
+}
+
+function buildShapeAt(
+  type: ShapeItem["type"],
+  center: { lon: number; lat: number }
+): ShapeItem {
+  const size = 140 / Math.max(0.4, view.scale);
+  const height = type === "area" ? size * 0.7 : size * 0.4;
+  return {
+    id: `shape-${type}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    type,
+    longitude: center.lon,
+    latitude: center.lat,
+    width: size,
+    height,
+    text: type === "text" ? "文字標示" : undefined,
+    style: defaultShapeStyle(type)
+  };
+}
+
 function formatCoords(marker: { latitude: number; longitude: number }): string {
   return `(${marker.latitude.toFixed(4)}, ${marker.longitude.toFixed(4)})`;
 }
@@ -1720,6 +2315,15 @@ function markerLabelText(marker: Marker): string {
 
 function markerKey(marker: { name: string; latitude: number; longitude: number }): string {
   return `${marker.name}|${marker.latitude.toFixed(6)}|${marker.longitude.toFixed(6)}`;
+}
+
+function shapeKey(shape: { type: ShapeItem["type"]; text?: string; latitude: number; longitude: number }): string {
+  return `${shape.type}|${shape.text ?? ""}|${shape.latitude.toFixed(6)}|${shape.longitude.toFixed(6)}`;
+}
+
+function hasDuplicateShape(candidate: ShapeItem): boolean {
+  const key = shapeKey(candidate);
+  return shapes.some((shape) => shapeKey(shape) === key);
 }
 
 function hasDuplicateMarker(candidate: { name: string; latitude: number; longitude: number }): boolean {
@@ -1753,7 +2357,9 @@ function addMarkerFromGeonames(result: GeonamesResult): void {
     sourceId: String(result.id),
     style: defaultMarkerStyle(),
     sourceType: "geonames",
-    labelMode: "name"
+    labelMode: "name",
+    showLabel: true,
+    kind: "label"
   };
   selectedMarkers.push(marker);
   previewMarker = null;
@@ -1771,6 +2377,13 @@ function getSelectedMarker(): Marker | null {
   return selectedMarkers.find((marker) => marker.id === selectedMarkerId) ?? null;
 }
 
+function getSelectedShape(): ShapeItem | null {
+  if (!selectedShapeId) {
+    return null;
+  }
+  return shapes.find((shape) => shape.id === selectedShapeId) ?? null;
+}
+
 function getEditableMarker(): Marker | null {
   const selected = getSelectedMarker();
   if (selected) {
@@ -1780,6 +2393,7 @@ function getEditableMarker(): Marker | null {
 }
 
 function syncMarkerControls(marker: Marker | null): void {
+  updateSettingsVisibility(marker, null);
   if (
     !markerDotSize ||
     !markerTextSize ||
@@ -1795,6 +2409,12 @@ function syncMarkerControls(marker: Marker | null): void {
     markerDotColor.value = "#f97316";
     markerTextColor.value = "#fde68a";
     markerFont.value = "IBM Plex Sans, sans-serif";
+    syncColorInputs("dot", markerDotColor.value);
+    syncColorInputs("text", markerTextColor.value);
+    if (markerLabelInput) {
+      markerLabelInput.value = "";
+      markerLabelInput.disabled = true;
+    }
     return;
   }
   dotSizeSlider && setSliderValue(dotSizeSlider, marker.style.dotSize, true);
@@ -1802,12 +2422,168 @@ function syncMarkerControls(marker: Marker | null): void {
   markerDotColor.value = marker.style.dotColor;
   markerTextColor.value = marker.style.textColor;
   markerFont.value = marker.style.fontFamily;
+  syncColorInputs("dot", marker.style.dotColor);
+  syncColorInputs("text", marker.style.textColor);
+  if (markerLabelInput) {
+    markerLabelInput.disabled = marker.sourceType !== "geonames";
+    markerLabelInput.value =
+      marker.sourceType === "geonames"
+        ? marker.labelName ?? marker.name
+        : "";
+  }
+}
+
+function syncShapeControls(shape: ShapeItem | null): void {
+  if (!shape) {
+    if (!getSelectedMarker()) {
+      updateSettingsVisibility(null, null);
+    }
+    if (shapeTextInput) {
+      shapeTextInput.value = "";
+    }
+    return;
+  }
+  updateSettingsVisibility(null, shape);
+  if (shape.type === "text") {
+    if (shapeTextInput) {
+      shapeTextInput.value = shape.text ?? "";
+    }
+    if (shapeTextColor) {
+      shapeTextColor.value = shape.style.textColor;
+    }
+    if (shapeTextFont) {
+      shapeTextFont.value = shape.style.fontFamily;
+    }
+    if (shapeTextSizeSlider) {
+      setSliderValue(shapeTextSizeSlider, shape.style.textSize, true);
+    }
+  }
+  if (shape.type === "line") {
+    if (shapeLineColor) {
+      shapeLineColor.value = shape.style.strokeColor;
+    }
+    if (shapeLineWidthSlider) {
+      setSliderValue(shapeLineWidthSlider, shape.style.strokeWidth, true);
+    }
+  }
+  if (shape.type === "arrow") {
+    if (shapeArrowColor) {
+      shapeArrowColor.value = shape.style.strokeColor;
+    }
+    if (shapeArrowWidthSlider) {
+      setSliderValue(shapeArrowWidthSlider, shape.style.strokeWidth, true);
+    }
+  }
+  if (shape.type === "area") {
+    if (shapeAreaFill) {
+      shapeAreaFill.value = shape.style.fillColor;
+    }
+    if (shapeAreaStroke) {
+      shapeAreaStroke.value = shape.style.strokeColor;
+    }
+    if (shapeAreaOpacitySlider) {
+      setSliderValue(shapeAreaOpacitySlider, shape.style.fillOpacity, true);
+    }
+    if (shapeAreaStrokeWidthSlider) {
+      setSliderValue(shapeAreaStrokeWidthSlider, shape.style.strokeWidth, true);
+    }
+  }
+}
+
+function updateSettingsVisibility(marker: Marker | null, shape: ShapeItem | null): void {
+  if (
+    !settingsEmpty ||
+    !pointSettings ||
+    !textSettings ||
+    !lineSettings ||
+    !arrowSettings ||
+    !areaSettings
+  ) {
+    return;
+  }
+  const hasMarker = Boolean(marker);
+  const hasShape = Boolean(shape);
+  settingsEmpty.style.display = hasMarker || hasShape ? "none" : "block";
+  pointSettings.style.display = hasMarker ? "block" : "none";
+  textSettings.style.display = shape?.type === "text" ? "block" : "none";
+  lineSettings.style.display = shape?.type === "line" ? "block" : "none";
+  arrowSettings.style.display = shape?.type === "arrow" ? "block" : "none";
+  areaSettings.style.display = shape?.type === "area" ? "block" : "none";
+  if (pointTextControls) {
+    const hideTextControls = marker?.kind === "point";
+    pointTextControls.style.display = hideTextControls ? "none" : "flex";
+  }
+}
+
+function syncColorInputs(target: "dot" | "text", color: string): void {
+  if (target === "dot") {
+    if (markerDotHex) {
+      markerDotHex.value = color;
+    }
+    if (dotColorChip) {
+      dotColorChip.style.background = color;
+    }
+    return;
+  }
+  if (markerTextHex) {
+    markerTextHex.value = color;
+  }
+  if (textColorChip) {
+    textColorChip.style.background = color;
+  }
+}
+
+function normalizeHexColor(input: string): string | null {
+  let value = input.trim();
+  if (!value) {
+    return null;
+  }
+  if (!value.startsWith("#")) {
+    value = `#${value}`;
+  }
+  const short = /^#([0-9a-fA-F]{3})$/;
+  const full = /^#([0-9a-fA-F]{6})$/;
+  if (short.test(value)) {
+    const [r, g, b] = value.slice(1).split("");
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  if (full.test(value)) {
+    return value.toLowerCase();
+  }
+  return null;
 }
 
 function selectMarker(markerId: string | null): void {
+  previewToolMarker = null;
+  previewShape = null;
   selectedMarkerId = markerId;
+  selectedShapeId = null;
   syncMarkerControls(getSelectedMarker());
   updateMarkerStyles();
+  if (markerId) {
+    activeTool = "marker";
+    document.querySelectorAll<HTMLButtonElement>(".tool-select").forEach((button) => {
+      button.classList.toggle("active", button.dataset.tool === "marker");
+    });
+  }
+}
+
+function selectShape(shapeId: string | null): void {
+  previewToolMarker = null;
+  previewShape = null;
+  selectedShapeId = shapeId;
+  selectedMarkerId = null;
+  previewMarker = null;
+  const shape = getSelectedShape();
+  syncMarkerControls(null);
+  syncShapeControls(shape);
+  renderMarkers();
+  if (shape) {
+    activeTool = shape.type;
+    document.querySelectorAll<HTMLButtonElement>(".tool-select").forEach((button) => {
+      button.classList.toggle("active", button.dataset.tool === shape.type);
+    });
+  }
 }
 
 function renderMarkerList(): void {
@@ -1830,9 +2606,14 @@ function renderMarkerList(): void {
       title.textContent = `${marker.labelName}/${coordsText}`;
     } else if (marker.sourceType === "coords") {
       title.textContent = coordsText;
+    } else if (marker.kind === "point") {
+      title.textContent = marker.name;
     } else {
-      const alt = marker.nameAlt && marker.nameAlt !== marker.name ? marker.nameAlt : marker.name;
-      title.textContent = `${marker.name} / ${alt}`;
+      if (marker.nameAlt && marker.nameAlt !== marker.name) {
+        title.textContent = `${marker.name} / ${marker.nameAlt}`;
+      } else {
+        title.textContent = marker.name;
+      }
     }
     const actions = document.createElement("div");
     actions.className = "marker-actions";
@@ -1857,6 +2638,50 @@ function renderMarkerList(): void {
     row.appendChild(title);
     row.appendChild(actions);
     row.addEventListener("click", () => selectMarker(marker.id));
+    markerList.appendChild(row);
+  });
+
+  const shapeTypeLabel: Record<ShapeItem["type"], string> = {
+    line: "線段",
+    area: "區域",
+    text: "文字",
+    arrow: "箭頭"
+  };
+  const shapeCounters: Record<ShapeItem["type"], number> = {
+    line: 0,
+    area: 0,
+    text: 0,
+    arrow: 0
+  };
+  shapes.forEach((shape) => {
+    shapeCounters[shape.type] += 1;
+    const row = document.createElement("div");
+    row.className = "marker-item";
+    const title = document.createElement("span");
+    if (shape.type === "text") {
+      const fallback = `${shapeTypeLabel[shape.type]}${shapeCounters[shape.type]}`;
+      const rawText = (shape.text ?? "").trim();
+      if (rawText.length === 0 || /^文字標示\d*$/.test(rawText)) {
+        title.textContent = fallback;
+      } else {
+        title.textContent = rawText;
+      }
+    } else {
+      title.textContent = `${shapeTypeLabel[shape.type]}${shapeCounters[shape.type]}`;
+    }
+    const actions = document.createElement("div");
+    actions.className = "marker-actions";
+    const btn = document.createElement("button");
+    btn.className = "secondary";
+    btn.textContent = "清除";
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteShape(shape.id);
+    });
+    actions.appendChild(btn);
+    row.appendChild(title);
+    row.appendChild(actions);
+    row.addEventListener("click", () => selectShape(shape.id));
     markerList.appendChild(row);
   });
 }
@@ -1961,9 +2786,9 @@ function buildProject(): MapProject | null {
       geometry: { kind: "point", lon: marker.longitude, lat: marker.latitude },
       text: markerLabelText(marker),
       provenance:
-        marker.sourceType === "coords"
-          ? { source: "manual", query: "coords" }
-          : { source: "geonames", sourceId: marker.sourceId ?? String(marker.id) }
+        marker.sourceType === "geonames"
+          ? { source: "geonames", sourceId: marker.sourceId ?? String(marker.id) }
+          : { source: "manual", query: marker.sourceType }
     }))
   };
 }
@@ -2060,10 +2885,13 @@ async function handleLoad() {
         },
         sourceType,
         labelMode,
-        labelName: labelMode === "name" ? labelName ?? (obj.text ?? undefined) : labelName
+        labelName: labelMode === "name" ? labelName ?? (obj.text ?? undefined) : labelName,
+        showLabel: true,
+        kind: "label"
       });
     }
   }
+  syncManualMarkerCount();
   renderMarkers();
   renderMarkerList();
   syncMarkerControls(getSelectedMarker());
@@ -2149,9 +2977,28 @@ async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
 
 function handleClearMarkers(): void {
   selectedMarkers.splice(0, selectedMarkers.length);
+  shapes.splice(0, shapes.length);
   selectedMarkerId = null;
+  selectedShapeId = null;
   previewMarker = null;
+  previewToolMarker = null;
+  previewShape = null;
+  manualMarkerCount = 0;
   syncMarkerControls(null);
+  syncShapeControls(null);
+  renderMarkers();
+  renderMarkerList();
+}
+
+function deleteShape(shapeId: string): void {
+  const index = shapes.findIndex((shape) => shape.id === shapeId);
+  if (index >= 0) {
+    shapes.splice(index, 1);
+  }
+  if (selectedShapeId === shapeId) {
+    selectedShapeId = null;
+    syncShapeControls(null);
+  }
   renderMarkers();
   renderMarkerList();
 }
@@ -2186,27 +3033,89 @@ function attachMarkerControls(): void {
     updateMarkerFromControls();
   };
 
-  markerDotColor?.addEventListener("input", update);
-  markerTextColor?.addEventListener("input", update);
+  markerLabelInput?.addEventListener("input", update);
+  markerDotColor?.addEventListener("input", () => {
+    syncColorInputs("dot", markerDotColor.value);
+    update();
+  });
+  markerTextColor?.addEventListener("input", () => {
+    syncColorInputs("text", markerTextColor.value);
+    update();
+  });
+  markerDotHex?.addEventListener("input", () => {
+    const next = normalizeHexColor(markerDotHex.value);
+    if (!next || !markerDotColor) {
+      return;
+    }
+    markerDotColor.value = next;
+    syncColorInputs("dot", next);
+    update();
+  });
+  markerTextHex?.addEventListener("input", () => {
+    const next = normalizeHexColor(markerTextHex.value);
+    if (!next || !markerTextColor) {
+      return;
+    }
+    markerTextColor.value = next;
+    syncColorInputs("text", next);
+    update();
+  });
   markerFont?.addEventListener("change", update);
 
   document.querySelectorAll<HTMLButtonElement>(".color-swatch").forEach((swatch) => {
     swatch.addEventListener("click", () => {
       const color = swatch.dataset.color ?? "";
       const target = swatch.dataset.colorTarget ?? "";
-      const marker = getSelectedMarker();
+      const marker = getEditableMarker();
       if (!marker || !color) {
         return;
       }
       if (target === "dot" && markerDotColor) {
-        marker.style.dotColor = color;
         markerDotColor.value = color;
+        syncColorInputs("dot", color);
       }
       if (target === "text" && markerTextColor) {
-        marker.style.textColor = color;
         markerTextColor.value = color;
+        syncColorInputs("text", color);
       }
-      renderMarkers();
+      updateMarkerFromControls();
+    });
+  });
+}
+
+function attachShapeControls(): void {
+  shapeTextInput?.addEventListener("input", updateShapeFromControls);
+  shapeTextColor?.addEventListener("input", updateShapeFromControls);
+  shapeTextFont?.addEventListener("change", updateShapeFromControls);
+  shapeLineColor?.addEventListener("input", updateShapeFromControls);
+  shapeArrowColor?.addEventListener("input", updateShapeFromControls);
+  shapeAreaFill?.addEventListener("input", updateShapeFromControls);
+  shapeAreaStroke?.addEventListener("input", updateShapeFromControls);
+  document.querySelectorAll<HTMLButtonElement>("[data-shape-color]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const color = button.dataset.shapeColor;
+      const shape = getSelectedShape();
+      if (!color || !shape) {
+        return;
+      }
+      if (shape.type === "text" && shapeTextColor) {
+        shapeTextColor.value = color;
+      }
+      if (shape.type === "line" && shapeLineColor) {
+        shapeLineColor.value = color;
+      }
+      if (shape.type === "arrow" && shapeArrowColor) {
+        shapeArrowColor.value = color;
+      }
+      if (shape.type === "area") {
+        if (shapeAreaFill) {
+          shapeAreaFill.value = color;
+        }
+        if (shapeAreaStroke) {
+          shapeAreaStroke.value = color;
+        }
+      }
+      updateShapeFromControls();
     });
   });
 }
@@ -2230,6 +3139,63 @@ function updateMarkerFromControls(): void {
   }
   if (markerFont) {
     marker.style.fontFamily = markerFont.value;
+  }
+  if (markerLabelInput && marker.sourceType === "geonames") {
+    const value = markerLabelInput.value.trim();
+    marker.labelName = value.length > 0 ? value : undefined;
+    marker.labelMode = "name";
+  }
+  renderMarkers();
+}
+
+function updateShapeFromControls(): void {
+  const shape = getSelectedShape();
+  if (!shape) {
+    return;
+  }
+  if (shape.type === "text") {
+    if (shapeTextInput) {
+      shape.text = shapeTextInput.value.trim() || "文字標示";
+    }
+    if (shapeTextColor) {
+      shape.style.textColor = shapeTextColor.value;
+    }
+    if (shapeTextFont) {
+      shape.style.fontFamily = shapeTextFont.value;
+    }
+    if (shapeTextSizeSlider) {
+      shape.style.textSize = shapeTextSizeSlider.value;
+    }
+  }
+  if (shape.type === "line") {
+    if (shapeLineColor) {
+      shape.style.strokeColor = shapeLineColor.value;
+    }
+    if (shapeLineWidthSlider) {
+      shape.style.strokeWidth = shapeLineWidthSlider.value;
+    }
+  }
+  if (shape.type === "arrow") {
+    if (shapeArrowColor) {
+      shape.style.strokeColor = shapeArrowColor.value;
+    }
+    if (shapeArrowWidthSlider) {
+      shape.style.strokeWidth = shapeArrowWidthSlider.value;
+    }
+  }
+  if (shape.type === "area") {
+    if (shapeAreaFill) {
+      shape.style.fillColor = shapeAreaFill.value;
+    }
+    if (shapeAreaStroke) {
+      shape.style.strokeColor = shapeAreaStroke.value;
+    }
+    if (shapeAreaOpacitySlider) {
+      shape.style.fillOpacity = shapeAreaOpacitySlider.value;
+    }
+    if (shapeAreaStrokeWidthSlider) {
+      shape.style.strokeWidth = shapeAreaStrokeWidthSlider.value;
+    }
   }
   renderMarkers();
 }
@@ -2552,6 +3518,42 @@ function onMouseMove(event: MouseEvent): void {
     }
     return;
   }
+  if (markerDrag) {
+    const marker = selectedMarkers.find((item) => item.id === markerDrag?.markerId);
+    if (marker) {
+      const current = mapPointFromEvent(event);
+      const dx = current.x - markerDrag.startX;
+      const dy = current.y - markerDrag.startY;
+      const width = svg?.viewBox.baseVal.width || 1200;
+      const height = svg?.viewBox.baseVal.height || 800;
+      const [startX, startY] = project(markerDrag.startLon, markerDrag.startLat, width, height);
+      const nextX = startX + dx;
+      const nextY = startY + dy;
+      const [lon, lat] = unproject(nextX, nextY, width, height);
+      marker.longitude = lon;
+      marker.latitude = lat;
+      renderMarkers();
+    }
+    return;
+  }
+  if (shapeDrag) {
+    const shape = shapes.find((item) => item.id === shapeDrag?.shapeId);
+    if (shape) {
+      const current = mapPointFromEvent(event);
+      const dx = current.x - shapeDrag.startX;
+      const dy = current.y - shapeDrag.startY;
+      const width = svg?.viewBox.baseVal.width || 1200;
+      const height = svg?.viewBox.baseVal.height || 800;
+      const [startX, startY] = project(shapeDrag.startLon, shapeDrag.startLat, width, height);
+      const nextX = startX + dx;
+      const nextY = startY + dy;
+      const [lon, lat] = unproject(nextX, nextY, width, height);
+      shape.longitude = lon;
+      shape.latitude = lat;
+      renderMarkers();
+    }
+    return;
+  }
   if (!isDragging || !dragStartScreen || !svg) {
     return;
   }
@@ -2593,6 +3595,18 @@ function onMouseUp(event: MouseEvent): void {
       draggingLabels.forEach((label) => label.removeAttribute("data-dragging"));
     }
     labelDrag = null;
+    return;
+  }
+  if (markerDrag) {
+    markerDrag = null;
+    return;
+  }
+  if (shapeDrag) {
+    shapeDrag = null;
+    return;
+  }
+  if (shapeDrag) {
+    shapeDrag = null;
     return;
   }
   if (!svg || !isDragging || !dragStartScreen) {
@@ -2652,19 +3666,27 @@ function attachMapInteractions(): void {
   svg.addEventListener("mousemove", onMouseMove);
   svg.addEventListener("mouseup", onMouseUp);
   svg.addEventListener("mouseleave", () => {
-    if (labelDrag) {
-      if (svg) {
-        const draggingLabels = svg.querySelectorAll("text[data-marker=\"label\"][data-dragging=\"true\"]");
-        draggingLabels.forEach((label) => label.removeAttribute("data-dragging"));
-      }
-      labelDrag = null;
-      return;
+  if (labelDrag) {
+    if (svg) {
+      const draggingLabels = svg.querySelectorAll("text[data-marker=\"label\"][data-dragging=\"true\"]");
+      draggingLabels.forEach((label) => label.removeAttribute("data-dragging"));
     }
-    if (isDragging) {
-      isDragging = false;
-      dragMode = null;
-      clearDragRect();
-      svg.classList.remove("dragging");
+    labelDrag = null;
+    return;
+  }
+  if (markerDrag) {
+    markerDrag = null;
+    return;
+  }
+  if (shapeDrag) {
+    shapeDrag = null;
+    return;
+  }
+  if (isDragging) {
+    isDragging = false;
+    dragMode = null;
+    clearDragRect();
+    svg.classList.remove("dragging");
       svg.classList.remove("boxing");
     }
   });
@@ -2788,6 +3810,26 @@ coordInput3?.addEventListener("keydown", (event) => {
     handleCoordSearch(coordInput3, resultsEl3);
   }
 });
+document.querySelectorAll<HTMLButtonElement>("[data-clear]").forEach((button) => {
+  const targetId = button.dataset.clear;
+  if (!targetId) {
+    return;
+  }
+  const target = document.getElementById(targetId) as HTMLInputElement | null;
+  if (!target) {
+    return;
+  }
+  const syncVisibility = () => {
+    button.style.display = target.value.trim().length > 0 ? "inline-flex" : "none";
+  };
+  syncVisibility();
+  target.addEventListener("input", syncVisibility);
+  button.addEventListener("click", () => {
+    target.value = "";
+    target.focus();
+    syncVisibility();
+  });
+});
 saveButton?.addEventListener("click", () => handleSave(false));
 saveAsButton?.addEventListener("click", () => handleSave(true));
 loadButton?.addEventListener("click", handleLoad);
@@ -2826,11 +3868,27 @@ hookToolbar();
 hookSteps();
   attachCropInteractions();
   attachMarkerControls();
+  attachShapeControls();
   dotSizeSlider = initSlider(markerDotSize, 7, () => {
     updateMarkerFromControls();
   });
   textSizeSlider = initSlider(markerTextSize, 7, () => {
     updateMarkerFromControls();
+  });
+  shapeTextSizeSlider = initSlider(shapeTextSize, 16, () => {
+    updateShapeFromControls();
+  });
+  shapeLineWidthSlider = initSlider(shapeLineWidth, 2, () => {
+    updateShapeFromControls();
+  });
+  shapeArrowWidthSlider = initSlider(shapeArrowWidth, 2, () => {
+    updateShapeFromControls();
+  });
+  shapeAreaOpacitySlider = initSlider(shapeAreaOpacity, 0.4, () => {
+    updateShapeFromControls();
+  });
+  shapeAreaStrokeWidthSlider = initSlider(shapeAreaStrokeWidth, 2, () => {
+    updateShapeFromControls();
   });
   boot();
 
@@ -2846,5 +3904,25 @@ window.addEventListener("resize", () => {
   if (textSizeSlider) {
     textSizeSlider.rect = null;
     updateSliderUI(textSizeSlider);
+  }
+  if (shapeTextSizeSlider) {
+    shapeTextSizeSlider.rect = null;
+    updateSliderUI(shapeTextSizeSlider);
+  }
+  if (shapeLineWidthSlider) {
+    shapeLineWidthSlider.rect = null;
+    updateSliderUI(shapeLineWidthSlider);
+  }
+  if (shapeArrowWidthSlider) {
+    shapeArrowWidthSlider.rect = null;
+    updateSliderUI(shapeArrowWidthSlider);
+  }
+  if (shapeAreaOpacitySlider) {
+    shapeAreaOpacitySlider.rect = null;
+    updateSliderUI(shapeAreaOpacitySlider);
+  }
+  if (shapeAreaStrokeWidthSlider) {
+    shapeAreaStrokeWidthSlider.rect = null;
+    updateSliderUI(shapeAreaStrokeWidthSlider);
   }
 });

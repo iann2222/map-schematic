@@ -6,23 +6,25 @@
     <title>地圖示意圖</title>
     <style>
       :root {
-        --bg: #0f172a;
+        --bg: #0b0f19;
         --panel: #111827;
-        --ink: #e5e7eb;
-        --muted: #9ca3af;
-        --accent: #38bdf8;
+        --panel-strong: #1e293b;
+        --ink: #f1f5f9;
+        --muted: #94a3b8;
+        --accent: #1976d2;
+        --danger: #ef4444;
+        --border: rgba(255, 255, 255, 0.08);
+        --border-soft: rgba(255, 255, 255, 0.05);
+        --field-bg: #0f172a;
+        --picked-color-w: 32px;
+        --picked-color-h: 22px;
       }
       body {
-        font-family: "IBM Plex Sans", system-ui, sans-serif;
+        font-family: "Inter", "Roboto", system-ui, sans-serif;
         margin: 0;
         padding: 16px;
         color: var(--ink);
-        background: linear-gradient(
-          180deg,
-          #0b1020 0%,
-          #0f172a 50%,
-          #111827 100%
-        );
+        background: var(--bg);
       }
       .layout {
         display: grid;
@@ -30,16 +32,33 @@
         grid-template-columns: 320px 1fr;
         min-height: calc(100vh - 32px);
       }
+      .layout.step-3 {
+        grid-template-columns: 300px minmax(0, 1fr) 320px;
+      }
       .panel {
         background: var(--panel);
-        border-radius: 14px;
+        border-radius: 12px;
         padding: 16px;
-        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.35);
+        box-shadow: 0 16px 30px rgba(3, 7, 18, 0.35);
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 16px;
         position: relative;
         z-index: 2;
+        border: 1px solid var(--border-soft);
+      }
+      .panel.compact {
+        gap: 10px;
+      }
+      .panel.card {
+        padding: 10px;
+        border-radius: 12px;
+        background: var(--panel-strong);
+        border: 1px solid var(--border);
+        box-shadow: none;
+      }
+      .panel.card.compact {
+        padding: 8px;
       }
       .step-header {
         display: flex;
@@ -47,8 +66,8 @@
         gap: 6px;
         padding: 12px;
         border-radius: 12px;
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.55);
       }
       .step-progress {
         font-size: 12px;
@@ -57,7 +76,7 @@
       }
       .step-title {
         font-size: 16px;
-        font-weight: 700;
+        font-weight: 600;
         color: var(--ink);
       }
       .step-subtitle {
@@ -78,38 +97,85 @@
         color: var(--muted);
       }
       .section-title {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
-        color: var(--ink);
-        padding: 6px 10px;
-        border-radius: 10px;
-        border: 1px solid rgba(148, 163, 184, 0.25);
-        background: rgba(148, 163, 184, 0.12);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        padding: 0;
+        border: none;
+        background: transparent;
+      }
+      .section-title.card-title {
+        margin-bottom: 6px;
       }
       .option-row {
         display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
+        gap: 12px;
         align-items: center;
+        flex-wrap: wrap;
+      }
+      .option-row.color-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      .color-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+      }
+      .color-head input[type="color"] {
+        margin-left: 0;
+      }
+      .option-row.color-row .ratio-label {
+        width: 72px;
+        flex: 0 0 72px;
+      }
+      .option-row + .option-row {
+        margin-top: 2px;
       }
       .option-row .secondary.active {
         border: 1px solid rgba(56, 189, 248, 0.9);
         box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
       }
       .ratio-button {
-        min-width: 64px;
+        min-width: 58px;
         height: 34px;
-        padding: 6px 10px;
+        padding: 6px 8px;
         font-size: 14px;
+        flex: 0 0 auto;
+      }
+      .option-row.option-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        align-items: center;
+      }
+      .option-row.option-grid .ratio-button,
+      .option-row.option-grid .secondary,
+      .option-row.option-grid .ratio-input,
+      .option-row.option-grid .hint {
+        width: 100%;
+      }
+      .option-row.option-grid .secondary,
+      .option-row.option-grid .ratio-button {
+        justify-self: stretch;
+        text-align: center;
+      }
+      .option-row.option-grid .hint {
+        text-align: center;
       }
       .ratio-label {
-        padding: 10px 14px;
-        border-radius: 10px;
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        background: rgba(148, 163, 184, 0.2);
-        color: var(--ink);
-        font-weight: 600;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: #94a3b8;
+        font-weight: 500;
         font-size: 14px;
+        width: 72px;
+        flex: 0 0 72px;
       }
       .ratio-input {
         width: 36px;
@@ -212,8 +278,106 @@
       }
       .color-palette {
         display: flex;
-        gap: 6px;
+        gap: 8px;
         flex-wrap: wrap;
+        margin-top: 8px;
+        padding-left: 72px;
+      }
+      .option-row.color-row .color-palette {
+        margin-top: 6px;
+        padding-left: 84px;
+      }
+      .color-picker {
+        width: 100%;
+      }
+      input[type="color"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: var(--picked-color-w);
+        height: var(--picked-color-h);
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 3px;
+        background: transparent;
+        box-shadow: none;
+        box-sizing: border-box;
+      }
+      input[type="color"]::-webkit-color-swatch-wrapper {
+        padding: 0;
+        border: none;
+        background: transparent;
+      }
+      input[type="color"]::-webkit-color-swatch {
+        border: none;
+        border-radius: 2px;
+      }
+      input[type="color"]::-moz-color-swatch {
+        border: none;
+        border-radius: 2px;
+      }
+      .right-panel .section-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--ink);
+        letter-spacing: 0.01em;
+        text-transform: none;
+      }
+      .color-pop {
+        width: 100%;
+        position: relative;
+      }
+      .color-pop summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(148, 163, 184, 0.16);
+        cursor: pointer;
+        user-select: none;
+      }
+      .color-pop summary::-webkit-details-marker {
+        display: none;
+      }
+      .color-chip {
+        width: 18px;
+        height: 18px;
+        border-radius: 6px;
+        border: 1px solid rgba(15, 23, 42, 0.6);
+        box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.25);
+      }
+      .color-popover {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 5;
+        background: #0b1020;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        border-radius: 12px;
+        padding: 10px;
+        min-width: 220px;
+        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.45);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .color-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .color-row input[type="color"] {
+        width: var(--picked-color-w);
+        height: var(--picked-color-h);
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 3px;
+        background: transparent;
+      }
+      .color-row input[type="text"] {
+        flex: 1;
       }
       .color-swatch {
         width: 18px;
@@ -232,18 +396,33 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 6px 8px;
+        padding: 8px 12px;
         border-radius: 8px;
-        background: rgba(148, 163, 184, 0.12);
-        font-size: 12px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        font-size: 14px;
+        font-weight: 400;
+        color: #f1f5f9;
+        margin-bottom: 6px;
+      }
+      .marker-item:hover {
+        background: rgba(255, 255, 255, 0.06);
       }
       .marker-item .marker-actions {
         display: flex;
         gap: 6px;
       }
       .marker-item button {
-        padding: 4px 8px;
+        padding: 4px 6px;
         font-size: 12px;
+        background: transparent;
+        color: #94a3b8;
+        border: none;
+        transition: all 0.2s;
+      }
+      .marker-item button:hover {
+        background: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
       }
       .modal-backdrop {
         position: fixed;
@@ -293,7 +472,92 @@
         display: flex;
         gap: 8px;
       }
+      .field.search-field {
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .field.search-field input[type="text"] {
+        border: none;
+        background: transparent;
+        box-shadow: none;
+        padding: 4px 0;
+        height: 28px;
+        font-size: 14px;
+      }
+      .field.search-field input[type="text"]:focus {
+        border: none;
+        box-shadow: none;
+      }
+      .search-divider {
+        width: 1px;
+        height: 18px;
+        background: rgba(255, 255, 255, 0.15);
+      }
+      .icon-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        border: none;
+        background: transparent;
+        color: var(--ink);
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        box-shadow: none;
+      }
+      .icon-btn svg {
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+      }
+      .icon-clear {
+        font-size: 18px;
+        line-height: 1;
+        display: none;
+      }
       .field.inline-actions {
+        align-items: center;
+      }
+      .field.stack {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .field.stack input[type="text"] {
+        height: 32px;
+        padding: 6px 10px;
+      }
+      .field.stack button {
+        height: 32px;
+        padding: 6px 10px;
+      }
+      .field.row {
+        align-items: center;
+        flex-wrap: nowrap;
+      }
+      .field.row input[type="text"] {
+        height: 32px;
+      }
+      .field.row button {
+        height: 32px;
+        padding: 6px 12px;
+        white-space: nowrap;
+      }
+      .field.row input[type="text"] {
+        min-width: 0;
+      }
+      .step-panel[data-step-panel="0"] .field.search-field {
+        padding: 4px 10px;
+      }
+      .step-panel[data-step-panel="0"] .field {
+        flex-wrap: nowrap;
         align-items: center;
       }
       .actions {
@@ -303,32 +567,63 @@
       }
       input[type="text"] {
         flex: 1;
-        padding: 10px 12px;
-        border-radius: 10px;
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        background: #0b1020;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--field-bg);
         color: var(--ink);
+        height: 40px;
+        font-size: 14px;
+        font-weight: 500;
+        box-sizing: border-box;
+      }
+      input[type="text"]:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
       }
       select {
         flex: 1;
-        padding: 10px 12px;
-        border-radius: 10px;
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        background: #0b1020;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--field-bg);
         color: var(--ink);
+        height: 40px;
+        font-size: 14px;
+        font-weight: 500;
+        box-sizing: border-box;
       }
       button {
-        padding: 10px 14px;
-        border-radius: 10px;
+        padding: 8px 12px;
+        border-radius: 8px;
         border: none;
         background: var(--accent);
-        color: #0b1020;
-        font-weight: 600;
+        color: #fff;
+        font-weight: 500;
         cursor: pointer;
+        transition: all 0.2s ease-in-out;
+        font-size: 14px;
       }
       button.secondary {
-        background: rgba(148, 163, 184, 0.2);
+        background: rgba(255, 255, 255, 0.05);
         color: var(--ink);
+      }
+      button.secondary:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      button:hover {
+        filter: brightness(1.05);
+      }
+      .field.search-field .icon-btn {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        filter: none !important;
+      }
+      .field.search-field .icon-btn:hover {
+        background: transparent !important;
+        filter: none !important;
       }
       button:disabled {
         opacity: 0.6;
@@ -344,10 +639,17 @@
         max-height: 50vh;
         overflow: auto;
       }
+      .results.compact {
+        max-height: 28vh;
+      }
+      .results.plain li {
+        background: transparent;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+      }
       .results li {
         padding: 8px 10px;
-        border-radius: 10px;
-        background: rgba(148, 163, 184, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
         cursor: pointer;
       }
       .results li.result-item {
@@ -370,8 +672,8 @@
         width: 28px;
         height: 28px;
         border-radius: 8px;
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        background: rgba(56, 189, 248, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(25, 118, 210, 0.25);
         color: var(--ink);
         font-weight: 700;
         display: inline-flex;
@@ -379,25 +681,30 @@
         justify-content: center;
       }
       .results li:hover {
-        background: rgba(56, 189, 248, 0.2);
+        background: rgba(255, 255, 255, 0.08);
       }
       .results .meta {
         font-size: 11px;
         color: var(--muted);
       }
       .map-wrap {
-        background: #0b1224;
-        border-radius: 14px;
-        padding: 8px;
-        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: #0f172a;
+        border-radius: 12px;
+        padding: 6px;
+        border: 1px solid var(--border-soft);
         position: relative;
         z-index: 1;
+        display: flex;
+        flex-direction: column;
       }
       .map-stage {
         position: relative;
         height: calc(100vh - 140px);
         width: 100%;
         overflow: hidden;
+      }
+      .layout.step-3 .map-stage {
+        height: calc(100vh - 220px);
       }
       .map-stage canvas,
       .map-stage svg#map {
@@ -406,7 +713,7 @@
         width: 100%;
         height: 100%;
         display: block;
-        border-radius: 10px;
+        border-radius: 12px;
         overflow: hidden;
       }
       .map-stage canvas {
@@ -422,6 +729,10 @@
       }
       .map-stage svg#map.boxing {
         cursor: crosshair;
+      }
+      .map-stage svg#map [data-shape] {
+        cursor: move;
+        pointer-events: all;
       }
       .map-toolbar {
         position: absolute;
@@ -439,12 +750,13 @@
         border-radius: 999px;
         font-size: 12px;
         font-weight: 600;
-        color: var(--ink);
-        background: rgba(15, 23, 42, 0.85);
-        border: 1px solid rgba(148, 163, 184, 0.35);
+        color: #fff;
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         letter-spacing: 0.4px;
         right: 12px;
         bottom: 12px;
+        backdrop-filter: blur(6px);
       }
       .crop-frame {
         position: absolute;
@@ -545,6 +857,155 @@
         justify-content: flex-end;
         gap: 12px;
       }
+      .map-list-panel {
+        margin-top: 12px;
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+        background: #0f172a;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 0;
+      }
+      .layout.step-3 .map-list-panel {
+        display: flex;
+      }
+      .map-list-panel summary {
+        list-style: none;
+      }
+      .map-list-panel summary::-webkit-details-marker {
+        display: none;
+      }
+      .map-list-header {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 12px 16px;
+        cursor: pointer;
+        color: #f1f5f9;
+        font-size: 14px;
+        font-weight: 600;
+        gap: 6px;
+      }
+      .map-list-header .chevron {
+        width: 16px;
+        height: 16px;
+        color: #94a3b8;
+        transition: transform 0.3s ease;
+      }
+      .map-list-panel[open] .chevron {
+        transform: rotate(180deg);
+      }
+      .map-list-panel .marker-list {
+        gap: 8px;
+        padding: 0 16px 12px;
+      }
+      .map-list-panel #clearMarkers {
+        margin: 0 16px 12px;
+        height: 32px;
+        background: transparent;
+        color: #ef4444;
+        border: 1px dashed rgba(239, 68, 68, 0.3);
+        border-radius: 6px;
+        padding: 8px;
+        width: calc(100% - 32px);
+      }
+      .map-list-panel #clearMarkers:hover {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.5);
+      }
+      .settings-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .tool-panel {
+        display: none;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .layout.step-3 .tool-panel {
+        display: flex;
+      }
+      .tool-panel .panel.card {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .tool-panel .panel.card.compact .section-title {
+        margin-bottom: 4px;
+      }
+      .tool-panel .field.row {
+        flex-wrap: nowrap;
+      }
+      .tool-panel .field.row button {
+        flex: 0 0 auto;
+        height: 32px;
+        width: 36px;
+        padding: 0;
+      }
+      .tool-panel .field.row input[type="text"] {
+        flex: 0 1 180px;
+        height: 30px;
+        padding: 6px 10px;
+      }
+      .tool-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .tool-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tool-btn {
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--ink);
+        font-weight: 500;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+      }
+      .tool-icon {
+        width: 18px;
+        height: 18px;
+        border-radius: 6px;
+        background: rgba(148, 163, 184, 0.2);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+      }
+      .tool-add {
+        flex: 0 0 auto;
+      }
+      .tool-btn.active {
+        border: 1px solid rgba(56, 189, 248, 0.9);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+        background: rgba(56, 189, 248, 0.2);
+      }
+      .right-panel {
+        display: none;
+      }
+      .layout.step-3 .right-panel {
+        display: flex;
+      }
+      .right-panel .option-row {
+        align-items: center;
+        gap: 10px;
+        flex-wrap: nowrap;
+      }
+      .right-panel .option-row.color-row input[type="color"] {
+        width: var(--picked-color-w) !important;
+        height: var(--picked-color-h) !important;
+        min-width: var(--picked-color-w);
+        min-height: var(--picked-color-h);
+      }
       .map-footer button {
         padding: 12px 22px;
         font-size: 14px;
@@ -553,14 +1014,23 @@
         display: none;
       }
       .map-toolbar button {
-        background: rgba(15, 23, 42, 0.85);
+        background: rgba(15, 23, 42, 0.7);
         color: var(--ink);
-        border: 1px solid rgba(148, 163, 184, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         padding: 8px 10px;
       }
       @media (max-width: 960px) {
         .layout {
           grid-template-columns: 1fr;
+        }
+        .layout.step-3 {
+          grid-template-columns: 1fr;
+        }
+        .right-panel {
+          display: none;
+        }
+        .layout.step-3 .right-panel {
+          display: flex;
         }
         .map-stage {
           height: 60vh;
@@ -578,7 +1048,7 @@
     </style>
   </head>
   <body>
-    <div class="layout">
+    <div class="layout" id="layout">
       <div class="panel">
         <div>
           <h1 class="title">地圖示意圖</h1>
@@ -597,27 +1067,61 @@
           <div class="field inline-actions">
             <button id="loadBtn0" class="secondary">載入專案</button>
           </div>
-          <div class="field">
+          <div class="field search-field">
             <input
               id="search0"
               type="text"
-              placeholder="輸入地名（例如：台北 / Taipei）"
+              placeholder="地名（例如：台北 / Taipei）"
             />
-            <button id="searchBtn0">地名搜尋</button>
+            <button
+              class="icon-btn icon-clear"
+              data-clear="search0"
+              aria-label="清除"
+            >
+              ×
+            </button>
+            <span class="search-divider"></span>
+            <button
+              id="searchBtn0"
+              class="icon-btn icon-search"
+              aria-label="搜尋"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+              </svg>
+            </button>
           </div>
-          <div class="field">
+          <div class="field search-field">
             <input
               id="coord0"
               type="text"
-              placeholder="輸入經緯度（例如：25.034, 121.564）"
+              placeholder="經緯度（例如：25.034, 121.564）"
             />
-            <button id="coordBtn0">座標搜尋</button>
+            <button
+              class="icon-btn icon-clear"
+              data-clear="coord0"
+              aria-label="清除"
+            >
+              ×
+            </button>
+            <span class="search-divider"></span>
+            <button
+              id="coordBtn0"
+              class="icon-btn icon-search"
+              aria-label="搜尋"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+              </svg>
+            </button>
           </div>
           <ul class="results" id="results0"></ul>
         </div>
         <div class="step-panel" data-step-panel="1">
           <div class="hint">框選比例：</div>
-          <div class="option-row">
+          <div class="option-row option-grid">
             <button class="secondary ratio-button" id="ratioOriginal">
               預設
             </button>
@@ -629,7 +1133,7 @@
             <button class="secondary ratio-button" id="ratio916">9:16</button>
             <button class="secondary ratio-button" id="ratioA4">A4</button>
           </div>
-          <div class="option-row">
+          <div class="option-row option-grid">
             <button class="secondary ratio-button" id="ratioCustom">
               自訂
             </button>
@@ -641,7 +1145,7 @@
         </div>
         <div class="step-panel" data-step-panel="2">
           <div class="hint">底圖視覺風格：</div>
-          <div class="option-row">
+          <div class="option-row option-grid">
             <button class="secondary ratio-button" id="styleOriginal">
               預設
             </button>
@@ -658,7 +1162,7 @@
             <button class="secondary ratio-button" id="styleSoft">柔和</button>
           </div>
           <div class="hint">地形陰影：</div>
-          <div class="option-row">
+          <div class="option-row option-grid">
             <button class="secondary active" data-relief="off">關閉</button>
             <button class="secondary" data-relief="source-over">覆蓋</button>
             <button class="secondary" data-relief="multiply">加深</button>
@@ -669,183 +1173,113 @@
           </div>
           <div class="hint">下一步：加入地名標示或文字。</div>
         </div>
-        <div class="step-panel" data-step-panel="3">
-          <div class="hint">標示工具（示範版）。</div>
-          <div class="field">
-            <input
-              id="search3"
-              type="text"
-              placeholder="輸入地名（如：台北 / Taipei）"
-            />
-            <button id="searchBtn3">地名搜尋</button>
+        <div class="step-panel tool-panel" data-step-panel="3">
+          <div class="panel card compact">
+            <div class="section-title card-title">地名搜尋</div>
+            <div class="field row search-field">
+              <input
+                id="search3"
+                type="text"
+                placeholder="地名（如：台北 / Taipei）"
+              />
+              <button
+                class="icon-btn icon-clear"
+                data-clear="search3"
+                aria-label="清除"
+              >
+                ×
+              </button>
+              <span class="search-divider"></span>
+              <button
+                id="searchBtn3"
+                class="icon-btn icon-search"
+                aria-label="地名搜尋"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5"></circle>
+                  <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+                </svg>
+              </button>
+            </div>
+            <div class="section-title card-title">座標搜尋</div>
+            <div class="field row search-field">
+              <input
+                id="coord3"
+                type="text"
+                placeholder="經緯度（例如：25.034, 121.564）"
+              />
+              <button
+                class="icon-btn icon-clear"
+                data-clear="coord3"
+                aria-label="清除"
+              >
+                ×
+              </button>
+              <span class="search-divider"></span>
+              <button
+                id="coordBtn3"
+                class="icon-btn icon-search"
+                aria-label="座標搜尋"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5"></circle>
+                  <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+                </svg>
+              </button>
+            </div>
+            <div class="section-title card-title">搜尋結果</div>
+            <ul class="results compact plain" id="results3"></ul>
           </div>
-          <div class="field">
-            <input
-              id="coord3"
-              type="text"
-              placeholder="輸入經緯度（例如：25.034, 121.564）"
-            />
-            <button id="coordBtn3">座標搜尋</button>
-          </div>
-          <ul class="results" id="results3"></ul>
-          <div class="hint">標示設定：</div>
-          <div class="option-row">
-            <label class="ratio-label">點大小</label>
-            <div
-              class="slider"
-              id="markerDotSize"
-              data-min="2"
-              data-max="16"
-              data-step="1"
-              data-marks="9"
-              data-default-index="3"
-            >
-              <div class="slider-track">
-                <div class="slider-fill"></div>
-                <div class="slider-thumb" tabindex="0"></div>
+          <div class="panel card compact">
+            <div class="section-title card-title">新增標示</div>
+            <div class="tool-list">
+              <div class="tool-item" data-tool="marker">
+                <button class="tool-btn tool-select active" data-tool="marker">
+                  <span class="tool-icon">●</span>
+                  點標示
+                </button>
+                <button class="icon-btn tool-add" data-add-tool="marker">
+                  +
+                </button>
               </div>
-              <div class="slider-marks"></div>
-            </div>
-          </div>
-          <div class="option-row">
-            <label class="ratio-label">字大小</label>
-            <div
-              class="slider"
-              id="markerTextSize"
-              data-min="4"
-              data-max="12"
-              data-step="1"
-              data-marks="9"
-              data-default-index="3"
-            >
-              <div class="slider-track">
-                <div class="slider-fill"></div>
-                <div class="slider-thumb" tabindex="0"></div>
+              <div class="tool-item" data-tool="line">
+                <button class="tool-btn tool-select" data-tool="line">
+                  <span class="tool-icon">／</span>
+                  線段
+                </button>
+                <button class="icon-btn tool-add" data-add-tool="line">
+                  +
+                </button>
               </div>
-              <div class="slider-marks"></div>
+              <div class="tool-item" data-tool="area">
+                <button class="tool-btn tool-select" data-tool="area">
+                  <span class="tool-icon">▢</span>
+                  區域
+                </button>
+                <button class="icon-btn tool-add" data-add-tool="area">
+                  +
+                </button>
+              </div>
+              <div class="tool-item" data-tool="text">
+                <button class="tool-btn tool-select" data-tool="text">
+                  <span class="tool-icon">T</span>
+                  文字
+                </button>
+                <button class="icon-btn tool-add" data-add-tool="text">
+                  +
+                </button>
+              </div>
+              <div class="tool-item" data-tool="arrow">
+                <button class="tool-btn tool-select" data-tool="arrow">
+                  <span class="tool-icon">➜</span>
+                  箭頭
+                </button>
+                <button class="icon-btn tool-add" data-add-tool="arrow">
+                  +
+                </button>
+              </div>
             </div>
           </div>
-          <div class="option-row">
-            <label class="ratio-label">字體</label>
-            <select id="markerFont">
-              <option value="IBM Plex Sans, sans-serif">IBM Plex Sans</option>
-              <option value="Noto Sans TC, sans-serif">Noto Sans TC</option>
-              <option value="Microsoft JhengHei, sans-serif">Microsoft JhengHei</option>
-              <option value="PingFang TC, sans-serif">PingFang TC</option>
-              <option value="serif">Serif</option>
-            </select>
-          </div>
-          <div class="option-row">
-            <label class="ratio-label">點顏色</label>
-            <input id="markerDotColor" type="color" value="#f97316" />
-            <div class="color-palette" id="dotPalette">
-              <button
-                class="color-swatch"
-                data-color="#ff7a59"
-                data-color-target="dot"
-                style="background: #ff7a59"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#fde68a"
-                data-color-target="dot"
-                style="background: #fde68a"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#f59e0b"
-                data-color-target="dot"
-                style="background: #f59e0b"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#22c55e"
-                data-color-target="dot"
-                style="background: #22c55e"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#38bdf8"
-                data-color-target="dot"
-                style="background: #38bdf8"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#a78bfa"
-                data-color-target="dot"
-                style="background: #a78bfa"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#f43f5e"
-                data-color-target="dot"
-                style="background: #f43f5e"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#f97316"
-                data-color-target="dot"
-                style="background: #f97316"
-              ></button>
-            </div>
-          </div>
-          <div class="option-row">
-            <label class="ratio-label">文字顏色</label>
-            <input id="markerTextColor" type="color" value="#fde68a" />
-            <div class="color-palette" id="textPalette">
-              <button
-                class="color-swatch"
-                data-color="#ff7a59"
-                data-color-target="text"
-                style="background: #ff7a59"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#fde68a"
-                data-color-target="text"
-                style="background: #fde68a"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#f59e0b"
-                data-color-target="text"
-                style="background: #f59e0b"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#22c55e"
-                data-color-target="text"
-                style="background: #22c55e"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#38bdf8"
-                data-color-target="text"
-                style="background: #38bdf8"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#a78bfa"
-                data-color-target="text"
-                style="background: #a78bfa"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#f43f5e"
-                data-color-target="text"
-                style="background: #f43f5e"
-              ></button>
-              <button
-                class="color-swatch"
-                data-color="#f97316"
-                data-color-target="text"
-                style="background: #f97316"
-              ></button>
-            </div>
-          </div>
-          <div class="section-title">標示清單</div>
-          <div class="marker-list" id="markerList"></div>
-          <button id="clearMarkers" class="secondary">清除全部</button>
         </div>
       </div>
       <div class="map-wrap">
@@ -883,15 +1317,555 @@
           <button id="prevStep" class="secondary">返回</button>
           <button id="nextStep">下一步</button>
         </div>
+        <details class="map-list-panel" data-step-panel="3" open>
+          <summary class="map-list-header">
+            <span>標示清單</span>
+            <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M6 9l6 6 6-6"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ></path>
+            </svg>
+          </summary>
+          <div class="marker-list" id="markerList"></div>
+          <button id="clearMarkers" class="secondary">清除全部</button>
+        </details>
+      </div>
+      <div class="panel right-panel">
+        <div class="step-panel" data-step-panel="3">
+          <div class="section-title">屬性</div>
+          <div class="hint" id="settingsEmpty">尚未選取標示。</div>
+          <div id="pointSettings" class="settings-stack">
+            <div class="option-row">
+              <label class="ratio-label">點大小</label>
+              <div
+                class="slider"
+                id="markerDotSize"
+                data-min="2"
+                data-max="16"
+                data-step="1"
+                data-marks="9"
+                data-default-index="3"
+              >
+                <div class="slider-track">
+                  <div class="slider-fill"></div>
+                  <div class="slider-thumb" tabindex="0"></div>
+                </div>
+                <div class="slider-marks"></div>
+              </div>
+            </div>
+            <div class="option-row color-row">
+              <div class="color-head">
+                <label class="ratio-label">點顏色</label>
+                <input id="markerDotColor" type="color" value="#f97316" />
+              </div>
+              <div class="color-palette" id="dotPalette">
+                <button
+                  class="color-swatch"
+                  data-color="#ff7a59"
+                  data-color-target="dot"
+                  style="background: #ff7a59"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-color="#fde68a"
+                  data-color-target="dot"
+                  style="background: #fde68a"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-color="#f59e0b"
+                  data-color-target="dot"
+                  style="background: #f59e0b"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-color="#22c55e"
+                  data-color-target="dot"
+                  style="background: #22c55e"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-color="#38bdf8"
+                  data-color-target="dot"
+                  style="background: #38bdf8"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-color="#a78bfa"
+                  data-color-target="dot"
+                  style="background: #a78bfa"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-color="#f43f5e"
+                  data-color-target="dot"
+                  style="background: #f43f5e"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-color="#f97316"
+                  data-color-target="dot"
+                  style="background: #f97316"
+                ></button>
+              </div>
+            </div>
+            <div id="pointTextControls" class="settings-stack">
+              <div class="option-row">
+                <label class="ratio-label">標示文字</label>
+                <input
+                  id="markerLabelInput"
+                  type="text"
+                  placeholder="輸入標示文字"
+                />
+              </div>
+              <div class="option-row">
+                <label class="ratio-label">字大小</label>
+                <div
+                  class="slider"
+                  id="markerTextSize"
+                  data-min="4"
+                  data-max="12"
+                  data-step="1"
+                  data-marks="9"
+                  data-default-index="3"
+                >
+                  <div class="slider-track">
+                    <div class="slider-fill"></div>
+                    <div class="slider-thumb" tabindex="0"></div>
+                  </div>
+                  <div class="slider-marks"></div>
+                </div>
+              </div>
+              <div class="option-row">
+                <label class="ratio-label">字體</label>
+                <select id="markerFont">
+                  <option value="IBM Plex Sans, sans-serif">
+                    IBM Plex Sans
+                  </option>
+                  <option value="Noto Sans TC, sans-serif">Noto Sans TC</option>
+                  <option value="Microsoft JhengHei, sans-serif">
+                    Microsoft JhengHei
+                  </option>
+                  <option value="PingFang TC, sans-serif">PingFang TC</option>
+                  <option value="serif">Serif</option>
+                </select>
+              </div>
+              <div class="option-row color-row">
+                <div class="color-head">
+                  <label class="ratio-label">文字顏色</label>
+                  <input id="markerTextColor" type="color" value="#fde68a" />
+                </div>
+                <div class="color-palette" id="textPalette">
+                  <button
+                    class="color-swatch"
+                    data-color="#ff7a59"
+                    data-color-target="text"
+                    style="background: #ff7a59"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#fde68a"
+                    data-color-target="text"
+                    style="background: #fde68a"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#f59e0b"
+                    data-color-target="text"
+                    style="background: #f59e0b"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#22c55e"
+                    data-color-target="text"
+                    style="background: #22c55e"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#38bdf8"
+                    data-color-target="text"
+                    style="background: #38bdf8"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#a78bfa"
+                    data-color-target="text"
+                    style="background: #a78bfa"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#f43f5e"
+                    data-color-target="text"
+                    style="background: #f43f5e"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#f97316"
+                    data-color-target="text"
+                    style="background: #f97316"
+                  ></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="textSettings" class="settings-stack" style="display: none">
+            <div class="option-row">
+              <label class="ratio-label">文字內容</label>
+              <input
+                id="shapeTextInput"
+                type="text"
+                placeholder="輸入文字內容"
+              />
+            </div>
+            <div class="option-row">
+              <label class="ratio-label">字大小</label>
+              <div
+                class="slider"
+                id="shapeTextSize"
+                data-min="6"
+                data-max="28"
+                data-step="1"
+                data-marks="9"
+                data-default-index="3"
+              >
+                <div class="slider-track">
+                  <div class="slider-fill"></div>
+                  <div class="slider-thumb" tabindex="0"></div>
+                </div>
+                <div class="slider-marks"></div>
+              </div>
+            </div>
+            <div class="option-row">
+              <label class="ratio-label">字體</label>
+              <select id="shapeTextFont">
+                <option value="IBM Plex Sans, sans-serif">IBM Plex Sans</option>
+                <option value="Noto Sans TC, sans-serif">Noto Sans TC</option>
+                <option value="Microsoft JhengHei, sans-serif">
+                  Microsoft JhengHei
+                </option>
+                <option value="PingFang TC, sans-serif">PingFang TC</option>
+                <option value="serif">Serif</option>
+              </select>
+            </div>
+            <div class="option-row color-row">
+              <div class="color-head">
+                <label class="ratio-label">文字顏色</label>
+                <input id="shapeTextColor" type="color" value="#fde68a" />
+              </div>
+              <div class="color-palette" id="shapeTextPalette">
+                <button
+                  class="color-swatch"
+                  data-shape-color="#0f172a"
+                  style="background: #0f172a"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#ffffff"
+                  style="background: #ffffff"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#ef4444"
+                  style="background: #ef4444"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#3b82f6"
+                  style="background: #3b82f6"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#facc15"
+                  style="background: #facc15"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#22c55e"
+                  style="background: #22c55e"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#9ca3af"
+                  style="background: #9ca3af"
+                ></button>
+              </div>
+            </div>
+          </div>
+          <div id="lineSettings" class="settings-stack" style="display: none">
+            <div class="option-row">
+              <label class="ratio-label">線寬</label>
+              <div
+                class="slider"
+                id="shapeLineWidth"
+                data-min="1"
+                data-max="12"
+                data-step="1"
+                data-marks="9"
+                data-default-index="2"
+              >
+                <div class="slider-track">
+                  <div class="slider-fill"></div>
+                  <div class="slider-thumb" tabindex="0"></div>
+                </div>
+                <div class="slider-marks"></div>
+              </div>
+            </div>
+            <div class="option-row color-row">
+              <div class="color-head">
+                <label class="ratio-label">線條顏色</label>
+                <input id="shapeLineColor" type="color" value="#38bdf8" />
+              </div>
+              <div class="color-palette" id="shapeLinePalette">
+                <button
+                  class="color-swatch"
+                  data-shape-color="#0f172a"
+                  style="background: #0f172a"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#ffffff"
+                  style="background: #ffffff"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#ef4444"
+                  style="background: #ef4444"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#3b82f6"
+                  style="background: #3b82f6"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#facc15"
+                  style="background: #facc15"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#22c55e"
+                  style="background: #22c55e"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#9ca3af"
+                  style="background: #9ca3af"
+                ></button>
+              </div>
+            </div>
+          </div>
+          <div id="arrowSettings" class="settings-stack" style="display: none">
+            <div class="option-row">
+              <label class="ratio-label">線寬</label>
+              <div
+                class="slider"
+                id="shapeArrowWidth"
+                data-min="1"
+                data-max="12"
+                data-step="1"
+                data-marks="9"
+                data-default-index="2"
+              >
+                <div class="slider-track">
+                  <div class="slider-fill"></div>
+                  <div class="slider-thumb" tabindex="0"></div>
+                </div>
+                <div class="slider-marks"></div>
+              </div>
+            </div>
+            <div class="option-row color-row">
+              <div class="color-head">
+                <label class="ratio-label">箭頭顏色</label>
+                <input id="shapeArrowColor" type="color" value="#38bdf8" />
+              </div>
+              <div class="color-palette" id="shapeArrowPalette">
+                <button
+                  class="color-swatch"
+                  data-shape-color="#0f172a"
+                  style="background: #0f172a"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#ffffff"
+                  style="background: #ffffff"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#ef4444"
+                  style="background: #ef4444"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#3b82f6"
+                  style="background: #3b82f6"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#facc15"
+                  style="background: #facc15"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#22c55e"
+                  style="background: #22c55e"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#9ca3af"
+                  style="background: #9ca3af"
+                ></button>
+              </div>
+            </div>
+          </div>
+          <div id="areaSettings" class="settings-stack" style="display: none">
+            <div class="option-row color-row">
+              <div class="color-head">
+                <label class="ratio-label">填色</label>
+                <input id="shapeAreaFill" type="color" value="#38bdf8" />
+              </div>
+              <div class="color-palette" id="shapeAreaFillPalette">
+                <button
+                  class="color-swatch"
+                  data-shape-color="#0f172a"
+                  style="background: #0f172a"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#ffffff"
+                  style="background: #ffffff"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#ef4444"
+                  style="background: #ef4444"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#3b82f6"
+                  style="background: #3b82f6"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#facc15"
+                  style="background: #facc15"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#22c55e"
+                  style="background: #22c55e"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#9ca3af"
+                  style="background: #9ca3af"
+                ></button>
+              </div>
+            </div>
+            <div class="option-row">
+              <label class="ratio-label">透明度</label>
+              <div
+                class="slider"
+                id="shapeAreaOpacity"
+                data-min="0.1"
+                data-max="1"
+                data-step="0.1"
+                data-marks="10"
+                data-default-index="6"
+              >
+                <div class="slider-track">
+                  <div class="slider-fill"></div>
+                  <div class="slider-thumb" tabindex="0"></div>
+                </div>
+                <div class="slider-marks"></div>
+              </div>
+            </div>
+            <div class="option-row color-row">
+              <div class="color-head">
+                <label class="ratio-label">邊框色</label>
+                <input id="shapeAreaStroke" type="color" value="#38bdf8" />
+              </div>
+              <div class="color-palette" id="shapeAreaStrokePalette">
+                <button
+                  class="color-swatch"
+                  data-shape-color="#0f172a"
+                  style="background: #0f172a"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#ffffff"
+                  style="background: #ffffff"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#ef4444"
+                  style="background: #ef4444"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#3b82f6"
+                  style="background: #3b82f6"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#facc15"
+                  style="background: #facc15"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#22c55e"
+                  style="background: #22c55e"
+                ></button>
+                <button
+                  class="color-swatch"
+                  data-shape-color="#9ca3af"
+                  style="background: #9ca3af"
+                ></button>
+              </div>
+            </div>
+            <div class="option-row">
+              <label class="ratio-label">邊框寬</label>
+              <div
+                class="slider"
+                id="shapeAreaStrokeWidth"
+                data-min="1"
+                data-max="10"
+                data-step="1"
+                data-marks="9"
+                data-default-index="2"
+              >
+                <div class="slider-track">
+                  <div class="slider-fill"></div>
+                  <div class="slider-thumb" tabindex="0"></div>
+                </div>
+                <div class="slider-marks"></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-backdrop" id="coordEditModal">
       <div class="modal">
         <div class="modal-title">編輯座標標示</div>
-        <input id="coordLabelInput" type="text" placeholder="輸入文字標示名稱（可留空）" />
+        <input
+          id="coordLabelInput"
+          type="text"
+          placeholder="輸入文字標示名稱（可留空）"
+        />
         <div class="option-row">
-          <label><input type="radio" name="coordLabelMode" value="name" /> 顯示文字</label>
-          <label><input type="radio" name="coordLabelMode" value="coords" /> 顯示經緯度</label>
+          <label
+            ><input type="radio" name="coordLabelMode" value="name" />
+            顯示文字</label
+          >
+          <label
+            ><input type="radio" name="coordLabelMode" value="coords" />
+            顯示經緯度</label
+          >
         </div>
         <div class="modal-actions">
           <button id="coordEditCancel" class="secondary">取消</button>
