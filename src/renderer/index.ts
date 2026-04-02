@@ -406,6 +406,19 @@ type OrderDragSession = {
   queuedClientY: number;
   orderChanged: boolean;
 };
+
+type LonLat = [number, number];
+type PolygonGeometry = { type: "Polygon"; coordinates: LonLat[][] };
+type MultiPolygonGeometry = { type: "MultiPolygon"; coordinates: LonLat[][][] };
+type LineStringGeometry = { type: "LineString"; coordinates: LonLat[] };
+type MultiLineStringGeometry = { type: "MultiLineString"; coordinates: LonLat[][] };
+type RenderGeometry =
+  | PolygonGeometry
+  | MultiPolygonGeometry
+  | LineStringGeometry
+  | MultiLineStringGeometry
+  | null
+  | undefined;
 let orderDragSession: OrderDragSession | null = null;
 let selectedShapeId: string | null = null;
 let activeTool: "marker" | "line" | "area" | "text" | "arrow" = "marker";
@@ -475,7 +488,7 @@ function unproject(x: number, y: number, width: number, height: number): [number
 }
 
 function pathFromCoords(
-  coords: Array<[number, number]>,
+  coords: LonLat[],
   width: number,
   height: number
 ): string {
@@ -493,19 +506,19 @@ function pathFromCoords(
   return d;
 }
 
-function geometryToPath(geometry: any, width: number, height: number): string {
+function geometryToPath(geometry: RenderGeometry, width: number, height: number): string {
   if (!geometry) {
     return "";
   }
   const type = geometry.type;
   if (type === "Polygon") {
     return geometry.coordinates
-      .map((ring: Array<[number, number]>) => pathFromCoords(ring, width, height) + " Z")
+      .map((ring) => pathFromCoords(ring, width, height) + " Z")
       .join(" ");
   }
   if (type === "MultiPolygon") {
     return geometry.coordinates
-      .map((poly: Array<Array<[number, number]>>) =>
+      .map((poly) =>
         poly.map((ring) => pathFromCoords(ring, width, height) + " Z").join(" ")
       )
       .join(" ");
@@ -515,7 +528,7 @@ function geometryToPath(geometry: any, width: number, height: number): string {
   }
   if (type === "MultiLineString") {
     return geometry.coordinates
-      .map((line: Array<[number, number]>) => pathFromCoords(line, width, height))
+      .map((line) => pathFromCoords(line, width, height))
       .join(" ");
   }
   return "";
