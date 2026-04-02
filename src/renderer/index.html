@@ -467,10 +467,37 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
+        position: relative;
       }
       .modal .modal-title {
         font-size: 14px;
         font-weight: 700;
+      }
+      .modal-close {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 24px;
+        height: 24px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: #94a3b8;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 1;
+      }
+      .modal-close:hover {
+        background: rgba(148, 163, 184, 0.14);
+        color: #e2e8f0;
+      }
+      .modal-close:focus-visible {
+        outline: 2px solid rgba(56, 189, 248, 0.8);
+        outline-offset: 1px;
       }
       .modal .modal-actions {
         display: flex;
@@ -479,6 +506,71 @@
       }
       .order-modal {
         width: min(760px, 92vw);
+      }
+      .complete-modal {
+        width: min(440px, 92vw);
+      }
+      .complete-note {
+        font-size: 12px;
+        color: #94a3b8;
+        line-height: 1.5;
+      }
+      .complete-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .complete-actions button {
+        width: 100%;
+      }
+      .complete-actions .full {
+        grid-column: 1 / -1;
+      }
+      .complete-feedback {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        color: #cbd5e1;
+        font-size: 12px;
+      }
+      .complete-feedback.show {
+        display: flex;
+      }
+      .complete-feedback-icon {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 12px;
+      }
+      .complete-feedback.loading .complete-feedback-icon {
+        border: 1.5px solid rgba(203, 213, 225, 0.32);
+        border-top-color: rgba(203, 213, 225, 0.95);
+        animation: complete-spin 0.9s linear infinite;
+      }
+      .complete-feedback.success .complete-feedback-icon {
+        order: 0;
+        width: 10px;
+        height: 8px;
+        flex: 0 0 10px;
+      }
+      .complete-feedback.success .complete-feedback-icon::before {
+        content: "";
+        width: 7px;
+        height: 4px;
+        border-left: 1.5px solid #e2e8f0;
+        border-bottom: 1.5px solid #e2e8f0;
+        transform: rotate(-45deg);
+      }
+      .complete-feedback.error {
+        color: #fda4af;
+      }
+      @keyframes complete-spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
       .order-grid {
         display: grid;
@@ -2199,6 +2291,25 @@
         </div>
         <div class="modal-actions">
           <button id="listOrderClose" class="secondary">關閉</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="completeModal">
+      <div class="modal complete-modal">
+        <button id="completeClose" class="modal-close" type="button" aria-label="關閉">×</button>
+        <div class="modal-title">完成編輯</div>
+        <div class="complete-note">可立即儲存專案、匯出圖檔，或返回繼續編輯。</div>
+        <div class="complete-actions">
+          <button id="completeSave" class="secondary">儲存專案</button>
+          <button id="completeSaveAs" class="secondary">另存新檔</button>
+          <button id="completeExportPng" class="secondary">匯出 PNG</button>
+          <button id="completeExportSvg" class="secondary">匯出 SVG</button>
+          <button id="completeExportPdf" class="secondary">匯出 PDF</button>
+          <button id="completeContinue" class="full">返回繼續編輯</button>
+        </div>
+        <div id="completeSaveFeedback" class="complete-feedback" aria-live="polite">
+          <span class="complete-feedback-icon" aria-hidden="true"></span>
+          <span id="completeSaveFeedbackText"></span>
         </div>
       </div>
     </div>

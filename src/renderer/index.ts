@@ -265,6 +265,16 @@ const listOrderModal = document.getElementById("listOrderModal") as HTMLDivEleme
 const listOrderList = document.getElementById("listOrderList") as HTMLUListElement | null;
 const displayOrderList = document.getElementById("displayOrderList") as HTMLUListElement | null;
 const listOrderClose = document.getElementById("listOrderClose") as HTMLButtonElement | null;
+const completeModal = document.getElementById("completeModal") as HTMLDivElement | null;
+const completeSave = document.getElementById("completeSave") as HTMLButtonElement | null;
+const completeSaveAs = document.getElementById("completeSaveAs") as HTMLButtonElement | null;
+const completeExportPng = document.getElementById("completeExportPng") as HTMLButtonElement | null;
+const completeExportSvg = document.getElementById("completeExportSvg") as HTMLButtonElement | null;
+const completeExportPdf = document.getElementById("completeExportPdf") as HTMLButtonElement | null;
+const completeContinue = document.getElementById("completeContinue") as HTMLButtonElement | null;
+const completeClose = document.getElementById("completeClose") as HTMLButtonElement | null;
+const completeSaveFeedback = document.getElementById("completeSaveFeedback") as HTMLDivElement | null;
+const completeSaveFeedbackText = document.getElementById("completeSaveFeedbackText") as HTMLSpanElement | null;
 const coordEditModal = document.getElementById("coordEditModal") as HTMLDivElement | null;
 const coordLabelInput = document.getElementById("coordLabelInput") as HTMLInputElement | null;
 const coordEditCancel = document.getElementById("coordEditCancel") as HTMLButtonElement | null;
@@ -285,6 +295,7 @@ let shapeLineWidthSlider: SliderControl | null = null;
 let shapeArrowWidthSlider: SliderControl | null = null;
 let shapeAreaOpacitySlider: SliderControl | null = null;
 let shapeAreaStrokeWidthSlider: SliderControl | null = null;
+let completeFeedbackTimer: number | null = null;
 const toolZoomIn = document.getElementById("toolZoomIn") as HTMLButtonElement | null;
 const toolZoomOut = document.getElementById("toolZoomOut") as HTMLButtonElement | null;
 const toolReset = document.getElementById("toolReset") as HTMLButtonElement | null;
@@ -1215,6 +1226,10 @@ function positionZoomIndicator(): void {
 
 function hookSteps(): void {
   nextStepButton?.addEventListener("click", () => {
+    if (activeStep === "3") {
+      openCompleteDialog();
+      return;
+    }
     const steps = ["0", "1", "2", "3"];
     const index = Math.max(0, steps.indexOf(activeStep));
     const next = steps[Math.min(steps.length - 1, index + 1)];
@@ -3281,6 +3296,45 @@ function closeOrderDialog(): void {
   listOrderModal?.classList.remove("active");
 }
 
+function openCompleteDialog(): void {
+  completeModal?.classList.add("active");
+}
+
+function closeCompleteDialog(): void {
+  completeModal?.classList.remove("active");
+  clearCompleteFeedback();
+}
+
+function clearCompleteFeedback(): void {
+  if (completeFeedbackTimer != null) {
+    window.clearTimeout(completeFeedbackTimer);
+    completeFeedbackTimer = null;
+  }
+  if (!completeSaveFeedback || !completeSaveFeedbackText) {
+    return;
+  }
+  completeSaveFeedback.classList.remove("show", "loading", "success", "error");
+  completeSaveFeedbackText.textContent = "";
+}
+
+function setCompleteFeedback(state: "loading" | "success" | "error", message: string, autoHideMs = 0): void {
+  if (!completeSaveFeedback || !completeSaveFeedbackText) {
+    return;
+  }
+  if (completeFeedbackTimer != null) {
+    window.clearTimeout(completeFeedbackTimer);
+    completeFeedbackTimer = null;
+  }
+  completeSaveFeedback.classList.remove("loading", "success", "error");
+  completeSaveFeedback.classList.add("show", state);
+  completeSaveFeedbackText.textContent = message;
+  if (autoHideMs > 0) {
+    completeFeedbackTimer = window.setTimeout(() => {
+      clearCompleteFeedback();
+    }, autoHideMs);
+  }
+}
+
 function attachOrderDragGlobalEvents(): void {
   window.addEventListener("pointermove", onOrderPointerMove, { passive: true });
   window.addEventListener("pointerup", onOrderPointerUp);
@@ -3408,16 +3462,16 @@ function buildProject(): MapProject | null {
   };
 }
 
-async function handleSave(saveAs = false) {
+async function handleSave(saveAs = false): Promise<{ ok: boolean; canceled?: boolean; path?: string; error?: string } | null> {
   if (!window.mapSchematic?.saveProject) {
-    return;
+    return null;
   }
   const project = buildProject();
   if (!project) {
     if (statusEl) {
       statusEl.textContent = "資料包未載入，無法儲存。";
     }
-    return;
+    return null;
   }
   const result = await window.mapSchematic.saveProject({
     project,
@@ -3436,6 +3490,7 @@ async function handleSave(saveAs = false) {
         : "專案儲存失敗";
     }
   }
+  return result;
 }
 
 async function handleLoad() {
@@ -4559,6 +4614,57 @@ listOrderClose?.addEventListener("click", () => {
 listOrderModal?.addEventListener("click", (event) => {
   if (event.target === listOrderModal) {
     closeOrderDialog();
+  }
+});
+completeModal?.addEventListener("click", (event) => {
+  if (event.target === completeModal) {
+    closeCompleteDialog();
+  }
+});
+completeContinue?.addEventListener("click", () => {
+  closeCompleteDialog();
+});
+completeClose?.addEventListener("click", () => {
+  closeCompleteDialog();
+});
+completeSave?.addEventListener("click", async () => {
+  setCompleteFeedback("loading", "儲存中…");
+  const result = await handleSave(false);
+  if (!result || result.canceled) {
+    clearCompleteFeedback();
+    return;
+  }
+  if (result.ok) {
+    setCompleteFeedback("success", "已儲存", 1800);
+  } else {
+    setCompleteFeedback("error", "儲存失敗", 2200);
+  }
+});
+completeSaveAs?.addEventListener("click", async () => {
+  setCompleteFeedback("loading", "另存中…");
+  const result = await handleSave(true);
+  if (!result || result.canceled) {
+    clearCompleteFeedback();
+    return;
+  }
+  if (result.ok) {
+    setCompleteFeedback("success", "已另存新檔", 1800);
+  } else {
+    setCompleteFeedback("error", "另存失敗", 2200);
+  }
+});
+completeExportPng?.addEventListener("click", () => {
+  handleExport("png");
+});
+completeExportSvg?.addEventListener("click", () => {
+  handleExport("svg");
+});
+completeExportPdf?.addEventListener("click", () => {
+  handleExport("pdf");
+});
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && completeModal?.classList.contains("active")) {
+    closeCompleteDialog();
   }
 });
 
