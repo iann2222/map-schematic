@@ -18,6 +18,7 @@
         --field-bg: #0f172a;
         --picked-color-w: 32px;
         --picked-color-h: 22px;
+        --ratio-button-w: 58px;
       }
       body {
         font-family: "Inter", "Roboto", system-ui, sans-serif;
@@ -120,6 +121,9 @@
         align-items: flex-start;
         gap: 6px;
       }
+      .option-row.color-row + .option-row {
+        margin-top: 10px;
+      }
       .color-head {
         display: flex;
         align-items: center;
@@ -141,7 +145,7 @@
         box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
       }
       .ratio-button {
-        min-width: 58px;
+        min-width: var(--ratio-button-w);
         height: 34px;
         padding: 6px 8px;
         font-size: 14px;
@@ -167,6 +171,24 @@
       .option-row.option-grid .hint {
         text-align: center;
       }
+      .option-row.option-grid.ratio-custom-row {
+        display: inline-flex;
+        align-items: center;
+        width: 100%;
+        gap: 8px;
+      }
+      .option-row.option-grid.ratio-custom-row .ratio-button {
+        width: calc((100% - 24px) / 4);
+        min-width: calc((100% - 24px) / 4);
+        justify-self: auto;
+      }
+      .option-row.option-grid.ratio-custom-row .ratio-input {
+        width: 44px;
+        min-width: 44px;
+      }
+      .option-row.option-grid.ratio-custom-row .hint {
+        width: auto;
+      }
       .ratio-label {
         padding: 0;
         border: none;
@@ -178,14 +200,14 @@
         flex: 0 0 72px;
       }
       .ratio-input {
-        width: 36px;
-        padding: 6px 6px;
+        width: 32px;
+        padding: 4px 4px;
         text-align: center;
         font-size: 14px;
         background: #0b1020;
         color: var(--ink);
         border: 1px solid rgba(148, 163, 184, 0.3);
-        border-radius: 10px;
+        border-radius: 8px;
       }
       .ratio-input::-webkit-outer-spin-button,
       .ratio-input::-webkit-inner-spin-button {
@@ -297,7 +319,7 @@
         height: var(--picked-color-h);
         padding: 0;
         border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 3px;
+        border-radius: 5px;
         background: transparent;
         box-shadow: none;
         box-sizing: border-box;
@@ -309,11 +331,11 @@
       }
       input[type="color"]::-webkit-color-swatch {
         border: none;
-        border-radius: 2px;
+        border-radius: 4px;
       }
       input[type="color"]::-moz-color-swatch {
         border: none;
-        border-radius: 2px;
+        border-radius: 4px;
       }
       .right-panel .section-title {
         font-size: 18px;
@@ -373,7 +395,7 @@
         height: var(--picked-color-h);
         padding: 0;
         border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 3px;
+        border-radius: 5px;
         background: transparent;
       }
       .color-row input[type="text"] {
@@ -455,6 +477,101 @@
         justify-content: flex-end;
         gap: 8px;
       }
+      .order-modal {
+        width: min(760px, 92vw);
+      }
+      .order-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .order-column {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .order-title {
+        font-size: 12px;
+        color: #94a3b8;
+      }
+      .order-list {
+        list-style: none;
+        margin: 0;
+        padding: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        min-height: 220px;
+        max-height: 320px;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .order-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.04);
+        cursor: default;
+        user-select: none;
+        transform: translate3d(0, 0, 0);
+      }
+      .order-item--animating {
+        transition: transform 180ms ease-out, opacity 180ms ease-out;
+      }
+      .order-item--drag-source {
+        opacity: 0.3;
+      }
+      .order-placeholder {
+        min-height: 38px;
+        border: 1px dashed rgba(56, 189, 248, 0.65);
+        border-radius: 6px;
+        background: rgba(56, 189, 248, 0.08);
+        transition: min-height 140ms ease-out, opacity 140ms ease-out;
+      }
+      .order-ghost {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 40;
+        pointer-events: none;
+        will-change: transform, opacity;
+        margin: 0;
+        border: 1px solid rgba(56, 189, 248, 0.48);
+        border-radius: 6px;
+        background: rgba(15, 23, 42, 0.97);
+        box-shadow: 0 14px 28px rgba(2, 6, 23, 0.5);
+        opacity: 0.97;
+        transform: translate3d(0, 0, 0) scale(1.03);
+      }
+      .order-handle {
+        color: #94a3b8;
+        letter-spacing: -1px;
+        cursor: grab;
+        touch-action: none;
+      }
+      .order-handle:active {
+        cursor: grabbing;
+      }
+      .order-name {
+        color: #f1f5f9;
+        font-size: 13px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .order-item--animating,
+        .order-placeholder,
+        .order-ghost {
+          transition: none !important;
+          animation: none !important;
+        }
+        .order-ghost {
+          transform: translate3d(0, 0, 0) scale(1) !important;
+          box-shadow: 0 4px 10px rgba(2, 6, 23, 0.35);
+        }
+      }
       .title {
         font-size: 18px;
         font-weight: 600;
@@ -474,17 +591,19 @@
       }
       .field.search-field {
         align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
+        gap: 2px;
+        padding: 4px 2px 4px 6px;
         border-radius: 10px;
         background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(255, 255, 255, 0.08);
       }
       .field.search-field input[type="text"] {
+        flex: 1;
+        min-width: 0;
         border: none;
         background: transparent;
         box-shadow: none;
-        padding: 4px 0;
+        padding: 4px 0 4px 0;
         height: 28px;
         font-size: 14px;
       }
@@ -496,6 +615,8 @@
         width: 1px;
         height: 18px;
         background: rgba(255, 255, 255, 0.15);
+        margin-left: 3px;
+        margin-right: 3px;
       }
       .icon-btn {
         width: 28px;
@@ -519,9 +640,10 @@
         stroke-width: 2;
       }
       .icon-clear {
-        font-size: 18px;
         line-height: 1;
-        display: none;
+        display: inline-flex;
+        visibility: hidden;
+        pointer-events: none;
       }
       .field.inline-actions {
         align-items: center;
@@ -554,7 +676,16 @@
         min-width: 0;
       }
       .step-panel[data-step-panel="0"] .field.search-field {
-        padding: 4px 10px;
+        gap: 1px;
+        padding-right: 6px;
+      }
+      .step-panel[data-step-panel="0"] .field.search-field .search-divider {
+        margin-left: 2px;
+        margin-right: 2px;
+      }
+      .step-panel[data-step-panel="0"] .field.search-field .icon-search {
+        margin-left: 0;
+        margin-right: 0;
       }
       .step-panel[data-step-panel="0"] .field {
         flex-wrap: nowrap;
@@ -620,10 +751,37 @@
         border: none !important;
         box-shadow: none !important;
         filter: none !important;
+        width: 18px !important;
+        height: 18px !important;
+        min-width: 18px;
+        min-height: 18px;
       }
       .field.search-field .icon-btn:hover {
         background: transparent !important;
         filter: none !important;
+      }
+      .field.search-field .icon-btn svg {
+        width: 12px;
+        height: 12px;
+      }
+      .field.search-field .icon-clear {
+        width: 22px !important;
+        height: 22px !important;
+        min-width: 22px;
+        min-height: 22px;
+        margin-left: 4px;
+      }
+      .field.search-field .icon-clear svg {
+        width: 14px;
+        height: 14px;
+      }
+      .search-results-block {
+        display: none;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .search-results-block.visible {
+        display: flex;
       }
       button:disabled {
         opacity: 0.6;
@@ -879,7 +1037,7 @@
       .map-list-header {
         display: flex;
         align-items: center;
-        justify-content: flex-start;
+        justify-content: space-between;
         padding: 12px 16px;
         cursor: pointer;
         color: #f1f5f9;
@@ -887,11 +1045,42 @@
         font-weight: 600;
         gap: 6px;
       }
+      .map-list-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
       .map-list-header .chevron {
         width: 16px;
         height: 16px;
         color: #94a3b8;
         transition: transform 0.3s ease;
+      }
+      .map-list-settings {
+        margin-left: auto;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border: none;
+        border-radius: 0;
+        font-size: 0;
+        line-height: 0;
+        background: transparent;
+        color: #94a3b8;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .map-list-settings:hover {
+        background: transparent;
+        color: #e2e8f0;
+      }
+      .map-list-settings svg {
+        width: 20px;
+        height: 20px;
+        display: block;
+        fill: currentColor;
+        stroke: none;
       }
       .map-list-panel[open] .chevron {
         transform: rotate(180deg);
@@ -919,6 +1108,9 @@
         flex-direction: column;
         gap: 20px;
       }
+      #pointTextControls {
+        margin-top: 4px;
+      }
       .tool-panel {
         display: none;
         flex-direction: column;
@@ -943,10 +1135,24 @@
         width: 36px;
         padding: 0;
       }
-      .tool-panel .field.row input[type="text"] {
+      .tool-panel .field.row:not(.search-field) input[type="text"] {
         flex: 0 1 180px;
         height: 30px;
         padding: 6px 10px;
+      }
+      .tool-panel .field.row.search-field input[type="text"] {
+        flex: 1 1 0;
+        min-width: 0;
+        width: 0;
+        max-width: 100%;
+        padding: 4px 0;
+        height: 28px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .tool-panel .field.row.search-field {
+        gap: 0;
       }
       .tool-list {
         display: flex;
@@ -1078,7 +1284,10 @@
               data-clear="search0"
               aria-label="清除"
             >
-              ×
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <line x1="7" y1="7" x2="17" y2="17"></line>
+                <line x1="17" y1="7" x2="7" y2="17"></line>
+              </svg>
             </button>
             <span class="search-divider"></span>
             <button
@@ -1103,7 +1312,10 @@
               data-clear="coord0"
               aria-label="清除"
             >
-              ×
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <line x1="7" y1="7" x2="17" y2="17"></line>
+                <line x1="17" y1="7" x2="7" y2="17"></line>
+              </svg>
             </button>
             <span class="search-divider"></span>
             <button
@@ -1133,7 +1345,7 @@
             <button class="secondary ratio-button" id="ratio916">9:16</button>
             <button class="secondary ratio-button" id="ratioA4">A4</button>
           </div>
-          <div class="option-row option-grid">
+          <div class="option-row option-grid ratio-custom-row">
             <button class="secondary ratio-button" id="ratioCustom">
               自訂
             </button>
@@ -1187,7 +1399,10 @@
                 data-clear="search3"
                 aria-label="清除"
               >
-                ×
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <line x1="7" y1="7" x2="17" y2="17"></line>
+                  <line x1="17" y1="7" x2="7" y2="17"></line>
+                </svg>
               </button>
               <span class="search-divider"></span>
               <button
@@ -1213,7 +1428,10 @@
                 data-clear="coord3"
                 aria-label="清除"
               >
-                ×
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <line x1="7" y1="7" x2="17" y2="17"></line>
+                  <line x1="17" y1="7" x2="7" y2="17"></line>
+                </svg>
               </button>
               <span class="search-divider"></span>
               <button
@@ -1227,8 +1445,10 @@
                 </svg>
               </button>
             </div>
-            <div class="section-title card-title">搜尋結果</div>
-            <ul class="results compact plain" id="results3"></ul>
+            <div id="results3Block" class="search-results-block">
+              <div class="section-title card-title">搜尋結果</div>
+              <ul class="results compact plain" id="results3"></ul>
+            </div>
           </div>
           <div class="panel card compact">
             <div class="section-title card-title">新增標示</div>
@@ -1319,17 +1539,24 @@
         </div>
         <details class="map-list-panel" data-step-panel="3" open>
           <summary class="map-list-header">
-            <span>標示清單</span>
-            <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M6 9l6 6 6-6"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              ></path>
-            </svg>
+            <span class="map-list-title">
+              <span>標示清單</span>
+              <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M6 9l6 6 6-6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                ></path>
+              </svg>
+            </span>
+            <button id="listOrderSettingsBtn" class="map-list-settings" type="button" aria-label="排序設定">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58c.18-.14.23-.4.12-.61l-1.92-3.32c-.11-.22-.37-.3-.59-.22l-2.39.96c-.5-.38-1.05-.69-1.65-.92l-.36-2.54A.5.5 0 0 0 13.88 2h-3.76a.5.5 0 0 0-.49.42l-.36 2.54c-.6.23-1.15.54-1.65.92l-2.39-.96a.5.5 0 0 0-.59.22L2.72 8.46c-.12.21-.07.47.12.61l2.03 1.58c-.05.31-.08.64-.08.97 0 .33.03.65.08.97l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.11.22.37.3.59.22l2.39-.96c.5.38 1.05.69 1.65.92l.36 2.54c.03.24.25.42.49.42h3.76c.24 0 .46-.18.49-.42l.36-2.54c.6-.23 1.15-.54 1.65-.92l2.39.96c.22.08.48 0 .59-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"></path>
+              </svg>
+            </button>
           </summary>
           <div class="marker-list" id="markerList"></div>
           <button id="clearMarkers" class="secondary">清除全部</button>
@@ -1338,6 +1565,10 @@
       <div class="panel right-panel">
         <div class="step-panel" data-step-panel="3">
           <div class="section-title">屬性</div>
+          <div class="option-row" id="itemNameRow" style="display: none;">
+            <label class="ratio-label">名稱</label>
+            <input id="itemNameInput" type="text" placeholder="輸入名稱" />
+          </div>
           <div class="hint" id="settingsEmpty">尚未選取標示。</div>
           <div id="pointSettings" class="settings-stack">
             <div class="option-row">
@@ -1870,6 +2101,24 @@
         <div class="modal-actions">
           <button id="coordEditCancel" class="secondary">取消</button>
           <button id="coordEditSave">儲存</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="listOrderModal">
+      <div class="modal order-modal">
+        <div class="modal-title">標示排序設定</div>
+        <div class="order-grid">
+          <div class="order-column">
+            <div class="order-title">位置上下次序（清單顯示）</div>
+            <ul class="order-list" id="listOrderList"></ul>
+          </div>
+          <div class="order-column">
+            <div class="order-title">顯示優先順序（覆蓋層級）</div>
+            <ul class="order-list" id="displayOrderList"></ul>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="listOrderClose" class="secondary">關閉</button>
         </div>
       </div>
     </div>

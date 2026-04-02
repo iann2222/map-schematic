@@ -77,6 +77,7 @@ type Marker = {
   id: string;
   name: string;
   nameAlt?: string;
+  displayName?: string;
   latitude: number;
   longitude: number;
   sourceId?: string;
@@ -101,6 +102,7 @@ type ShapeStyle = {
 type ShapeItem = {
   id: string;
   type: "line" | "area" | "text" | "arrow";
+  displayName?: string;
   longitude: number;
   latitude: number;
   width: number;
@@ -226,6 +228,7 @@ const coordInput3 = document.getElementById("coord3") as HTMLInputElement | null
 const coordButton3 = document.getElementById("coordBtn3") as HTMLButtonElement | null;
 const resultsEl0 = document.getElementById("results0") as HTMLUListElement | null;
 const resultsEl3 = document.getElementById("results3") as HTMLUListElement | null;
+const results3Block = document.getElementById("results3Block") as HTMLDivElement | null;
 const saveButton = document.getElementById("saveBtn") as HTMLButtonElement | null;
 const loadButton = document.getElementById("loadBtn") as HTMLButtonElement | null;
 const loadButton0 = document.getElementById("loadBtn0") as HTMLButtonElement | null;
@@ -257,11 +260,18 @@ const shapeAreaOpacity = document.getElementById("shapeAreaOpacity") as HTMLDivE
 const shapeAreaStroke = document.getElementById("shapeAreaStroke") as HTMLInputElement | null;
 const shapeAreaStrokeWidth = document.getElementById("shapeAreaStrokeWidth") as HTMLDivElement | null;
 const markerList = document.getElementById("markerList") as HTMLDivElement | null;
+const listOrderSettingsBtn = document.getElementById("listOrderSettingsBtn") as HTMLButtonElement | null;
+const listOrderModal = document.getElementById("listOrderModal") as HTMLDivElement | null;
+const listOrderList = document.getElementById("listOrderList") as HTMLUListElement | null;
+const displayOrderList = document.getElementById("displayOrderList") as HTMLUListElement | null;
+const listOrderClose = document.getElementById("listOrderClose") as HTMLButtonElement | null;
 const coordEditModal = document.getElementById("coordEditModal") as HTMLDivElement | null;
 const coordLabelInput = document.getElementById("coordLabelInput") as HTMLInputElement | null;
 const coordEditCancel = document.getElementById("coordEditCancel") as HTMLButtonElement | null;
 const coordEditSave = document.getElementById("coordEditSave") as HTMLButtonElement | null;
 const settingsEmpty = document.getElementById("settingsEmpty");
+const itemNameRow = document.getElementById("itemNameRow");
+const itemNameInput = document.getElementById("itemNameInput") as HTMLInputElement | null;
 const pointSettings = document.getElementById("pointSettings");
 const pointTextControls = document.getElementById("pointTextControls");
 const textSettings = document.getElementById("textSettings");
@@ -372,6 +382,31 @@ const selectedMarkers: Marker[] = [];
 let selectedMarkerId: string | null = null;
 let previewMarker: Marker | null = null;
 const shapes: ShapeItem[] = [];
+let listOrderKeys: string[] = [];
+let displayOrderKeys: string[] = [];
+type DragPhase = "idle" | "pending" | "dragging" | "settling";
+type OrderMode = "list" | "display";
+type OrderDragSession = {
+  phase: DragPhase;
+  mode: OrderMode;
+  pointerId: number;
+  container: HTMLUListElement;
+  sourceItem: HTMLLIElement;
+  sourceKey: string;
+  handle: HTMLElement;
+  startClientX: number;
+  startClientY: number;
+  offsetX: number;
+  offsetY: number;
+  ghost: HTMLLIElement | null;
+  placeholder: HTMLLIElement | null;
+  cachedRows: HTMLLIElement[];
+  rafId: number | null;
+  queuedClientX: number;
+  queuedClientY: number;
+  orderChanged: boolean;
+};
+let orderDragSession: OrderDragSession | null = null;
 let selectedShapeId: string | null = null;
 let activeTool: "marker" | "line" | "area" | "text" | "arrow" = "marker";
 let manualMarkerCount = 0;
@@ -404,6 +439,7 @@ let hillshadeBlend: GlobalCompositeOperation = "overlay";
 let hillshadeImage: HTMLImageElement | null = null;
 let hillshadeTexture: HTMLCanvasElement | null = null;
 let hillshadeProjection: string | null = null;
+let editingCoordMarker: Marker | null = null;
 
 function mercatorX(lon: number): number {
   return (RADIUS * lon * Math.PI) / 180;
@@ -1516,8 +1552,17 @@ function renderMarkers() {
   const height = svg.viewBox.baseVal.height || 800;
   const root = ensureMapRoot(svg);
   const markerWrap = ensureMarkersContainer(root);
+  const rankMap = getDisplayRankMap();
+  const sortedMarkers = [...selectedMarkers].sort((a, b) => {
+    const ra = rankMap.get(markerOverlayKey(a.id)) ?? Number.MAX_SAFE_INTEGER;
+    const rb = rankMap.get(markerOverlayKey(b.id)) ?? Number.MAX_SAFE_INTEGER;
+    if (ra !== rb) {
+      return ra - rb;
+    }
+    return 0;
+  });
   const renderItems: Array<{ marker: Marker; preview: boolean }> = [
-    ...selectedMarkers.map((marker) => ({ marker, preview: false }))
+    ...sortedMarkers.map((marker) => ({ marker, preview: false }))
   ];
   if (previewMarker) {
     renderItems.push({ marker: previewMarker, preview: true });
@@ -1642,8 +1687,17 @@ function renderShapes(): void {
   const height = svg.viewBox.baseVal.height || 800;
   const root = ensureMapRoot(svg);
   const shapeWrap = ensureShapesContainer(root);
+  const rankMap = getDisplayRankMap();
+  const sortedShapes = [...shapes].sort((a, b) => {
+    const ra = rankMap.get(shapeOverlayKey(a.id)) ?? Number.MAX_SAFE_INTEGER;
+    const rb = rankMap.get(shapeOverlayKey(b.id)) ?? Number.MAX_SAFE_INTEGER;
+    if (ra !== rb) {
+      return ra - rb;
+    }
+    return 0;
+  });
   const renderItems: Array<{ shape: ShapeItem; preview: boolean }> = [
-    ...shapes.map((shape) => ({ shape, preview: false }))
+    ...sortedShapes.map((shape) => ({ shape, preview: false }))
   ];
   if (previewShape) {
     renderItems.push({ shape: previewShape, preview: true });
@@ -2094,6 +2148,13 @@ function renderCoordResult(
   target.appendChild(item);
 }
 
+function setResults3Visible(visible: boolean): void {
+  if (!results3Block) {
+    return;
+  }
+  results3Block.classList.toggle("visible", visible);
+}
+
 function setPreviewMarker(result: GeonamesResult): void {
   previewMarker = {
     id: `preview-${result.id}`,
@@ -2211,6 +2272,9 @@ function handleCoordSearch(input: HTMLInputElement | null, target: HTMLUListElem
   if (!value) {
     return;
   }
+  if (target === resultsEl3) {
+    setResults3Visible(true);
+  }
   const parsed = parseLatLon(value);
   if (!parsed) {
     if (statusEl) {
@@ -2315,6 +2379,133 @@ function markerLabelText(marker: Marker): string {
 
 function markerKey(marker: { name: string; latitude: number; longitude: number }): string {
   return `${marker.name}|${marker.latitude.toFixed(6)}|${marker.longitude.toFixed(6)}`;
+}
+
+function markerListName(marker: Marker): string {
+  if (marker.displayName && marker.displayName.trim().length > 0) {
+    return marker.displayName.trim();
+  }
+  const coordsText = formatCoords(marker);
+  if (marker.sourceType === "coords" && marker.labelName) {
+    return `${marker.labelName}/${coordsText}`;
+  }
+  if (marker.sourceType === "coords") {
+    return coordsText;
+  }
+  if (marker.kind === "point") {
+    return marker.name;
+  }
+  if (marker.nameAlt && marker.nameAlt !== marker.name) {
+    return `${marker.name} / ${marker.nameAlt}`;
+  }
+  return marker.name;
+}
+
+function shapeDefaultName(shape: ShapeItem, index: number): string {
+  const shapeTypeLabel: Record<ShapeItem["type"], string> = {
+    line: "線段",
+    area: "區域",
+    text: "文字",
+    arrow: "箭頭"
+  };
+  if (shape.type === "text" && shape.text && shape.text.trim().length > 0) {
+    const rawText = shape.text.trim();
+    if (!/^文字標示\d*$/.test(rawText)) {
+      return rawText;
+    }
+  }
+  return `${shapeTypeLabel[shape.type]}${index}`;
+}
+
+type OverlayObjectRef = {
+  key: string;
+  kind: "marker" | "shape";
+  id: string;
+  name: string;
+};
+
+function markerOverlayKey(markerId: string): string {
+  return `marker:${markerId}`;
+}
+
+function shapeOverlayKey(shapeId: string): string {
+  return `shape:${shapeId}`;
+}
+
+function shapeDisplayNameMap(): Map<string, string> {
+  const names = new Map<string, string>();
+  const shapeCounters: Record<ShapeItem["type"], number> = {
+    line: 0,
+    area: 0,
+    text: 0,
+    arrow: 0
+  };
+  shapes.forEach((shape) => {
+    shapeCounters[shape.type] += 1;
+    names.set(
+      shape.id,
+      shape.displayName && shape.displayName.trim().length > 0
+        ? shape.displayName.trim()
+        : shapeDefaultName(shape, shapeCounters[shape.type])
+    );
+  });
+  return names;
+}
+
+function getOverlayRefs(): OverlayObjectRef[] {
+  const refs: OverlayObjectRef[] = [];
+  const shapeNames = shapeDisplayNameMap();
+  const seen = new Set<string>();
+  selectedMarkers.forEach((marker) => {
+    const key = markerOverlayKey(marker.id);
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    refs.push({
+      key,
+      kind: "marker",
+      id: marker.id,
+      name: markerListName(marker)
+    });
+  });
+  shapes.forEach((shape) => {
+    const key = shapeOverlayKey(shape.id);
+    refs.push({
+      key,
+      kind: "shape",
+      id: shape.id,
+      name: shapeNames.get(shape.id) ?? "標示"
+    });
+  });
+  return refs;
+}
+
+function syncOrderKeys(): void {
+  const refs = getOverlayRefs();
+  const valid = new Set(refs.map((item) => item.key));
+  const normalize = (source: string[]) => source.filter((key, index) => valid.has(key) && source.indexOf(key) === index);
+  const normalizedList = normalize(listOrderKeys);
+  const normalizedDisplay = normalize(displayOrderKeys);
+  refs.forEach((item) => {
+    if (!normalizedList.includes(item.key)) {
+      normalizedList.push(item.key);
+    }
+    if (!normalizedDisplay.includes(item.key)) {
+      normalizedDisplay.push(item.key);
+    }
+  });
+  listOrderKeys = normalizedList;
+  displayOrderKeys = normalizedDisplay;
+}
+
+function getDisplayRankMap(): Map<string, number> {
+  syncOrderKeys();
+  const rank = new Map<string, number>();
+  displayOrderKeys.forEach((key, index) => {
+    rank.set(key, index);
+  });
+  return rank;
 }
 
 function shapeKey(shape: { type: ShapeItem["type"]; text?: string; latitude: number; longitude: number }): string {
@@ -2488,6 +2679,50 @@ function syncShapeControls(shape: ShapeItem | null): void {
       setSliderValue(shapeAreaStrokeWidthSlider, shape.style.strokeWidth, true);
     }
   }
+  syncItemNameControl();
+}
+
+function syncItemNameControl(): void {
+  if (!itemNameRow || !itemNameInput) {
+    return;
+  }
+  const marker = getSelectedMarker();
+  const shape = getSelectedShape();
+  if (!marker && !shape) {
+    itemNameRow.style.display = "none";
+    itemNameInput.value = "";
+    itemNameInput.disabled = true;
+    return;
+  }
+  itemNameRow.style.display = "flex";
+  itemNameInput.disabled = false;
+  if (marker) {
+    itemNameInput.value = marker.displayName ?? markerListName(marker);
+    return;
+  }
+  if (shape) {
+    const sameTypeShapes = shapes.filter((item) => item.type === shape.type);
+    const index = Math.max(1, sameTypeShapes.findIndex((item) => item.id === shape.id) + 1);
+    itemNameInput.value = shape.displayName ?? shapeDefaultName(shape, index);
+  }
+}
+
+function updateItemNameFromControl(): void {
+  if (!itemNameInput) {
+    return;
+  }
+  const value = itemNameInput.value.trim();
+  const marker = getSelectedMarker();
+  const shape = getSelectedShape();
+  if (marker) {
+    marker.displayName = value.length > 0 ? value : undefined;
+    renderMarkerList();
+    return;
+  }
+  if (shape) {
+    shape.displayName = value.length > 0 ? value : undefined;
+    renderMarkerList();
+  }
 }
 
 function updateSettingsVisibility(marker: Marker | null, shape: ShapeItem | null): void {
@@ -2559,6 +2794,7 @@ function selectMarker(markerId: string | null): void {
   selectedMarkerId = markerId;
   selectedShapeId = null;
   syncMarkerControls(getSelectedMarker());
+  syncItemNameControl();
   updateMarkerStyles();
   if (markerId) {
     activeTool = "marker";
@@ -2577,6 +2813,7 @@ function selectShape(shapeId: string | null): void {
   const shape = getSelectedShape();
   syncMarkerControls(null);
   syncShapeControls(shape);
+  syncItemNameControl();
   renderMarkers();
   if (shape) {
     activeTool = shape.type;
@@ -2590,99 +2827,417 @@ function renderMarkerList(): void {
   if (!markerList) {
     return;
   }
+  syncOrderKeys();
   markerList.innerHTML = "";
-  const seen = new Set<string>();
-  selectedMarkers.forEach((marker) => {
-    const key = markerKey(marker);
-    if (seen.has(key)) {
+  const markersById = new Map(selectedMarkers.map((item) => [item.id, item]));
+  const shapesById = new Map(shapes.map((item) => [item.id, item]));
+  const shapeNames = shapeDisplayNameMap();
+  listOrderKeys.forEach((overlayKey) => {
+    const row = document.createElement("div");
+    row.className = "marker-item";
+    const title = document.createElement("span");
+    const actions = document.createElement("div");
+    actions.className = "marker-actions";
+
+    if (overlayKey.startsWith("marker:")) {
+      const markerId = overlayKey.slice("marker:".length);
+      const marker = markersById.get(markerId);
+      if (!marker) {
+        return;
+      }
+      title.textContent = markerListName(marker);
+      if (marker.sourceType === "coords") {
+        const editBtn = document.createElement("button");
+        editBtn.className = "secondary";
+        editBtn.textContent = "編輯";
+        editBtn.addEventListener("click", (event) => {
+          event.stopPropagation();
+          openCoordEditor(marker);
+        });
+        actions.appendChild(editBtn);
+      }
+      const btn = document.createElement("button");
+      btn.className = "secondary";
+      btn.textContent = "清除";
+      btn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        deleteMarker(marker.id);
+      });
+      actions.appendChild(btn);
+      row.addEventListener("click", () => selectMarker(marker.id));
+    } else if (overlayKey.startsWith("shape:")) {
+      const shapeId = overlayKey.slice("shape:".length);
+      const shape = shapesById.get(shapeId);
+      if (!shape) {
+        return;
+      }
+      title.textContent = shapeNames.get(shape.id) ?? "標示";
+      const btn = document.createElement("button");
+      btn.className = "secondary";
+      btn.textContent = "清除";
+      btn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        deleteShape(shape.id);
+      });
+      actions.appendChild(btn);
+      row.addEventListener("click", () => selectShape(shape.id));
+    } else {
       return;
     }
-    seen.add(key);
-    const row = document.createElement("div");
-    row.className = "marker-item";
-    const title = document.createElement("span");
-    const coordsText = formatCoords(marker);
-    if (marker.sourceType === "coords" && marker.labelName) {
-      title.textContent = `${marker.labelName}/${coordsText}`;
-    } else if (marker.sourceType === "coords") {
-      title.textContent = coordsText;
-    } else if (marker.kind === "point") {
-      title.textContent = marker.name;
-    } else {
-      if (marker.nameAlt && marker.nameAlt !== marker.name) {
-        title.textContent = `${marker.name} / ${marker.nameAlt}`;
-      } else {
-        title.textContent = marker.name;
-      }
-    }
-    const actions = document.createElement("div");
-    actions.className = "marker-actions";
-    if (marker.sourceType === "coords") {
-      const editBtn = document.createElement("button");
-      editBtn.className = "secondary";
-      editBtn.textContent = "編輯";
-      editBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        openCoordEditor(marker);
-      });
-      actions.appendChild(editBtn);
-    }
-    const btn = document.createElement("button");
-    btn.className = "secondary";
-    btn.textContent = "清除";
-    btn.addEventListener("click", (event) => {
-      event.stopPropagation();
-      deleteMarker(marker.id);
-    });
-    actions.appendChild(btn);
+
     row.appendChild(title);
     row.appendChild(actions);
-    row.addEventListener("click", () => selectMarker(marker.id));
     markerList.appendChild(row);
   });
+}
 
-  const shapeTypeLabel: Record<ShapeItem["type"], string> = {
-    line: "線段",
-    area: "區域",
-    text: "文字",
-    arrow: "箭頭"
-  };
-  const shapeCounters: Record<ShapeItem["type"], number> = {
-    line: 0,
-    area: 0,
-    text: 0,
-    arrow: 0
-  };
-  shapes.forEach((shape) => {
-    shapeCounters[shape.type] += 1;
-    const row = document.createElement("div");
-    row.className = "marker-item";
-    const title = document.createElement("span");
-    if (shape.type === "text") {
-      const fallback = `${shapeTypeLabel[shape.type]}${shapeCounters[shape.type]}`;
-      const rawText = (shape.text ?? "").trim();
-      if (rawText.length === 0 || /^文字標示\d*$/.test(rawText)) {
-        title.textContent = fallback;
-      } else {
-        title.textContent = rawText;
-      }
-    } else {
-      title.textContent = `${shapeTypeLabel[shape.type]}${shapeCounters[shape.type]}`;
+const DRAG_START_THRESHOLD = 6;
+
+function isReducedMotion(): boolean {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
+function measurePositions(container: HTMLUListElement): Map<string, DOMRect> {
+  const map = new Map<string, DOMRect>();
+  container.querySelectorAll<HTMLLIElement>("li.order-item").forEach((row) => {
+    const key = row.dataset.key;
+    if (!key) {
+      return;
     }
-    const actions = document.createElement("div");
-    actions.className = "marker-actions";
-    const btn = document.createElement("button");
-    btn.className = "secondary";
-    btn.textContent = "清除";
-    btn.addEventListener("click", (event) => {
-      event.stopPropagation();
-      deleteShape(shape.id);
+    map.set(key, row.getBoundingClientRect());
+  });
+  return map;
+}
+
+function animateRowsWithFLIP(
+  container: HTMLUListElement,
+  before: Map<string, DOMRect>,
+  duration = 180
+): void {
+  if (isReducedMotion()) {
+    return;
+  }
+  const rows = Array.from(container.querySelectorAll<HTMLLIElement>("li.order-item"));
+  rows.forEach((row) => {
+    const key = row.dataset.key;
+    if (!key) {
+      return;
+    }
+    const oldRect = before.get(key);
+    if (!oldRect) {
+      return;
+    }
+    const newRect = row.getBoundingClientRect();
+    const deltaY = oldRect.top - newRect.top;
+    if (Math.abs(deltaY) < 0.5) {
+      return;
+    }
+    row.classList.add("order-item--animating");
+    row.style.transform = `translate3d(0, ${deltaY}px, 0)`;
+    requestAnimationFrame(() => {
+      row.style.transform = "translate3d(0, 0, 0)";
     });
-    actions.appendChild(btn);
-    row.appendChild(title);
-    row.appendChild(actions);
-    row.addEventListener("click", () => selectShape(shape.id));
-    markerList.appendChild(row);
+    window.setTimeout(() => {
+      row.classList.remove("order-item--animating");
+      row.style.transform = "";
+    }, duration + 40);
+  });
+}
+
+function scheduleDragMove(session: OrderDragSession, clientX: number, clientY: number): void {
+  session.queuedClientX = clientX;
+  session.queuedClientY = clientY;
+  if (session.rafId !== null) {
+    return;
+  }
+  session.rafId = requestAnimationFrame(() => {
+    session.rafId = null;
+    runDragMoveFrame(session);
+  });
+}
+
+function updateGhostTransform(session: OrderDragSession, clientX: number, clientY: number): void {
+  if (!session.ghost) {
+    return;
+  }
+  const x = clientX - session.offsetX;
+  const y = clientY - session.offsetY;
+  session.ghost.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${isReducedMotion() ? "1" : "1.03"})`;
+}
+
+function computeInsertReference(
+  session: OrderDragSession,
+  clientY: number
+): { refNode: Node | null } {
+  const rows = session.cachedRows.filter((row) => row !== session.sourceItem);
+  for (const row of rows) {
+    const rect = row.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    if (clientY < mid) {
+      return { refNode: row };
+    }
+  }
+  return { refNode: null };
+}
+
+function movePlaceholderWithFLIP(session: OrderDragSession, clientY: number): void {
+  if (!session.placeholder) {
+    return;
+  }
+  const { container, placeholder } = session;
+  const before = measurePositions(container);
+  const { refNode } = computeInsertReference(session, clientY);
+  const currentNext = placeholder.nextSibling;
+  if (refNode === null) {
+    if (currentNext === null) {
+      return;
+    }
+    container.appendChild(placeholder);
+  } else if (currentNext === refNode) {
+    return;
+  } else {
+    container.insertBefore(placeholder, refNode);
+  }
+  animateRowsWithFLIP(container, before, 180);
+  session.orderChanged = true;
+}
+
+function runDragMoveFrame(session: OrderDragSession): void {
+  if (orderDragSession !== session) {
+    return;
+  }
+  updateGhostTransform(session, session.queuedClientX, session.queuedClientY);
+  movePlaceholderWithFLIP(session, session.queuedClientY);
+}
+
+function startDragging(session: OrderDragSession): void {
+  session.phase = "dragging";
+  const { sourceItem, container, startClientX, startClientY } = session;
+  const sourceRect = sourceItem.getBoundingClientRect();
+  sourceItem.classList.add("order-item--drag-source");
+  const placeholder = document.createElement("li");
+  placeholder.className = "order-placeholder";
+  placeholder.style.minHeight = `${Math.max(32, sourceRect.height)}px`;
+  container.replaceChild(placeholder, sourceItem);
+  session.placeholder = placeholder;
+  const ghost = sourceItem.cloneNode(true) as HTMLLIElement;
+  ghost.classList.add("order-ghost");
+  ghost.style.width = `${sourceRect.width}px`;
+  ghost.style.height = `${sourceRect.height}px`;
+  document.body.appendChild(ghost);
+  session.ghost = ghost;
+  session.cachedRows = Array.from(container.querySelectorAll<HTMLLIElement>("li.order-item"));
+  updateGhostTransform(session, startClientX, startClientY);
+}
+
+function finalizeOrderCommit(session: OrderDragSession): void {
+  const { mode, container } = session;
+  const nextOrder = Array.from(container.querySelectorAll<HTMLLIElement>("li.order-item"))
+    .map((row) => row.dataset.key ?? "")
+    .filter((key) => key.length > 0);
+  const currentOrder = mode === "list" ? listOrderKeys : displayOrderKeys;
+  const changed =
+    currentOrder.length !== nextOrder.length ||
+    currentOrder.some((key, index) => key !== nextOrder[index]);
+  if (!changed) {
+    return;
+  }
+  if (mode === "list") {
+    listOrderKeys = nextOrder;
+  } else {
+    displayOrderKeys = nextOrder;
+  }
+  renderOrderDialog();
+  renderMarkers();
+  renderMarkerList();
+}
+
+function cleanupOrderSession(reason: "commit" | "cancel"): void {
+  const session = orderDragSession;
+  if (!session) {
+    return;
+  }
+  const wasDragging = session.phase === "dragging";
+  session.phase = "settling";
+  session.handle.releasePointerCapture?.(session.pointerId);
+  if (session.rafId !== null) {
+    cancelAnimationFrame(session.rafId);
+    session.rafId = null;
+  }
+  if (session.ghost) {
+    if (isReducedMotion()) {
+      session.ghost.remove();
+    } else {
+      session.ghost.style.transition = "transform 120ms ease-out, opacity 120ms ease-out";
+      session.ghost.style.opacity = "0";
+      window.setTimeout(() => session.ghost?.remove(), 130);
+    }
+  }
+  if (session.placeholder && session.placeholder.parentElement) {
+    session.container.replaceChild(session.sourceItem, session.placeholder);
+  }
+  session.sourceItem.classList.remove("order-item--drag-source");
+  if (reason === "commit" && wasDragging && session.orderChanged) {
+    finalizeOrderCommit(session);
+  }
+  orderDragSession = null;
+}
+
+function onOrderPointerMove(event: PointerEvent): void {
+  const session = orderDragSession;
+  if (!session || event.pointerId !== session.pointerId) {
+    return;
+  }
+  if (session.phase === "pending") {
+    const dx = event.clientX - session.startClientX;
+    const dy = event.clientY - session.startClientY;
+    if (Math.hypot(dx, dy) >= DRAG_START_THRESHOLD) {
+      startDragging(session);
+      scheduleDragMove(session, event.clientX, event.clientY);
+    }
+    return;
+  }
+  if (session.phase !== "dragging") {
+    return;
+  }
+  scheduleDragMove(session, event.clientX, event.clientY);
+}
+
+function onOrderPointerUp(event: PointerEvent): void {
+  const session = orderDragSession;
+  if (!session || event.pointerId !== session.pointerId) {
+    return;
+  }
+  if (session.phase === "dragging") {
+    cleanupOrderSession("commit");
+    return;
+  }
+  cleanupOrderSession("cancel");
+}
+
+function onOrderPointerCancel(event: PointerEvent): void {
+  const session = orderDragSession;
+  if (!session || event.pointerId !== session.pointerId) {
+    return;
+  }
+  cleanupOrderSession("cancel");
+}
+
+function startOrderPending(
+  event: PointerEvent,
+  mode: OrderMode,
+  sourceItem: HTMLLIElement,
+  handle: HTMLElement
+): void {
+  if (orderDragSession) {
+    cleanupOrderSession("cancel");
+  }
+  const container = mode === "list" ? listOrderList : displayOrderList;
+  const sourceKey = sourceItem.dataset.key;
+  if (!container || !sourceKey) {
+    return;
+  }
+  const rect = sourceItem.getBoundingClientRect();
+  orderDragSession = {
+    phase: "pending",
+    mode,
+    pointerId: event.pointerId,
+    container,
+    sourceItem,
+    sourceKey,
+    handle,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top,
+    ghost: null,
+    placeholder: null,
+    cachedRows: [],
+    rafId: null,
+    queuedClientX: event.clientX,
+    queuedClientY: event.clientY,
+    orderChanged: false
+  };
+  handle.setPointerCapture(event.pointerId);
+}
+
+function createOrderItem(item: OverlayObjectRef, mode: OrderMode): HTMLLIElement {
+  const li = document.createElement("li");
+  li.className = "order-item";
+  li.dataset.key = item.key;
+  li.dataset.mode = mode;
+  const handle = document.createElement("span");
+  handle.className = "order-handle";
+  handle.textContent = "⋮⋮";
+  const name = document.createElement("span");
+  name.className = "order-name";
+  name.textContent = item.name;
+  li.appendChild(handle);
+  li.appendChild(name);
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    startOrderPending(event, mode, li, handle);
+  });
+  return li;
+}
+
+function renderOrderDialog(): void {
+  if (!listOrderList || !displayOrderList) {
+    return;
+  }
+  syncOrderKeys();
+  const refs = getOverlayRefs();
+  const refMap = new Map(refs.map((item) => [item.key, item]));
+  const renderList = (
+    container: HTMLUListElement,
+    keys: string[],
+    mode: "list" | "display"
+  ) => {
+    container.innerHTML = "";
+    keys.forEach((key) => {
+      const ref = refMap.get(key);
+      if (!ref) {
+        return;
+      }
+      const row = createOrderItem(ref, mode);
+      container.appendChild(row);
+    });
+  };
+  renderList(listOrderList, listOrderKeys, "list");
+  renderList(displayOrderList, displayOrderKeys, "display");
+}
+
+function openOrderDialog(): void {
+  if (!listOrderModal) {
+    return;
+  }
+  renderOrderDialog();
+  listOrderModal.classList.add("active");
+}
+
+function closeOrderDialog(): void {
+  cleanupOrderSession("cancel");
+  listOrderModal?.classList.remove("active");
+}
+
+function attachOrderDragGlobalEvents(): void {
+  window.addEventListener("pointermove", onOrderPointerMove, { passive: true });
+  window.addEventListener("pointerup", onOrderPointerUp);
+  window.addEventListener("pointercancel", onOrderPointerCancel);
+  window.addEventListener("blur", () => {
+    if (orderDragSession) {
+      cleanupOrderSession("cancel");
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" && orderDragSession) {
+      cleanupOrderSession("cancel");
+    }
   });
 }
 
@@ -2694,6 +3249,7 @@ function deleteMarker(markerId: string): void {
   if (selectedMarkerId === markerId) {
     selectedMarkerId = null;
     syncMarkerControls(null);
+    syncItemNameControl();
   }
   renderMarkers();
   renderMarkerList();
@@ -2714,6 +3270,9 @@ async function handleSearch(input: HTMLInputElement, button: HTMLButtonElement) 
     }
     if (resultsEl3) {
       renderResults((results ?? []) as GeonamesResult[], resultsEl3);
+    }
+    if (input === searchInput3) {
+      setResults3Visible(true);
     }
   } finally {
     button.disabled = false;
@@ -2986,6 +3545,7 @@ function handleClearMarkers(): void {
   manualMarkerCount = 0;
   syncMarkerControls(null);
   syncShapeControls(null);
+  syncItemNameControl();
   renderMarkers();
   renderMarkerList();
 }
@@ -2998,6 +3558,7 @@ function deleteShape(shapeId: string): void {
   if (selectedShapeId === shapeId) {
     selectedShapeId = null;
     syncShapeControls(null);
+    syncItemNameControl();
   }
   renderMarkers();
   renderMarkerList();
@@ -3007,6 +3568,7 @@ function openCoordEditor(marker: Marker): void {
   if (!coordEditModal || !coordLabelInput || !coordEditSave || !coordEditCancel) {
     return;
   }
+  editingCoordMarker = marker;
   coordEditModal.classList.add("active");
   coordLabelInput.value = marker.labelName ?? "";
   const radios = coordEditModal.querySelectorAll<HTMLInputElement>("input[name=\"coordLabelMode\"]");
@@ -3019,11 +3581,13 @@ function openCoordEditor(marker: Marker): void {
       "input[name=\"coordLabelMode\"]:checked"
     );
     marker.labelMode = selected?.value === "name" ? "name" : "coords";
+    editingCoordMarker = null;
     coordEditModal.classList.remove("active");
     renderMarkers();
     renderMarkerList();
   };
   coordEditCancel.onclick = () => {
+    editingCoordMarker = null;
     coordEditModal.classList.remove("active");
   };
 }
@@ -3119,6 +3683,84 @@ function attachShapeControls(): void {
     });
   });
 }
+
+itemNameInput?.addEventListener("input", updateItemNameFromControl);
+
+function bindFirstClickSelect(
+  input: HTMLInputElement | null,
+  isDefault: () => boolean
+): void {
+  if (!input) {
+    return;
+  }
+  let consumedInFocus = false;
+  input.addEventListener("blur", () => {
+    consumedInFocus = false;
+  });
+  input.addEventListener("focus", () => {
+    if (!isDefault() || consumedInFocus) {
+      return;
+    }
+    consumedInFocus = true;
+    requestAnimationFrame(() => {
+      input.select();
+    });
+  });
+  input.addEventListener("mousedown", (event) => {
+    if (!isDefault() || consumedInFocus) {
+      return;
+    }
+    event.preventDefault();
+    consumedInFocus = true;
+    input.focus();
+    requestAnimationFrame(() => {
+      input.select();
+    });
+  });
+}
+
+function isItemNameDefault(): boolean {
+  const marker = getSelectedMarker();
+  if (marker) {
+    return !marker.displayName || marker.displayName.trim().length === 0;
+  }
+  const shape = getSelectedShape();
+  if (shape) {
+    return !shape.displayName || shape.displayName.trim().length === 0;
+  }
+  return false;
+}
+
+function isMarkerLabelDefault(): boolean {
+  const marker = getEditableMarker();
+  if (!marker || marker.sourceType !== "geonames") {
+    return false;
+  }
+  return !marker.labelName || marker.labelName.trim().length === 0;
+}
+
+function isShapeTextDefault(): boolean {
+  const shape = getSelectedShape();
+  if (!shape || shape.type !== "text") {
+    return false;
+  }
+  const text = (shape.text ?? "").trim();
+  return text.length === 0 || /^文字標示\d*$/.test(text);
+}
+
+function isCoordLabelDefault(): boolean {
+  if (!editingCoordMarker) {
+    return false;
+  }
+  return !editingCoordMarker.labelName || editingCoordMarker.labelName.trim().length === 0;
+}
+
+bindFirstClickSelect(itemNameInput, isItemNameDefault);
+bindFirstClickSelect(markerLabelInput, isMarkerLabelDefault);
+bindFirstClickSelect(shapeTextInput, isShapeTextDefault);
+bindFirstClickSelect(coordLabelInput, isCoordLabelDefault);
+bindFirstClickSelect(ratioInputA, () => true);
+bindFirstClickSelect(ratioInputB, () => true);
 
 function updateMarkerFromControls(): void {
   const marker = getEditableMarker();
@@ -3820,7 +4462,10 @@ document.querySelectorAll<HTMLButtonElement>("[data-clear]").forEach((button) =>
     return;
   }
   const syncVisibility = () => {
-    button.style.display = target.value.trim().length > 0 ? "inline-flex" : "none";
+    const hasValue = target.value.trim().length > 0;
+    button.style.visibility = hasValue ? "visible" : "hidden";
+    button.style.pointerEvents = hasValue ? "auto" : "none";
+    button.tabIndex = hasValue ? 0 : -1;
   };
   syncVisibility();
   target.addEventListener("input", syncVisibility);
@@ -3838,6 +4483,23 @@ exportPngButton?.addEventListener("click", () => handleExport("png"));
 exportSvgButton?.addEventListener("click", () => handleExport("svg"));
 exportPdfButton?.addEventListener("click", () => handleExport("pdf"));
 clearMarkersButton?.addEventListener("click", handleClearMarkers);
+listOrderSettingsBtn?.addEventListener("mousedown", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+});
+listOrderSettingsBtn?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  openOrderDialog();
+});
+listOrderClose?.addEventListener("click", () => {
+  closeOrderDialog();
+});
+listOrderModal?.addEventListener("click", (event) => {
+  if (event.target === listOrderModal) {
+    closeOrderDialog();
+  }
+});
 
 window.mapSchematic?.onMenuAction?.((action) => {
   switch (action) {
@@ -3866,6 +4528,7 @@ window.mapSchematic?.onMenuAction?.((action) => {
 
 hookToolbar();
 hookSteps();
+attachOrderDragGlobalEvents();
   attachCropInteractions();
   attachMarkerControls();
   attachShapeControls();
