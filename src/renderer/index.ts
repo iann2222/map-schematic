@@ -4021,7 +4021,8 @@ function snapSliderValue(control: SliderControl, raw: number): number {
 }
 
 function setSliderValue(control: SliderControl, value: number, silent = false): void {
-  const next = Math.max(control.min, Math.min(control.max, value));
+  const clamped = Math.max(control.min, Math.min(control.max, value));
+  const next = snapSliderValue(control, clamped);
   if (next === control.value && !silent) {
     return;
   }

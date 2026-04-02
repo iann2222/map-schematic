@@ -560,6 +560,23 @@
         letter-spacing: -1px;
         cursor: grab;
         touch-action: none;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        min-width: 22px;
+        min-height: 22px;
+        border-radius: 4px;
+      }
+      .order-handle::before {
+        content: "";
+        position: absolute;
+        top: -2px;
+        bottom: -2px;
+        left: -10px;
+        right: -10px;
       }
       .order-handle:active {
         cursor: grabbing;
