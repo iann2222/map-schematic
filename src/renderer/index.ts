@@ -3172,8 +3172,51 @@ function createOrderItem(item: OverlayObjectRef, mode: OrderMode): HTMLLIElement
   const name = document.createElement("span");
   name.className = "order-name";
   name.textContent = item.name;
+  const actions = document.createElement("span");
+  actions.className = "order-actions";
+  const moveTop = document.createElement("button");
+  moveTop.className = "order-jump";
+  moveTop.type = "button";
+  moveTop.title = "移到最上";
+  moveTop.setAttribute("aria-label", "移到最上");
+  moveTop.innerHTML =
+    '<svg class="icon-double-up" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path><path d="M18 9l-6-6-6 6"></path></svg>';
+  const moveBottom = document.createElement("button");
+  moveBottom.className = "order-jump";
+  moveBottom.type = "button";
+  moveBottom.title = "移到最下";
+  moveBottom.setAttribute("aria-label", "移到最下");
+  moveBottom.innerHTML =
+    '<svg class="icon-double-down" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path><path d="M6 15l6 6 6-6"></path></svg>';
+  actions.appendChild(moveTop);
+  actions.appendChild(moveBottom);
   li.appendChild(handle);
   li.appendChild(name);
+  li.appendChild(actions);
+
+  const moveToEdge = (edge: "top" | "bottom") => {
+    const current = mode === "list" ? listOrderKeys : displayOrderKeys;
+    const base = current.filter((key) => key !== item.key);
+    const next = edge === "top" ? [item.key, ...base] : [...base, item.key];
+    if (mode === "list") {
+      listOrderKeys = next;
+    } else {
+      displayOrderKeys = next;
+    }
+    renderOrderDialog();
+    renderMarkers();
+    renderMarkerList();
+  };
+  moveTop.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    moveToEdge("top");
+  });
+  moveBottom.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    moveToEdge("bottom");
+  });
 
   handle.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) {
@@ -4458,14 +4501,18 @@ document.querySelectorAll<HTMLButtonElement>("[data-clear]").forEach((button) =>
     return;
   }
   const target = document.getElementById(targetId) as HTMLInputElement | null;
+  const field = button.closest(".search-field") as HTMLElement | null;
   if (!target) {
     return;
   }
   const syncVisibility = () => {
     const hasValue = target.value.trim().length > 0;
-    button.style.visibility = hasValue ? "visible" : "hidden";
+    if (field) {
+      field.classList.toggle("has-value", hasValue);
+    }
     button.style.pointerEvents = hasValue ? "auto" : "none";
     button.tabIndex = hasValue ? 0 : -1;
+    button.setAttribute("aria-hidden", hasValue ? "false" : "true");
   };
   syncVisibility();
   target.addEventListener("input", syncVisibility);

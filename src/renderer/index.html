@@ -412,20 +412,20 @@
       .marker-list {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 2px;
       }
       .marker-item {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 8px 12px;
+        padding: 6px 10px;
         border-radius: 8px;
         background: rgba(255, 255, 255, 0.02);
         border: 1px solid rgba(255, 255, 255, 0.05);
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 400;
         color: #f1f5f9;
-        margin-bottom: 6px;
+        margin-bottom: 2px;
       }
       .marker-item:hover {
         background: rgba(255, 255, 255, 0.06);
@@ -435,8 +435,8 @@
         gap: 6px;
       }
       .marker-item button {
-        padding: 4px 6px;
-        font-size: 12px;
+        padding: 3px 6px;
+        font-size: 11px;
         background: transparent;
         color: #94a3b8;
         border: none;
@@ -519,8 +519,14 @@
         user-select: none;
         transform: translate3d(0, 0, 0);
       }
+      .order-item:hover:not(.order-item--drag-source) {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.14);
+      }
       .order-item--animating {
-        transition: transform 180ms ease-out, opacity 180ms ease-out;
+        transition:
+          transform 180ms ease-out,
+          opacity 180ms ease-out;
       }
       .order-item--drag-source {
         opacity: 0.3;
@@ -530,7 +536,9 @@
         border: 1px dashed rgba(56, 189, 248, 0.65);
         border-radius: 6px;
         background: rgba(56, 189, 248, 0.08);
-        transition: min-height 140ms ease-out, opacity 140ms ease-out;
+        transition:
+          min-height 140ms ease-out,
+          opacity 140ms ease-out;
       }
       .order-ghost {
         position: fixed;
@@ -559,6 +567,51 @@
       .order-name {
         color: #f1f5f9;
         font-size: 13px;
+        flex: 1;
+        min-width: 0;
+      }
+      .order-actions {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        line-height: 1;
+      }
+      .order-jump {
+        width: 22px;
+        height: 22px;
+        min-width: 22px;
+        min-height: 22px;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: #94a3b8;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+      .order-jump svg {
+        width: 14px;
+        height: 14px;
+        display: block;
+        flex: 0 0 14px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .order-jump .icon-double-up {
+        transform: translateY(1.5px);
+      }
+      .order-jump .icon-double-down {
+        transform: translateY(-1.5px);
+      }
+      .order-jump:hover {
+        color: #e2e8f0;
+        background: rgba(148, 163, 184, 0.12);
       }
       @media (prefers-reduced-motion: reduce) {
         .order-item--animating,
@@ -641,8 +694,6 @@
       }
       .icon-clear {
         line-height: 1;
-        display: inline-flex;
-        visibility: hidden;
         pointer-events: none;
       }
       .field.inline-actions {
@@ -765,15 +816,19 @@
         height: 12px;
       }
       .field.search-field .icon-clear {
-        width: 22px !important;
-        height: 22px !important;
-        min-width: 22px;
-        min-height: 22px;
-        margin-left: 4px;
+        display: none !important;
+        width: 18px !important;
+        height: 18px !important;
+        min-width: 18px;
+        min-height: 18px;
+        margin-left: 2px;
       }
       .field.search-field .icon-clear svg {
         width: 14px;
         height: 14px;
+      }
+      .field.search-field.has-value .icon-clear {
+        display: inline-flex !important;
       }
       .search-results-block {
         display: none;
@@ -1086,7 +1141,7 @@
         transform: rotate(180deg);
       }
       .map-list-panel .marker-list {
-        gap: 8px;
+        gap: 4px;
         padding: 0 16px 12px;
       }
       .map-list-panel #clearMarkers {
@@ -1552,9 +1607,16 @@
                 ></path>
               </svg>
             </span>
-            <button id="listOrderSettingsBtn" class="map-list-settings" type="button" aria-label="排序設定">
+            <button
+              id="listOrderSettingsBtn"
+              class="map-list-settings"
+              type="button"
+              aria-label="排序設定"
+            >
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58c.18-.14.23-.4.12-.61l-1.92-3.32c-.11-.22-.37-.3-.59-.22l-2.39.96c-.5-.38-1.05-.69-1.65-.92l-.36-2.54A.5.5 0 0 0 13.88 2h-3.76a.5.5 0 0 0-.49.42l-.36 2.54c-.6.23-1.15.54-1.65.92l-2.39-.96a.5.5 0 0 0-.59.22L2.72 8.46c-.12.21-.07.47.12.61l2.03 1.58c-.05.31-.08.64-.08.97 0 .33.03.65.08.97l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.11.22.37.3.59.22l2.39-.96c.5.38 1.05.69 1.65.92l.36 2.54c.03.24.25.42.49.42h3.76c.24 0 .46-.18.49-.42l.36-2.54c.6-.23 1.15-.54 1.65-.92l2.39.96c.22.08.48 0 .59-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"></path>
+                <path
+                  d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58c.18-.14.23-.4.12-.61l-1.92-3.32c-.11-.22-.37-.3-.59-.22l-2.39.96c-.5-.38-1.05-.69-1.65-.92l-.36-2.54A.5.5 0 0 0 13.88 2h-3.76a.5.5 0 0 0-.49.42l-.36 2.54c-.6.23-1.15.54-1.65.92l-2.39-.96a.5.5 0 0 0-.59.22L2.72 8.46c-.12.21-.07.47.12.61l2.03 1.58c-.05.31-.08.64-.08.97 0 .33.03.65.08.97l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.11.22.37.3.59.22l2.39-.96c.5.38 1.05.69 1.65.92l.36 2.54c.03.24.25.42.49.42h3.76c.24 0 .46-.18.49-.42l.36-2.54c.6-.23 1.15-.54 1.65-.92l2.39.96c.22.08.48 0 .59-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"
+                ></path>
               </svg>
             </button>
           </summary>
@@ -1565,7 +1627,7 @@
       <div class="panel right-panel">
         <div class="step-panel" data-step-panel="3">
           <div class="section-title">屬性</div>
-          <div class="option-row" id="itemNameRow" style="display: none;">
+          <div class="option-row" id="itemNameRow" style="display: none">
             <label class="ratio-label">名稱</label>
             <input id="itemNameInput" type="text" placeholder="輸入名稱" />
           </div>
