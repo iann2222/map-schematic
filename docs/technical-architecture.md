@@ -526,3 +526,79 @@ SVG 用於設計軟體編輯
 - 可離線使用
 - 可版本控制
 - 可長期維護
+
+
+---
+
+# 15. 從空 geodata_source/ 重建資料包（實作版 SOP）
+
+本節提供可直接執行的重建流程，避免僅看概念文件時遺漏關鍵檔名或目錄結構。
+
+## 15.1 目標
+
+當 geodata_source/ 為空時，依下列步驟補齊原始資料，並成功執行：
+
+- scripts/build_datapack.py
+- 產出 geodata/packs/{id}/{version}/
+
+## 15.2 最小可行原始資料（MVP）
+
+請準備以下檔案／目錄到 geodata_source/：
+
+1. Natural Earth 底圖
+- 50m_physical.zip（下載後**必須解壓**）
+- 解壓結果需為：geodata_source/50m_physical/
+- 注意：建置腳本讀的是資料夾 50m_physical/，不是 zip 本身。
+
+2. GeoNames（預設模式 `--geonames cities1000`）
+- `cities1000.zip`
+- `alternateNamesV2.zip`
+- 以上兩個檔案保持 zip 即可，不需手動解壓。
+
+3. 地形陰影（可選）
+- 建議直接放：hillshade_3857.png
+- 若未提供，腳本會嘗試從 MSR_50M.zip / US_MSR_10M.zip（或檔名包含 msr+10m/50m）生成。
+
+## 15.3 何時需要 `allCountries.zip`
+
+- 只有在使用 `--geonames all` 時才需要 `allCountries.zip`。
+- 若使用預設 `--geonames cities1000`，`allCountries.zip` 非必要。
+
+## 15.4 建置指令
+
+以標準資料包為例：
+
+```bash
+python scripts/build_datapack.py --id standard --version 2026.02 --geonames cities1000 --force
+```
+
+常用參數：
+- `--raw`：原始資料根目錄（預設 `geodata_source`）
+- `--out`：輸出根目錄（預設 `geodata/packs/standard`）
+- `--geonames`：`cities1000 | cities15000 | all`
+
+## 15.5 成功輸出檢查
+
+至少應看到：
+
+- geodata/packs/standard/2026.02/datapack.json
+- geodata/packs/standard/2026.02/basemap/*.geojson
+- geodata/packs/standard/2026.02/geonames/geonames.sqlite
+- （若有地形）geodata/packs/standard/2026.02/relief/hillshade_3857.png
+
+## 15.6 常見失敗原因
+
+1. 只有 50m_physical.zip，但未解壓成 geodata_source/50m_physical/。
+2. 少了 `alternateNamesV2.zip`，導致 GeoNames 建置略過。
+3. 使用 `--geonames all` 但未提供 `allCountries.zip`。
+4. 提供了地形 zip，但檔名不符合腳本辨識規則，且沒有 hillshade_3857.png。
+
+## 15.7 發佈流程銜接
+
+建置成功後再進行：
+
+1. 打包 geodata/packs/{id}/{version}/ 為 zip
+2. 上傳到 GitHub Releases
+3. 更新 pack-release.json（至少更新 url 與 sha256）
+
+> 每次發佈新資料包版本都必須同步更新 pack-release.json。
