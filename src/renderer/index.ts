@@ -7,13 +7,19 @@ declare global {
       getDatapack?: () => Promise<{
         id: string;
         version: string;
-        basemap: { format: string; layers: Array<{ id: string; path: string }> };
+        basemap: {
+          format: string;
+          layers: Array<{ id: string; path: string }>;
+        };
       }>;
       getBasemapLayers?: () => Promise<Array<{ id: string; geojson: string }>>;
-      getRelief?: () => Promise<{ path: string; projection: string | null } | null>;
+      getRelief?: () => Promise<{
+        path: string;
+        projection: string | null;
+      } | null>;
       searchGeonames?: (
         query: string,
-        limit?: number
+        limit?: number,
       ) => Promise<
         Array<{
           id: number;
@@ -31,18 +37,31 @@ declare global {
         project: MapProject;
         path?: string | null;
         saveAs?: boolean;
-      }) => Promise<{ ok: boolean; path?: string; errors?: string[]; canceled?: boolean }>;
+      }) => Promise<{
+        ok: boolean;
+        path?: string;
+        errors?: string[];
+        canceled?: boolean;
+      }>;
       exportProject?: (payload: {
         format: "png" | "svg" | "pdf";
         data: string;
         width: number;
         height: number;
-      }) => Promise<{ ok: boolean; path?: string; error?: string; canceled?: boolean }>;
+      }) => Promise<{
+        ok: boolean;
+        path?: string;
+        error?: string;
+        canceled?: boolean;
+      }>;
       loadProject?: () => Promise<{
         ok: boolean;
         path?: string;
         project?: MapProject;
-        validation?: { valid: boolean; errors: Array<{ path: string; message: string }> };
+        validation?: {
+          valid: boolean;
+          errors: Array<{ path: string; message: string }>;
+        };
         error?: string;
         canceled?: boolean;
       }>;
@@ -218,70 +237,194 @@ const statusEl = document.getElementById("status");
 const layoutEl = document.getElementById("layout");
 const svg = document.getElementById("map") as SVGSVGElement | null;
 const canvas = document.getElementById("basemap") as HTMLCanvasElement | null;
-const searchInput0 = document.getElementById("search0") as HTMLInputElement | null;
-const searchButton0 = document.getElementById("searchBtn0") as HTMLButtonElement | null;
-const searchInput3 = document.getElementById("search3") as HTMLInputElement | null;
-const searchButton3 = document.getElementById("searchBtn3") as HTMLButtonElement | null;
-const coordInput0 = document.getElementById("coord0") as HTMLInputElement | null;
-const coordButton0 = document.getElementById("coordBtn0") as HTMLButtonElement | null;
-const coordInput3 = document.getElementById("coord3") as HTMLInputElement | null;
-const coordButton3 = document.getElementById("coordBtn3") as HTMLButtonElement | null;
-const resultsEl0 = document.getElementById("results0") as HTMLUListElement | null;
-const resultsEl3 = document.getElementById("results3") as HTMLUListElement | null;
-const results3Block = document.getElementById("results3Block") as HTMLDivElement | null;
-const saveButton = document.getElementById("saveBtn") as HTMLButtonElement | null;
-const loadButton = document.getElementById("loadBtn") as HTMLButtonElement | null;
-const loadButton0 = document.getElementById("loadBtn0") as HTMLButtonElement | null;
-const saveAsButton = document.getElementById("saveAsBtn") as HTMLButtonElement | null;
-const exportPngButton = document.getElementById("exportPngBtn") as HTMLButtonElement | null;
-const exportSvgButton = document.getElementById("exportSvgBtn") as HTMLButtonElement | null;
-const exportPdfButton = document.getElementById("exportPdfBtn") as HTMLButtonElement | null;
-const clearMarkersButton = document.getElementById("clearMarkers") as HTMLButtonElement | null;
-const markerDotSize = document.getElementById("markerDotSize") as HTMLDivElement | null;
-const markerTextSize = document.getElementById("markerTextSize") as HTMLDivElement | null;
-const markerDotColor = document.getElementById("markerDotColor") as HTMLInputElement | null;
-const markerTextColor = document.getElementById("markerTextColor") as HTMLInputElement | null;
-const markerDotHex = document.getElementById("markerDotHex") as HTMLInputElement | null;
-const markerTextHex = document.getElementById("markerTextHex") as HTMLInputElement | null;
-const dotColorChip = document.getElementById("dotColorChip") as HTMLSpanElement | null;
-const textColorChip = document.getElementById("textColorChip") as HTMLSpanElement | null;
-const markerFont = document.getElementById("markerFont") as HTMLSelectElement | null;
-const markerLabelInput = document.getElementById("markerLabelInput") as HTMLInputElement | null;
-const shapeTextInput = document.getElementById("shapeTextInput") as HTMLInputElement | null;
-const shapeTextSize = document.getElementById("shapeTextSize") as HTMLDivElement | null;
-const shapeTextColor = document.getElementById("shapeTextColor") as HTMLInputElement | null;
-const shapeTextFont = document.getElementById("shapeTextFont") as HTMLSelectElement | null;
-const shapeLineWidth = document.getElementById("shapeLineWidth") as HTMLDivElement | null;
-const shapeLineColor = document.getElementById("shapeLineColor") as HTMLInputElement | null;
-const shapeArrowWidth = document.getElementById("shapeArrowWidth") as HTMLDivElement | null;
-const shapeArrowColor = document.getElementById("shapeArrowColor") as HTMLInputElement | null;
-const shapeAreaFill = document.getElementById("shapeAreaFill") as HTMLInputElement | null;
-const shapeAreaOpacity = document.getElementById("shapeAreaOpacity") as HTMLDivElement | null;
-const shapeAreaStroke = document.getElementById("shapeAreaStroke") as HTMLInputElement | null;
-const shapeAreaStrokeWidth = document.getElementById("shapeAreaStrokeWidth") as HTMLDivElement | null;
-const markerList = document.getElementById("markerList") as HTMLDivElement | null;
-const listOrderSettingsBtn = document.getElementById("listOrderSettingsBtn") as HTMLButtonElement | null;
-const listOrderModal = document.getElementById("listOrderModal") as HTMLDivElement | null;
-const listOrderList = document.getElementById("listOrderList") as HTMLUListElement | null;
-const displayOrderList = document.getElementById("displayOrderList") as HTMLUListElement | null;
-const listOrderClose = document.getElementById("listOrderClose") as HTMLButtonElement | null;
-const completeModal = document.getElementById("completeModal") as HTMLDivElement | null;
-const completeSave = document.getElementById("completeSave") as HTMLButtonElement | null;
-const completeSaveAs = document.getElementById("completeSaveAs") as HTMLButtonElement | null;
-const completeExportPng = document.getElementById("completeExportPng") as HTMLButtonElement | null;
-const completeExportSvg = document.getElementById("completeExportSvg") as HTMLButtonElement | null;
-const completeExportPdf = document.getElementById("completeExportPdf") as HTMLButtonElement | null;
-const completeContinue = document.getElementById("completeContinue") as HTMLButtonElement | null;
-const completeClose = document.getElementById("completeClose") as HTMLButtonElement | null;
-const completeSaveFeedback = document.getElementById("completeSaveFeedback") as HTMLDivElement | null;
-const completeSaveFeedbackText = document.getElementById("completeSaveFeedbackText") as HTMLSpanElement | null;
-const coordEditModal = document.getElementById("coordEditModal") as HTMLDivElement | null;
-const coordLabelInput = document.getElementById("coordLabelInput") as HTMLInputElement | null;
-const coordEditCancel = document.getElementById("coordEditCancel") as HTMLButtonElement | null;
-const coordEditSave = document.getElementById("coordEditSave") as HTMLButtonElement | null;
+const searchInput0 = document.getElementById(
+  "search0",
+) as HTMLInputElement | null;
+const searchButton0 = document.getElementById(
+  "searchBtn0",
+) as HTMLButtonElement | null;
+const searchInput3 = document.getElementById(
+  "search3",
+) as HTMLInputElement | null;
+const searchButton3 = document.getElementById(
+  "searchBtn3",
+) as HTMLButtonElement | null;
+const coordInput0 = document.getElementById(
+  "coord0",
+) as HTMLInputElement | null;
+const coordButton0 = document.getElementById(
+  "coordBtn0",
+) as HTMLButtonElement | null;
+const coordInput3 = document.getElementById(
+  "coord3",
+) as HTMLInputElement | null;
+const coordButton3 = document.getElementById(
+  "coordBtn3",
+) as HTMLButtonElement | null;
+const resultsEl0 = document.getElementById(
+  "results0",
+) as HTMLUListElement | null;
+const resultsEl3 = document.getElementById(
+  "results3",
+) as HTMLUListElement | null;
+const results3Block = document.getElementById(
+  "results3Block",
+) as HTMLDivElement | null;
+const saveButton = document.getElementById(
+  "saveBtn",
+) as HTMLButtonElement | null;
+const loadButton = document.getElementById(
+  "loadBtn",
+) as HTMLButtonElement | null;
+const loadButton0 = document.getElementById(
+  "loadBtn0",
+) as HTMLButtonElement | null;
+const saveAsButton = document.getElementById(
+  "saveAsBtn",
+) as HTMLButtonElement | null;
+const exportPngButton = document.getElementById(
+  "exportPngBtn",
+) as HTMLButtonElement | null;
+const exportSvgButton = document.getElementById(
+  "exportSvgBtn",
+) as HTMLButtonElement | null;
+const exportPdfButton = document.getElementById(
+  "exportPdfBtn",
+) as HTMLButtonElement | null;
+const clearMarkersButton = document.getElementById(
+  "clearMarkers",
+) as HTMLButtonElement | null;
+const markerDotSize = document.getElementById(
+  "markerDotSize",
+) as HTMLDivElement | null;
+const markerTextSize = document.getElementById(
+  "markerTextSize",
+) as HTMLDivElement | null;
+const markerDotColor = document.getElementById(
+  "markerDotColor",
+) as HTMLInputElement | null;
+const markerTextColor = document.getElementById(
+  "markerTextColor",
+) as HTMLInputElement | null;
+const markerDotHex = document.getElementById(
+  "markerDotHex",
+) as HTMLInputElement | null;
+const markerTextHex = document.getElementById(
+  "markerTextHex",
+) as HTMLInputElement | null;
+const dotColorChip = document.getElementById(
+  "dotColorChip",
+) as HTMLSpanElement | null;
+const textColorChip = document.getElementById(
+  "textColorChip",
+) as HTMLSpanElement | null;
+const markerFont = document.getElementById(
+  "markerFont",
+) as HTMLSelectElement | null;
+const markerLabelInput = document.getElementById(
+  "markerLabelInput",
+) as HTMLInputElement | null;
+const shapeTextInput = document.getElementById(
+  "shapeTextInput",
+) as HTMLInputElement | null;
+const shapeTextSize = document.getElementById(
+  "shapeTextSize",
+) as HTMLDivElement | null;
+const shapeTextColor = document.getElementById(
+  "shapeTextColor",
+) as HTMLInputElement | null;
+const shapeTextFont = document.getElementById(
+  "shapeTextFont",
+) as HTMLSelectElement | null;
+const shapeLineWidth = document.getElementById(
+  "shapeLineWidth",
+) as HTMLDivElement | null;
+const shapeLineColor = document.getElementById(
+  "shapeLineColor",
+) as HTMLInputElement | null;
+const shapeArrowWidth = document.getElementById(
+  "shapeArrowWidth",
+) as HTMLDivElement | null;
+const shapeArrowColor = document.getElementById(
+  "shapeArrowColor",
+) as HTMLInputElement | null;
+const shapeAreaFill = document.getElementById(
+  "shapeAreaFill",
+) as HTMLInputElement | null;
+const shapeAreaOpacity = document.getElementById(
+  "shapeAreaOpacity",
+) as HTMLDivElement | null;
+const shapeAreaStroke = document.getElementById(
+  "shapeAreaStroke",
+) as HTMLInputElement | null;
+const shapeAreaStrokeWidth = document.getElementById(
+  "shapeAreaStrokeWidth",
+) as HTMLDivElement | null;
+const markerList = document.getElementById(
+  "markerList",
+) as HTMLDivElement | null;
+const listOrderSettingsBtn = document.getElementById(
+  "listOrderSettingsBtn",
+) as HTMLButtonElement | null;
+const listOrderModal = document.getElementById(
+  "listOrderModal",
+) as HTMLDivElement | null;
+const listOrderList = document.getElementById(
+  "listOrderList",
+) as HTMLUListElement | null;
+const displayOrderList = document.getElementById(
+  "displayOrderList",
+) as HTMLUListElement | null;
+const listOrderClose = document.getElementById(
+  "listOrderClose",
+) as HTMLButtonElement | null;
+const completeModal = document.getElementById(
+  "completeModal",
+) as HTMLDivElement | null;
+const completeSave = document.getElementById(
+  "completeSave",
+) as HTMLButtonElement | null;
+const completeSaveAs = document.getElementById(
+  "completeSaveAs",
+) as HTMLButtonElement | null;
+const completeExportPng = document.getElementById(
+  "completeExportPng",
+) as HTMLButtonElement | null;
+const completeExportSvg = document.getElementById(
+  "completeExportSvg",
+) as HTMLButtonElement | null;
+const completeExportPdf = document.getElementById(
+  "completeExportPdf",
+) as HTMLButtonElement | null;
+const completeContinue = document.getElementById(
+  "completeContinue",
+) as HTMLButtonElement | null;
+const completeClose = document.getElementById(
+  "completeClose",
+) as HTMLButtonElement | null;
+const completeSaveFeedback = document.getElementById(
+  "completeSaveFeedback",
+) as HTMLDivElement | null;
+const completeSaveFeedbackText = document.getElementById(
+  "completeSaveFeedbackText",
+) as HTMLSpanElement | null;
+const coordEditModal = document.getElementById(
+  "coordEditModal",
+) as HTMLDivElement | null;
+const coordLabelInput = document.getElementById(
+  "coordLabelInput",
+) as HTMLInputElement | null;
+const coordEditCancel = document.getElementById(
+  "coordEditCancel",
+) as HTMLButtonElement | null;
+const coordEditSave = document.getElementById(
+  "coordEditSave",
+) as HTMLButtonElement | null;
 const settingsEmpty = document.getElementById("settingsEmpty");
 const itemNameRow = document.getElementById("itemNameRow");
-const itemNameInput = document.getElementById("itemNameInput") as HTMLInputElement | null;
+const itemNameInput = document.getElementById(
+  "itemNameInput",
+) as HTMLInputElement | null;
 const pointSettings = document.getElementById("pointSettings");
 const pointTextControls = document.getElementById("pointTextControls");
 const textSettings = document.getElementById("textSettings");
@@ -296,27 +439,55 @@ let shapeArrowWidthSlider: SliderControl | null = null;
 let shapeAreaOpacitySlider: SliderControl | null = null;
 let shapeAreaStrokeWidthSlider: SliderControl | null = null;
 let completeFeedbackTimer: number | null = null;
-const toolZoomIn = document.getElementById("toolZoomIn") as HTMLButtonElement | null;
-const toolZoomOut = document.getElementById("toolZoomOut") as HTMLButtonElement | null;
-const toolReset = document.getElementById("toolReset") as HTMLButtonElement | null;
+const toolZoomIn = document.getElementById(
+  "toolZoomIn",
+) as HTMLButtonElement | null;
+const toolZoomOut = document.getElementById(
+  "toolZoomOut",
+) as HTMLButtonElement | null;
+const toolReset = document.getElementById(
+  "toolReset",
+) as HTMLButtonElement | null;
 const zoomIndicator = document.getElementById("zoomIndicator");
-const stepPanels = Array.from(document.querySelectorAll<HTMLElement>(".step-panel"));
+const stepPanels = Array.from(
+  document.querySelectorAll<HTMLElement>(".step-panel"),
+);
 const stepProgress = document.getElementById("stepProgress");
 const stepTitle = document.getElementById("stepTitle");
 const stepSubtitle = document.getElementById("stepSubtitle");
-const prevStepButton = document.getElementById("prevStep") as HTMLButtonElement | null;
-const nextStepButton = document.getElementById("nextStep") as HTMLButtonElement | null;
-const ratio169 = document.getElementById("ratio169") as HTMLButtonElement | null;
+const prevStepButton = document.getElementById(
+  "prevStep",
+) as HTMLButtonElement | null;
+const nextStepButton = document.getElementById(
+  "nextStep",
+) as HTMLButtonElement | null;
+const ratio169 = document.getElementById(
+  "ratio169",
+) as HTMLButtonElement | null;
 const ratioA4 = document.getElementById("ratioA4") as HTMLButtonElement | null;
-const ratioSquare = document.getElementById("ratioSquare") as HTMLButtonElement | null;
-const ratioFree = document.getElementById("ratioFree") as HTMLButtonElement | null;
+const ratioSquare = document.getElementById(
+  "ratioSquare",
+) as HTMLButtonElement | null;
+const ratioFree = document.getElementById(
+  "ratioFree",
+) as HTMLButtonElement | null;
 const ratio43 = document.getElementById("ratio43") as HTMLButtonElement | null;
 const ratio34 = document.getElementById("ratio34") as HTMLButtonElement | null;
-const ratio916 = document.getElementById("ratio916") as HTMLButtonElement | null;
-const ratioOriginal = document.getElementById("ratioOriginal") as HTMLButtonElement | null;
-const ratioInputA = document.getElementById("ratioInputA") as HTMLInputElement | null;
-const ratioInputB = document.getElementById("ratioInputB") as HTMLInputElement | null;
-const ratioCustom = document.getElementById("ratioCustom") as HTMLButtonElement | null;
+const ratio916 = document.getElementById(
+  "ratio916",
+) as HTMLButtonElement | null;
+const ratioOriginal = document.getElementById(
+  "ratioOriginal",
+) as HTMLButtonElement | null;
+const ratioInputA = document.getElementById(
+  "ratioInputA",
+) as HTMLInputElement | null;
+const ratioInputB = document.getElementById(
+  "ratioInputB",
+) as HTMLInputElement | null;
+const ratioCustom = document.getElementById(
+  "ratioCustom",
+) as HTMLButtonElement | null;
 const mapWrap = document.querySelector(".map-wrap") as HTMLDivElement | null;
 const ratioButtons = [
   ratioFree,
@@ -327,38 +498,60 @@ const ratioButtons = [
   ratio169,
   ratio916,
   ratioA4,
-  ratioCustom
+  ratioCustom,
 ].filter((btn): btn is HTMLButtonElement => Boolean(btn));
-const styleOriginal = document.getElementById("styleOriginal") as HTMLButtonElement | null;
-const styleDefault = document.getElementById("styleDefault") as HTMLButtonElement | null;
-const styleMinimal = document.getElementById("styleMinimal") as HTMLButtonElement | null;
-const styleDark = document.getElementById("styleDark") as HTMLButtonElement | null;
-const styleOutline = document.getElementById("styleOutline") as HTMLButtonElement | null;
-const styleSoft = document.getElementById("styleSoft") as HTMLButtonElement | null;
+const styleOriginal = document.getElementById(
+  "styleOriginal",
+) as HTMLButtonElement | null;
+const styleDefault = document.getElementById(
+  "styleDefault",
+) as HTMLButtonElement | null;
+const styleMinimal = document.getElementById(
+  "styleMinimal",
+) as HTMLButtonElement | null;
+const styleDark = document.getElementById(
+  "styleDark",
+) as HTMLButtonElement | null;
+const styleOutline = document.getElementById(
+  "styleOutline",
+) as HTMLButtonElement | null;
+const styleSoft = document.getElementById(
+  "styleSoft",
+) as HTMLButtonElement | null;
 const reliefBlendButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>("[data-relief]")
+  document.querySelectorAll<HTMLButtonElement>("[data-relief]"),
 );
 const mapStage = document.querySelector(".map-stage") as HTMLDivElement | null;
 const cropFrame = document.getElementById("cropFrame") as HTMLDivElement | null;
-const cropOverlay = document.getElementById("cropOverlay") as HTMLDivElement | null;
-const cropMaskTop = document.getElementById("cropMaskTop") as HTMLDivElement | null;
-const cropMaskLeft = document.getElementById("cropMaskLeft") as HTMLDivElement | null;
-const cropMaskRight = document.getElementById("cropMaskRight") as HTMLDivElement | null;
-const cropMaskBottom = document.getElementById("cropMaskBottom") as HTMLDivElement | null;
+const cropOverlay = document.getElementById(
+  "cropOverlay",
+) as HTMLDivElement | null;
+const cropMaskTop = document.getElementById(
+  "cropMaskTop",
+) as HTMLDivElement | null;
+const cropMaskLeft = document.getElementById(
+  "cropMaskLeft",
+) as HTMLDivElement | null;
+const cropMaskRight = document.getElementById(
+  "cropMaskRight",
+) as HTMLDivElement | null;
+const cropMaskBottom = document.getElementById(
+  "cropMaskBottom",
+) as HTMLDivElement | null;
 const styleButtons = [
   styleOriginal,
   styleDefault,
   styleMinimal,
   styleDark,
   styleOutline,
-  styleSoft
+  styleSoft,
 ].filter((btn): btn is HTMLButtonElement => Boolean(btn));
 
 const WORLD = {
   minLon: -180,
   maxLon: 180,
   minLat: -85,
-  maxLat: 85
+  maxLat: 85,
 };
 
 const RADIUS = 6378137;
@@ -376,7 +569,8 @@ let originalRatio = MAP_WIDTH / MAP_HEIGHT;
 let activeRatioId: string | undefined = undefined;
 let activeStyleId = "styleOriginal";
 let mapLocked = false;
-let cropBBox: { x: number; y: number; width: number; height: number } | null = null;
+let cropBBox: { x: number; y: number; width: number; height: number } | null =
+  null;
 type CropBox = { left: number; top: number; width: number; height: number };
 type CropDrag = {
   mode: "move" | "resize";
@@ -422,7 +616,10 @@ type LonLat = [number, number];
 type PolygonGeometry = { type: "Polygon"; coordinates: LonLat[][] };
 type MultiPolygonGeometry = { type: "MultiPolygon"; coordinates: LonLat[][][] };
 type LineStringGeometry = { type: "LineString"; coordinates: LonLat[] };
-type MultiLineStringGeometry = { type: "MultiLineString"; coordinates: LonLat[][] };
+type MultiLineStringGeometry = {
+  type: "MultiLineString";
+  coordinates: LonLat[][];
+};
 type RenderGeometry =
   | PolygonGeometry
   | MultiPolygonGeometry
@@ -480,7 +677,12 @@ const WORLD_X_MAX = mercatorX(WORLD.maxLon);
 const WORLD_Y_MIN = mercatorY(WORLD.minLat);
 const WORLD_Y_MAX = mercatorY(WORLD.maxLat);
 
-function project(lon: number, lat: number, width: number, height: number): [number, number] {
+function project(
+  lon: number,
+  lat: number,
+  width: number,
+  height: number,
+): [number, number] {
   const x = mercatorX(lon);
   const y = mercatorY(lat);
   const sx = (x - WORLD_X_MIN) / (WORLD_X_MAX - WORLD_X_MIN);
@@ -488,20 +690,26 @@ function project(lon: number, lat: number, width: number, height: number): [numb
   return [sx * width, (1 - sy) * height];
 }
 
-function unproject(x: number, y: number, width: number, height: number): [number, number] {
+function unproject(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): [number, number] {
   const sx = x / width;
   const sy = 1 - y / height;
   const mx = WORLD_X_MIN + sx * (WORLD_X_MAX - WORLD_X_MIN);
   const my = WORLD_Y_MIN + sy * (WORLD_Y_MAX - WORLD_Y_MIN);
   const lon = (mx / RADIUS) * (180 / Math.PI);
-  const lat = (2 * Math.atan(Math.exp(my / RADIUS)) - Math.PI / 2) * (180 / Math.PI);
+  const lat =
+    (2 * Math.atan(Math.exp(my / RADIUS)) - Math.PI / 2) * (180 / Math.PI);
   return [lon, lat];
 }
 
 function pathFromCoords(
   coords: LonLat[],
   width: number,
-  height: number
+  height: number,
 ): string {
   if (coords.length === 0) {
     return "";
@@ -517,7 +725,11 @@ function pathFromCoords(
   return d;
 }
 
-function geometryToPath(geometry: RenderGeometry, width: number, height: number): string {
+function geometryToPath(
+  geometry: RenderGeometry,
+  width: number,
+  height: number,
+): string {
   if (!geometry) {
     return "";
   }
@@ -530,7 +742,9 @@ function geometryToPath(geometry: RenderGeometry, width: number, height: number)
   if (type === "MultiPolygon") {
     return geometry.coordinates
       .map((poly) =>
-        poly.map((ring) => pathFromCoords(ring, width, height) + " Z").join(" ")
+        poly
+          .map((ring) => pathFromCoords(ring, width, height) + " Z")
+          .join(" "),
       )
       .join(" ");
   }
@@ -554,7 +768,7 @@ function layerStyleFor(layerId: string): LayerStyle {
       land: { fill: "#1f2937" },
       lakes: { fill: "#142247" },
       rivers: { stroke: "#3b82f6", strokeWidth: 0.6 },
-      coastline: { stroke: "#cbd5f5", strokeWidth: 0.6 }
+      coastline: { stroke: "#cbd5f5", strokeWidth: 0.6 },
     },
     styleDefault: {
       ocean: { fill: "#dbeafe" },
@@ -562,15 +776,15 @@ function layerStyleFor(layerId: string): LayerStyle {
       lakes: { fill: "#bfdbfe" },
       rivers: { stroke: "#60a5fa", strokeWidth: 0.6 },
       coastline: { stroke: "#94a3b8", strokeWidth: 0.6 },
-      borders: { stroke: "#cbd5f5", strokeWidth: 0.4 }
+      borders: { stroke: "#cbd5f5", strokeWidth: 0.4 },
     },
     styleMinimal: {
-      ocean: { fill: "#f8fafc" },
-      land: { fill: "#f8fafc" },
-      lakes: { fill: "#f1f5f9" },
+      ocean: { fill: "#eef2f7" },
+      land: { fill: "#f1f5f9" },
+      lakes: { fill: "#e2e8f0" },
       rivers: { stroke: "none", strokeWidth: 0 },
-      coastline: { stroke: "#e2e8f0", strokeWidth: 0.4 },
-      borders: { stroke: "none", strokeWidth: 0 }
+      coastline: { stroke: "#aebccd", strokeWidth: 0.75 },
+      borders: { stroke: "none", strokeWidth: 0 },
     },
     styleDark: {
       ocean: { fill: "#0b1020" },
@@ -578,24 +792,24 @@ function layerStyleFor(layerId: string): LayerStyle {
       lakes: { fill: "#101a33" },
       rivers: { stroke: "#3b82f6", strokeWidth: 0.6 },
       coastline: { stroke: "#cbd5f5", strokeWidth: 0.6 },
-      borders: { stroke: "#64748b", strokeWidth: 0.4 }
+      borders: { stroke: "#64748b", strokeWidth: 0.4 },
     },
     styleOutline: {
       ocean: { fill: "none" },
       land: { fill: "none" },
       lakes: { fill: "none" },
       rivers: { stroke: "none", strokeWidth: 0 },
-      coastline: { stroke: "#0f172a", strokeWidth: 0.8 },
-      borders: { stroke: "#0f172a", strokeWidth: 0.5 }
+      coastline: { stroke: "#e2e8f0", strokeWidth: 0.85 },
+      borders: { stroke: "#94a3b8", strokeWidth: 0.55 },
     },
     styleSoft: {
-      ocean: { fill: "#e0f2fe" },
-      land: { fill: "#fef3c7" },
-      lakes: { fill: "#bae6fd" },
-      rivers: { stroke: "#7dd3fc", strokeWidth: 0.6 },
-      coastline: { stroke: "#cbd5f5", strokeWidth: 0.5 },
-      borders: { stroke: "#e5e7eb", strokeWidth: 0.3 }
-    }
+      ocean: { fill: "#e8f0fb" },
+      land: { fill: "#faf6e8" },
+      lakes: { fill: "#d8e7fb" },
+      rivers: { stroke: "#8fb7e8", strokeWidth: 0.5 },
+      coastline: { stroke: "#c3cee3", strokeWidth: 0.48 },
+      borders: { stroke: "#d8dee8", strokeWidth: 0.28 },
+    },
   };
   const styles = presets[activeStyleId] ?? presets.styleOriginal;
   return styles[layerId] ?? { stroke: "#64748b", strokeWidth: 0.4 };
@@ -622,7 +836,7 @@ function buildHillshadeTexture(image: HTMLImageElement): HTMLCanvasElement {
 
 async function loadHillshadeTexture(
   path: string,
-  projection: string | null
+  projection: string | null,
 ): Promise<HTMLCanvasElement | null> {
   try {
     if (projection === "EPSG:3857" && "createImageBitmap" in window) {
@@ -631,7 +845,7 @@ async function loadHillshadeTexture(
       const bitmap = await createImageBitmap(blob, {
         resizeWidth: MAP_WIDTH,
         resizeHeight: MAP_HEIGHT,
-        resizeQuality: "high"
+        resizeQuality: "high",
       });
       const canvasEl = document.createElement("canvas");
       canvasEl.width = MAP_WIDTH;
@@ -656,7 +870,9 @@ async function loadHillshadeTexture(
 }
 
 function ensureLayer(parent: SVGElement, id: string): SVGGElement {
-  let group = parent.querySelector(`g[data-layer="${id}"]`) as SVGGElement | null;
+  let group = parent.querySelector(
+    `g[data-layer="${id}"]`,
+  ) as SVGGElement | null;
   if (!group) {
     group = document.createElementNS("http://www.w3.org/2000/svg", "g");
     group.setAttribute("data-layer", id);
@@ -666,7 +882,9 @@ function ensureLayer(parent: SVGElement, id: string): SVGGElement {
 }
 
 function ensureMapRoot(svgEl: SVGSVGElement): SVGGElement {
-  let root = svgEl.querySelector("g[data-layer=\"map-root\"]") as SVGGElement | null;
+  let root = svgEl.querySelector(
+    'g[data-layer="map-root"]',
+  ) as SVGGElement | null;
   if (!root) {
     root = document.createElementNS("http://www.w3.org/2000/svg", "g");
     root.setAttribute("data-layer", "map-root");
@@ -676,7 +894,9 @@ function ensureMapRoot(svgEl: SVGSVGElement): SVGGElement {
 }
 
 function ensureBasemapContainer(root: SVGGElement): SVGGElement {
-  let container = root.querySelector("g[data-layer=\"basemap-wrap\"]") as SVGGElement | null;
+  let container = root.querySelector(
+    'g[data-layer="basemap-wrap"]',
+  ) as SVGGElement | null;
   if (!container) {
     container = document.createElementNS("http://www.w3.org/2000/svg", "g");
     container.setAttribute("data-layer", "basemap-wrap");
@@ -686,7 +906,9 @@ function ensureBasemapContainer(root: SVGGElement): SVGGElement {
 }
 
 function ensureMarkersContainer(root: SVGGElement): SVGGElement {
-  let container = root.querySelector("g[data-layer=\"markers-wrap\"]") as SVGGElement | null;
+  let container = root.querySelector(
+    'g[data-layer="markers-wrap"]',
+  ) as SVGGElement | null;
   if (!container) {
     container = document.createElementNS("http://www.w3.org/2000/svg", "g");
     container.setAttribute("data-layer", "markers-wrap");
@@ -696,7 +918,9 @@ function ensureMarkersContainer(root: SVGGElement): SVGGElement {
 }
 
 function ensureShapesContainer(root: SVGGElement): SVGGElement {
-  let container = root.querySelector("g[data-layer=\"shapes-wrap\"]") as SVGGElement | null;
+  let container = root.querySelector(
+    'g[data-layer="shapes-wrap"]',
+  ) as SVGGElement | null;
   if (!container) {
     container = document.createElementNS("http://www.w3.org/2000/svg", "g");
     container.setAttribute("data-layer", "shapes-wrap");
@@ -705,8 +929,14 @@ function ensureShapesContainer(root: SVGGElement): SVGGElement {
   return container;
 }
 
-function ensureWrapGroup(container: SVGGElement, id: string, offsetX: number): SVGGElement {
-  let group = container.querySelector(`g[data-wrap=\"${id}\"]`) as SVGGElement | null;
+function ensureWrapGroup(
+  container: SVGGElement,
+  id: string,
+  offsetX: number,
+): SVGGElement {
+  let group = container.querySelector(
+    `g[data-wrap=\"${id}\"]`,
+  ) as SVGGElement | null;
   if (!group) {
     group = document.createElementNS("http://www.w3.org/2000/svg", "g");
     group.setAttribute("data-wrap", id);
@@ -721,7 +951,10 @@ function applyViewTransform(): void {
     return;
   }
   const root = ensureMapRoot(svg);
-  root.setAttribute("transform", `translate(${view.tx} ${view.ty}) scale(${view.scale})`);
+  root.setAttribute(
+    "transform",
+    `translate(${view.tx} ${view.ty}) scale(${view.scale})`,
+  );
   updateZoomIndicator();
   updateMarkerStyles();
   requestBasemapDraw();
@@ -755,21 +988,24 @@ function setActiveStep(stepId: string): void {
       "0": "大致定位",
       "1": "範圍與比例",
       "2": "底圖樣式",
-      "3": "標示與繪製"
+      "3": "標示與繪製",
     };
     stepTitle.textContent = titles[stepId] ?? "";
   }
   if (stepSubtitle) {
     const subtitles: Record<string, string> = {
       "1": "使用右鍵拖曳框選範圍，確定示意圖的視窗。",
-      "2": "決定底圖樣式結果。"
+      "2": "決定底圖樣式結果。",
     };
     stepSubtitle.textContent = subtitles[stepId] ?? "";
   }
   if (cropFrame) {
     cropFrame.classList.toggle("hidden", stepId !== "1");
     cropFrame.classList.toggle("interactive", stepId === "1");
-    cropFrame.classList.toggle("fixed", stepId === "1" && ratioMode === "fixed");
+    cropFrame.classList.toggle(
+      "fixed",
+      stepId === "1" && ratioMode === "fixed",
+    );
   }
   if (mapWrap) {
     mapWrap.classList.toggle("step-range", stepId === "1");
@@ -852,7 +1088,7 @@ function updateCropFrame(): void {
       left: cropBox.left * scaleX,
       top: cropBox.top * scaleY,
       width: cropBox.width * scaleX,
-      height: cropBox.height * scaleY
+      height: cropBox.height * scaleY,
     };
     clampCropBox(cropBox);
   }
@@ -879,12 +1115,24 @@ function updateCropFrame(): void {
       cropBox = { left, top, width: frameWidth, height: frameHeight };
     }
   } else if (ratioMode === "free") {
-    cropBox.left = Math.min(Math.max(0, cropBox.left), stageWidth - cropBox.width);
-    cropBox.top = Math.min(Math.max(0, cropBox.top), availableHeight - cropBox.height);
+    cropBox.left = Math.min(
+      Math.max(0, cropBox.left),
+      stageWidth - cropBox.width,
+    );
+    cropBox.top = Math.min(
+      Math.max(0, cropBox.top),
+      availableHeight - cropBox.height,
+    );
   }
   if (cropBox) {
-    cropBox.left = Math.min(Math.max(0, cropBox.left), stageWidth - cropBox.width);
-    cropBox.top = Math.min(Math.max(0, cropBox.top), availableHeight - cropBox.height);
+    cropBox.left = Math.min(
+      Math.max(0, cropBox.left),
+      stageWidth - cropBox.width,
+    );
+    cropBox.top = Math.min(
+      Math.max(0, cropBox.top),
+      availableHeight - cropBox.height,
+    );
   }
   cropFrame.style.left = `${cropBox.left}px`;
   cropFrame.style.top = `${cropBox.top}px`;
@@ -924,7 +1172,12 @@ function syncStageSize(): void {
     view.scale = view.scale * (lastScaleFit / scaleFit);
   }
   lastScaleFit = scaleFit;
-  const [centerX, centerY] = project(center[0], center[1], MAP_WIDTH, MAP_HEIGHT);
+  const [centerX, centerY] = project(
+    center[0],
+    center[1],
+    MAP_WIDTH,
+    MAP_HEIGHT,
+  );
   view.tx = MAP_WIDTH / 2 - centerX * view.scale;
   view.ty = MAP_HEIGHT / 2 - centerY * view.scale;
   applyViewTransform();
@@ -947,9 +1200,10 @@ function zoomToCropBounds(): void {
   const { scaleFit, offsetX, offsetY } = resizeCanvasToStage();
   const nextScale = Math.min(
     stageWidth / (cropBBox.width * scaleFit),
-    stageHeight / (cropBBox.height * scaleFit)
+    stageHeight / (cropBBox.height * scaleFit),
   );
-  const scaleCap = activeStep === "2" || activeStep === "3" ? MAX_SCALE_CROP : MAX_SCALE;
+  const scaleCap =
+    activeStep === "2" || activeStep === "3" ? MAX_SCALE_CROP : MAX_SCALE;
   view.scale = Math.max(MIN_SCALE, Math.min(scaleCap, nextScale));
   const cropScreenWidth = cropBBox.width * view.scale * scaleFit;
   const cropScreenHeight = cropBBox.height * view.scale * scaleFit;
@@ -1012,8 +1266,12 @@ function updateCropOverlay(): void {
     const { scaleFit, offsetX, offsetY } = resizeCanvasToStage();
     left = (cropBBox.x * view.scale + view.tx) * scaleFit + offsetX;
     top = (cropBBox.y * view.scale + view.ty) * scaleFit + offsetY;
-    right = ((cropBBox.x + cropBBox.width) * view.scale + view.tx) * scaleFit + offsetX;
-    bottom = ((cropBBox.y + cropBBox.height) * view.scale + view.ty) * scaleFit + offsetY;
+    right =
+      ((cropBBox.x + cropBBox.width) * view.scale + view.tx) * scaleFit +
+      offsetX;
+    bottom =
+      ((cropBBox.y + cropBBox.height) * view.scale + view.ty) * scaleFit +
+      offsetY;
   } else if (cropBox) {
     left = cropBox.left;
     top = cropBox.top;
@@ -1074,11 +1332,16 @@ function pointFromEvent(event: PointerEvent): { x: number; y: number } | null {
   const rect = mapStage.getBoundingClientRect();
   return {
     x: event.clientX - rect.left,
-    y: event.clientY - rect.top
+    y: event.clientY - rect.top,
   };
 }
 
-function clampCropBox(box: { left: number; top: number; width: number; height: number }): void {
+function clampCropBox(box: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}): void {
   if (!mapStage) {
     return;
   }
@@ -1114,11 +1377,22 @@ function attachCropInteractions(): void {
       const cursor = handleToCursor(handle);
       cropFrame.classList.add("resizing");
       cropFrame.style.cursor = cursor;
-      cropDrag = { mode: "resize", handle, startX: point.x, startY: point.y, startBox: { ...cropBox } };
+      cropDrag = {
+        mode: "resize",
+        handle,
+        startX: point.x,
+        startY: point.y,
+        startBox: { ...cropBox },
+      };
     } else {
       cropFrame.classList.remove("resizing");
       cropFrame.style.cursor = "move";
-      cropDrag = { mode: "move", startX: point.x, startY: point.y, startBox: { ...cropBox } };
+      cropDrag = {
+        mode: "move",
+        startX: point.x,
+        startY: point.y,
+        startBox: { ...cropBox },
+      };
     }
   });
   cropFrame.addEventListener("pointermove", (event) => {
@@ -1139,10 +1413,15 @@ function attachCropInteractions(): void {
     } else if (cropDrag.mode === "resize") {
       const handle = cropDrag.handle ?? "";
       if (ratioMode === "fixed") {
-        const widthFromDx = handle.includes("w") ? start.width - dx : start.width + dx;
-        const heightFromDy = handle.includes("n") ? start.height - dy : start.height + dy;
+        const widthFromDx = handle.includes("w")
+          ? start.width - dx
+          : start.width + dx;
+        const heightFromDy = handle.includes("n")
+          ? start.height - dy
+          : start.height + dy;
         const widthFromDy = heightFromDy * cropRatio;
-        const useWidth = Math.abs(dx) >= Math.abs(dy) ? widthFromDx : widthFromDy;
+        const useWidth =
+          Math.abs(dx) >= Math.abs(dy) ? widthFromDx : widthFromDy;
         const nextWidth = Math.max(40, useWidth);
         const nextHeight = nextWidth / cropRatio;
         if (handle.includes("w")) {
@@ -1216,7 +1495,7 @@ function resolveCropFrameBox():
     left: cropRect.left - stageRect.left,
     top: cropRect.top - stageRect.top,
     width: cropRect.width,
-    height: cropRect.height
+    height: cropRect.height,
   };
 }
 
@@ -1277,18 +1556,32 @@ function hookSteps(): void {
   });
   ratioInputA?.addEventListener("input", handleRatioInput);
   ratioInputB?.addEventListener("input", handleRatioInput);
-  ratioInputA?.addEventListener("focus", () => setActiveRatioButton("ratioCustom"));
-  ratioInputB?.addEventListener("focus", () => setActiveRatioButton("ratioCustom"));
-  styleOriginal?.addEventListener("click", () => setActiveStyleButton("styleOriginal"));
-  styleDefault?.addEventListener("click", () => setActiveStyleButton("styleDefault"));
-  styleMinimal?.addEventListener("click", () => setActiveStyleButton("styleMinimal"));
+  ratioInputA?.addEventListener("focus", () =>
+    setActiveRatioButton("ratioCustom"),
+  );
+  ratioInputB?.addEventListener("focus", () =>
+    setActiveRatioButton("ratioCustom"),
+  );
+  styleOriginal?.addEventListener("click", () =>
+    setActiveStyleButton("styleOriginal"),
+  );
+  styleDefault?.addEventListener("click", () =>
+    setActiveStyleButton("styleDefault"),
+  );
+  styleMinimal?.addEventListener("click", () =>
+    setActiveStyleButton("styleMinimal"),
+  );
   styleDark?.addEventListener("click", () => setActiveStyleButton("styleDark"));
-  styleOutline?.addEventListener("click", () => setActiveStyleButton("styleOutline"));
+  styleOutline?.addEventListener("click", () =>
+    setActiveStyleButton("styleOutline"),
+  );
   styleSoft?.addEventListener("click", () => setActiveStyleButton("styleSoft"));
   reliefBlendButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const value = button.dataset.relief ?? "off";
-      reliefBlendButtons.forEach((btn) => btn.classList.toggle("active", btn === button));
+      reliefBlendButtons.forEach((btn) =>
+        btn.classList.toggle("active", btn === button),
+      );
       if (value === "off") {
         hillshadeEnabled = false;
         requestBasemapDraw();
@@ -1299,24 +1592,28 @@ function hookSteps(): void {
       requestBasemapDraw();
     });
   });
-  document.querySelectorAll<HTMLButtonElement>(".tool-select").forEach((button) => {
-    button.addEventListener("click", () => {
-      const tool = button.dataset.tool as typeof activeTool | undefined;
-      if (tool) {
-        setActiveTool(tool);
-      }
+  document
+    .querySelectorAll<HTMLButtonElement>(".tool-select")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const tool = button.dataset.tool as typeof activeTool | undefined;
+        if (tool) {
+          setActiveTool(tool);
+        }
+      });
     });
-  });
-  document.querySelectorAll<HTMLButtonElement>(".tool-add").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const tool = button.dataset.addTool as typeof activeTool | undefined;
-      if (!tool) {
-        return;
-      }
-      addToolItem(tool);
+  document
+    .querySelectorAll<HTMLButtonElement>(".tool-add")
+    .forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const tool = button.dataset.addTool as typeof activeTool | undefined;
+        if (!tool) {
+          return;
+        }
+        addToolItem(tool);
+      });
     });
-  });
 }
 
 function resizeCanvasToStage(): {
@@ -1327,7 +1624,13 @@ function resizeCanvasToStage(): {
   offsetY: number;
 } {
   if (!canvas || !mapStage) {
-    return { width: MAP_WIDTH, height: MAP_HEIGHT, scaleFit: 1, offsetX: 0, offsetY: 0 };
+    return {
+      width: MAP_WIDTH,
+      height: MAP_HEIGHT,
+      scaleFit: 1,
+      offsetX: 0,
+      offsetY: 0,
+    };
   }
   const rect = mapStage.getBoundingClientRect();
   const stageWidth = Math.max(1, rect.width);
@@ -1365,8 +1668,13 @@ function drawBasemap(): void {
   if (!canvas || !svg || cachedBasemapLayers.length === 0) {
     return;
   }
-  const { width: stageWidth, height: stageHeight, scaleFit, offsetX, offsetY } =
-    resizeCanvasToStage();
+  const {
+    width: stageWidth,
+    height: stageHeight,
+    scaleFit,
+    offsetX,
+    offsetY,
+  } = resizeCanvasToStage();
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     return;
@@ -1380,11 +1688,14 @@ function drawBasemap(): void {
     0,
     view.scale * scaleFit * dpr,
     (offsetX + view.tx * scaleFit) * dpr,
-    (offsetY + view.ty * scaleFit) * dpr
+    (offsetY + view.ty * scaleFit) * dpr,
   );
   const wrapShift = shiftLocked ? shiftLockValue : worldShift;
   const viewWidthMap = stageWidth / Math.max(0.0001, scaleFit * view.scale);
-  const wrapSpan = Math.min(5, Math.max(1, Math.ceil(viewWidthMap / MAP_WIDTH / 2) + 1));
+  const wrapSpan = Math.min(
+    5,
+    Math.max(1, Math.ceil(viewWidthMap / MAP_WIDTH / 2) + 1),
+  );
   for (let i = -wrapSpan; i <= wrapSpan; i += 1) {
     ctx.save();
     ctx.translate((i + wrapShift) * MAP_WIDTH, 0);
@@ -1417,13 +1728,16 @@ function drawBasemap(): void {
       0,
       view.scale * scaleFit * dpr,
       (offsetX + view.tx * scaleFit) * dpr,
-      (offsetY + view.ty * scaleFit) * dpr
+      (offsetY + view.ty * scaleFit) * dpr,
     );
     ctx.globalCompositeOperation = hillshadeBlend;
     ctx.globalAlpha = 0.45;
     const wrapShift = shiftLocked ? shiftLockValue : worldShift;
     const viewWidthMap = stageWidth / Math.max(0.0001, scaleFit * view.scale);
-    const wrapSpan = Math.min(5, Math.max(1, Math.ceil(viewWidthMap / MAP_WIDTH / 2) + 1));
+    const wrapSpan = Math.min(
+      5,
+      Math.max(1, Math.ceil(viewWidthMap / MAP_WIDTH / 2) + 1),
+    );
     for (let i = -wrapSpan; i <= wrapSpan; i += 1) {
       ctx.save();
       ctx.translate((i + wrapShift) * MAP_WIDTH, 0);
@@ -1483,9 +1797,11 @@ function viewCenterLonLat(): [number, number] {
 
 function setActiveTool(tool: typeof activeTool): void {
   activeTool = tool;
-  document.querySelectorAll<HTMLButtonElement>(".tool-select").forEach((button) => {
-    button.classList.toggle("active", button.dataset.tool === tool);
-  });
+  document
+    .querySelectorAll<HTMLButtonElement>(".tool-select")
+    .forEach((button) => {
+      button.classList.toggle("active", button.dataset.tool === tool);
+    });
   const [lon, lat] = viewCenterLonLat();
   if (tool === "marker") {
     previewShape = null;
@@ -1515,7 +1831,12 @@ function addToolItem(tool: typeof activeTool): void {
     renderMarkerList();
     return;
   }
-  if (tool === "text" || tool === "line" || tool === "area" || tool === "arrow") {
+  if (
+    tool === "text" ||
+    tool === "line" ||
+    tool === "area" ||
+    tool === "arrow"
+  ) {
     const shape = buildShapeAt(tool, { lon, lat });
     if (hasDuplicateShape(shape)) {
       return;
@@ -1590,7 +1911,7 @@ function renderMarkers() {
     return 0;
   });
   const renderItems: Array<{ marker: Marker; preview: boolean }> = [
-    ...sortedMarkers.map((marker) => ({ marker, preview: false }))
+    ...sortedMarkers.map((marker) => ({ marker, preview: false })),
   ];
   if (previewMarker) {
     renderItems.push({ marker: previewMarker, preview: true });
@@ -1600,25 +1921,38 @@ function renderMarkers() {
   }
 
   for (const i of WRAPS) {
-    const wrap = ensureWrapGroup(markerWrap, `marker-${i}`, (i + worldShift) * width);
+    const wrap = ensureWrapGroup(
+      markerWrap,
+      `marker-${i}`,
+      (i + worldShift) * width,
+    );
     wrap.innerHTML = "";
     for (const item of renderItems) {
       const marker = item.marker;
       const [x, y] = project(marker.longitude, marker.latitude, width, height);
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", (x).toFixed(2));
-      circle.setAttribute("cy", (y).toFixed(2));
+      const circle = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "circle",
+      );
+      circle.setAttribute("cx", x.toFixed(2));
+      circle.setAttribute("cy", y.toFixed(2));
       circle.setAttribute("data-marker", "dot");
       circle.setAttribute("data-id", marker.id);
       circle.setAttribute("data-base", String(marker.style.dotSize));
       circle.setAttribute("r", (marker.style.dotSize / view.scale).toFixed(2));
       circle.setAttribute("fill", marker.style.dotColor);
-      circle.setAttribute("stroke", marker.id === selectedMarkerId ? "#38bdf8" : "#fff7ed");
+      circle.setAttribute(
+        "stroke",
+        marker.id === selectedMarkerId ? "#38bdf8" : "#fff7ed",
+      );
       circle.setAttribute("stroke-width", (1.2 / view.scale).toFixed(2));
       if (item.preview) {
         circle.setAttribute("opacity", "0.7");
       }
-      const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      const hit = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "circle",
+      );
       const hitRadius = Math.max(14, marker.style.dotSize * 3) / view.scale;
       hit.setAttribute("cx", x.toFixed(2));
       hit.setAttribute("cy", y.toFixed(2));
@@ -1648,7 +1982,7 @@ function renderMarkers() {
           startX: start.x,
           startY: start.y,
           startLon: marker.longitude,
-          startLat: marker.latitude
+          startLat: marker.latitude,
         };
       });
       wrap.appendChild(hit);
@@ -1657,7 +1991,10 @@ function renderMarkers() {
       if (marker.showLabel === false) {
         continue;
       }
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      const label = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "text",
+      );
       const scale = Math.max(0.5, Math.min(1.6, Math.pow(view.scale, 0.35)));
       const offsetX = marker.style.textOffsetX;
       const offsetY = marker.style.textOffsetY;
@@ -1671,7 +2008,10 @@ function renderMarkers() {
       label.setAttribute("data-id", marker.id);
       label.setAttribute("data-base", String(marker.style.textSize));
       label.setAttribute("fill", marker.style.textColor);
-      label.setAttribute("font-size", (marker.style.textSize * scale).toFixed(2));
+      label.setAttribute(
+        "font-size",
+        (marker.style.textSize * scale).toFixed(2),
+      );
       label.setAttribute("font-family", marker.style.fontFamily);
       label.textContent = markerLabelText(marker);
       if (labelDrag && labelDrag.markerId === marker.id) {
@@ -1698,7 +2038,7 @@ function renderMarkers() {
           startX: start.x,
           startY: start.y,
           startOffsetX: marker.style.textOffsetX,
-          startOffsetY: marker.style.textOffsetY
+          startOffsetY: marker.style.textOffsetY,
         };
       });
       wrap.appendChild(label);
@@ -1725,39 +2065,55 @@ function renderShapes(): void {
     return 0;
   });
   const renderItems: Array<{ shape: ShapeItem; preview: boolean }> = [
-    ...sortedShapes.map((shape) => ({ shape, preview: false }))
+    ...sortedShapes.map((shape) => ({ shape, preview: false })),
   ];
   if (previewShape) {
     renderItems.push({ shape: previewShape, preview: true });
   }
   for (const i of WRAPS) {
-    const wrap = ensureWrapGroup(shapeWrap, `shape-${i}`, (i + worldShift) * width);
+    const wrap = ensureWrapGroup(
+      shapeWrap,
+      `shape-${i}`,
+      (i + worldShift) * width,
+    );
     wrap.innerHTML = "";
     for (const item of renderItems) {
       const shape = item.shape;
       const [x, y] = project(shape.longitude, shape.latitude, width, height);
       if (shape.type === "line") {
         const half = shape.width / 2;
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        const line = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "line",
+        );
         line.setAttribute("x1", (x - half).toFixed(2));
         line.setAttribute("y1", y.toFixed(2));
         line.setAttribute("x2", (x + half).toFixed(2));
         line.setAttribute("y2", y.toFixed(2));
         line.setAttribute("stroke", shape.style.strokeColor);
-        line.setAttribute("stroke-width", (shape.style.strokeWidth / view.scale).toFixed(2));
+        line.setAttribute(
+          "stroke-width",
+          (shape.style.strokeWidth / view.scale).toFixed(2),
+        );
         line.setAttribute("stroke-linecap", "round");
         line.setAttribute("data-shape", "line");
         line.setAttribute("data-id", shape.id);
         if (item.preview) {
           line.setAttribute("opacity", "0.6");
         }
-        const hit = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        const hit = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "line",
+        );
         hit.setAttribute("x1", (x - half).toFixed(2));
         hit.setAttribute("y1", y.toFixed(2));
         hit.setAttribute("x2", (x + half).toFixed(2));
         hit.setAttribute("y2", y.toFixed(2));
         hit.setAttribute("stroke", "transparent");
-        hit.setAttribute("stroke-width", (Math.max(14, shape.style.strokeWidth * 4) / view.scale).toFixed(2));
+        hit.setAttribute(
+          "stroke-width",
+          (Math.max(14, shape.style.strokeWidth * 4) / view.scale).toFixed(2),
+        );
         hit.setAttribute("stroke-linecap", "round");
         hit.setAttribute("data-shape", "line");
         hit.setAttribute("data-id", shape.id);
@@ -1784,7 +2140,7 @@ function renderShapes(): void {
             startX: start.x,
             startY: start.y,
             startLon: shape.longitude,
-            startLat: shape.latitude
+            startLat: shape.latitude,
           };
         };
         line.addEventListener("mousedown", onDragStart);
@@ -1802,25 +2158,34 @@ function renderShapes(): void {
         wrap.appendChild(line);
       } else if (shape.type === "arrow") {
         const half = shape.width / 2;
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        const line = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "line",
+        );
         line.setAttribute("x1", (x - half).toFixed(2));
         line.setAttribute("y1", y.toFixed(2));
         line.setAttribute("x2", (x + half).toFixed(2));
         line.setAttribute("y2", y.toFixed(2));
         line.setAttribute("stroke", shape.style.strokeColor);
-        line.setAttribute("stroke-width", (shape.style.strokeWidth / view.scale).toFixed(2));
+        line.setAttribute(
+          "stroke-width",
+          (shape.style.strokeWidth / view.scale).toFixed(2),
+        );
         line.setAttribute("stroke-linecap", "round");
         line.setAttribute("data-shape", "arrow");
         line.setAttribute("data-id", shape.id);
         const headSize = Math.max(6, shape.style.strokeWidth * 2) / view.scale;
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const path = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "path",
+        );
         const x2 = x + half;
         const y2 = y;
-        const d = `M ${x2.toFixed(2)} ${y2.toFixed(2)} L ${(x2 - headSize).toFixed(
-          2
-        )} ${(y2 - headSize * 0.6).toFixed(2)} L ${(x2 - headSize).toFixed(
-          2
-        )} ${(y2 + headSize * 0.6).toFixed(2)} Z`;
+        const d = `M ${x2.toFixed(2)} ${y2.toFixed(2)} L ${(
+          x2 - headSize
+        ).toFixed(2)} ${(y2 - headSize * 0.6).toFixed(2)} L ${(
+          x2 - headSize
+        ).toFixed(2)} ${(y2 + headSize * 0.6).toFixed(2)} Z`;
         path.setAttribute("d", d);
         path.setAttribute("fill", shape.style.strokeColor);
         path.setAttribute("data-shape", "arrow");
@@ -1848,20 +2213,26 @@ function renderShapes(): void {
             startX: start.x,
             startY: start.y,
             startLon: shape.longitude,
-            startLat: shape.latitude
+            startLat: shape.latitude,
           };
         };
         line.addEventListener("click", onClick);
         path.addEventListener("click", onClick);
         line.addEventListener("mousedown", onDragStart);
         path.addEventListener("mousedown", onDragStart);
-        const hit = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        const hit = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "line",
+        );
         hit.setAttribute("x1", (x - half).toFixed(2));
         hit.setAttribute("y1", y.toFixed(2));
         hit.setAttribute("x2", (x + half).toFixed(2));
         hit.setAttribute("y2", y.toFixed(2));
         hit.setAttribute("stroke", "transparent");
-        hit.setAttribute("stroke-width", (Math.max(14, shape.style.strokeWidth * 4) / view.scale).toFixed(2));
+        hit.setAttribute(
+          "stroke-width",
+          (Math.max(14, shape.style.strokeWidth * 4) / view.scale).toFixed(2),
+        );
         hit.setAttribute("stroke-linecap", "round");
         hit.setAttribute("data-shape", "arrow");
         hit.setAttribute("data-id", shape.id);
@@ -1873,7 +2244,10 @@ function renderShapes(): void {
         wrap.appendChild(line);
         wrap.appendChild(path);
       } else if (shape.type === "area") {
-        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const rect = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "rect",
+        );
         rect.setAttribute("x", (x - shape.width / 2).toFixed(2));
         rect.setAttribute("y", (y - shape.height / 2).toFixed(2));
         rect.setAttribute("width", shape.width.toFixed(2));
@@ -1881,7 +2255,10 @@ function renderShapes(): void {
         rect.setAttribute("fill", shape.style.fillColor);
         rect.setAttribute("fill-opacity", shape.style.fillOpacity.toFixed(2));
         rect.setAttribute("stroke", shape.style.strokeColor);
-        rect.setAttribute("stroke-width", (shape.style.strokeWidth / view.scale).toFixed(2));
+        rect.setAttribute(
+          "stroke-width",
+          (shape.style.strokeWidth / view.scale).toFixed(2),
+        );
         rect.setAttribute("data-shape", "area");
         rect.setAttribute("data-id", shape.id);
         if (item.preview) {
@@ -1910,10 +2287,13 @@ function renderShapes(): void {
             startX: start.x,
             startY: start.y,
             startLon: shape.longitude,
-            startLat: shape.latitude
+            startLat: shape.latitude,
           };
         });
-        const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const hit = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "rect",
+        );
         hit.setAttribute("x", (x - shape.width / 2 - 6).toFixed(2));
         hit.setAttribute("y", (y - shape.height / 2 - 6).toFixed(2));
         hit.setAttribute("width", (shape.width + 12).toFixed(2));
@@ -1935,7 +2315,7 @@ function renderShapes(): void {
             startX: start.x,
             startY: start.y,
             startLon: shape.longitude,
-            startLat: shape.latitude
+            startLat: shape.latitude,
           };
         });
         hit.addEventListener("click", (event) => {
@@ -1950,14 +2330,17 @@ function renderShapes(): void {
         wrap.appendChild(hit);
         wrap.appendChild(rect);
       } else if (shape.type === "text") {
-        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        const label = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "text",
+        );
         const scale = Math.max(0.6, Math.min(1.6, Math.pow(view.scale, 0.35)));
         label.setAttribute("x", x.toFixed(2));
         label.setAttribute("y", y.toFixed(2));
         label.setAttribute("fill", shape.style.textColor);
         label.setAttribute(
           "font-size",
-          (shape.style.textSize * scale).toFixed(2)
+          (shape.style.textSize * scale).toFixed(2),
         );
         label.setAttribute("font-family", shape.style.fontFamily);
         label.setAttribute("data-shape", "text");
@@ -1989,14 +2372,20 @@ function renderShapes(): void {
             startX: start.x,
             startY: start.y,
             startLon: shape.longitude,
-            startLat: shape.latitude
+            startLat: shape.latitude,
           };
         });
         const approxWidth =
-          Math.max(40, (shape.text ?? "文字標示").length * shape.style.textSize * 0.6) /
-          view.scale;
-        const approxHeight = Math.max(18, shape.style.textSize * 1.4) / view.scale;
-        const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          Math.max(
+            40,
+            (shape.text ?? "文字標示").length * shape.style.textSize * 0.6,
+          ) / view.scale;
+        const approxHeight =
+          Math.max(18, shape.style.textSize * 1.4) / view.scale;
+        const hit = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "rect",
+        );
         hit.setAttribute("x", (x - approxWidth / 2).toFixed(2));
         hit.setAttribute("y", (y - approxHeight).toFixed(2));
         hit.setAttribute("width", approxWidth.toFixed(2));
@@ -2018,7 +2407,7 @@ function renderShapes(): void {
             startX: start.x,
             startY: start.y,
             startLon: shape.longitude,
-            startLat: shape.latitude
+            startLat: shape.latitude,
           };
         });
         hit.addEventListener("click", (event) => {
@@ -2043,15 +2432,22 @@ function updateMarkerStyles(): void {
   }
   const root = ensureMapRoot(svg);
   const markerWrap = ensureMarkersContainer(root);
-  const dots = markerWrap.querySelectorAll<SVGCircleElement>("circle[data-marker=\"dot\"]");
+  const dots = markerWrap.querySelectorAll<SVGCircleElement>(
+    'circle[data-marker="dot"]',
+  );
   dots.forEach((dot) => {
     const base = Number(dot.getAttribute("data-base") ?? "4");
     dot.setAttribute("r", (base / view.scale).toFixed(2));
     dot.setAttribute("stroke-width", (1.2 / view.scale).toFixed(2));
     const id = dot.getAttribute("data-id");
-    dot.setAttribute("stroke", id && id === selectedMarkerId ? "#38bdf8" : "#fff7ed");
+    dot.setAttribute(
+      "stroke",
+      id && id === selectedMarkerId ? "#38bdf8" : "#fff7ed",
+    );
   });
-  const labels = markerWrap.querySelectorAll<SVGTextElement>("text[data-marker=\"label\"]");
+  const labels = markerWrap.querySelectorAll<SVGTextElement>(
+    'text[data-marker="label"]',
+  );
   labels.forEach((label) => {
     const base = Number(label.getAttribute("data-base") ?? "13");
     const scale = Math.max(0.5, Math.min(1.6, Math.pow(view.scale, 0.35)));
@@ -2075,7 +2471,8 @@ function haversineDistance(a: [number, number], b: [number, number]): number {
   const rLat2 = toRad(lat2);
   const sinDlat = Math.sin(dLat / 2);
   const sinDlon = Math.sin(dLon / 2);
-  const h = sinDlat * sinDlat + Math.cos(rLat1) * Math.cos(rLat2) * sinDlon * sinDlon;
+  const h =
+    sinDlat * sinDlat + Math.cos(rLat1) * Math.cos(rLat2) * sinDlon * sinDlon;
   return 2 * RADIUS * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
@@ -2143,7 +2540,7 @@ function renderCoordResult(
   target: HTMLUListElement,
   marker: Marker,
   lat: number,
-  lon: number
+  lon: number,
 ): void {
   target.innerHTML = "";
   const item = document.createElement("li");
@@ -2186,7 +2583,10 @@ function setResults3Visible(visible: boolean): void {
 function setPreviewMarker(result: GeonamesResult): void {
   previewMarker = {
     id: `preview-${result.id}`,
-    name: result.nameAlt && result.nameAlt !== result.name ? result.nameAlt : result.name,
+    name:
+      result.nameAlt && result.nameAlt !== result.name
+        ? result.nameAlt
+        : result.name,
     nameAlt: result.name,
     latitude: result.latitude,
     longitude: result.longitude,
@@ -2195,7 +2595,7 @@ function setPreviewMarker(result: GeonamesResult): void {
     sourceType: "geonames",
     labelMode: "name",
     showLabel: true,
-    kind: "label"
+    kind: "label",
   };
   renderMarkers();
   syncMarkerControls(previewMarker);
@@ -2222,10 +2622,10 @@ function parseLatLon(value: string): { lat: number; lon: number } | null {
   }
   const dmsMatches = normalized
     .replace(/º/g, "°")
-    .replace(/″/g, "\"")
+    .replace(/″/g, '"')
     .replace(/′/g, "'")
     .match(
-      /([NS])?\s*(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)?\s*'?\s*(\d+(?:\.\d+)?)?\s*\"?\s*([NS])?.*?([EW])?\s*(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)?\s*'?\s*(\d+(?:\.\d+)?)?\s*\"?\s*([EW])?/i
+      /([NS])?\s*(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)?\s*'?\s*(\d+(?:\.\d+)?)?\s*\"?\s*([NS])?.*?([EW])?\s*(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)?\s*'?\s*(\d+(?:\.\d+)?)?\s*\"?\s*([EW])?/i,
     );
   if (!dmsMatches) {
     return null;
@@ -2258,7 +2658,10 @@ function parseLatLon(value: string): { lat: number; lon: number } | null {
   return { lat, lon };
 }
 
-function buildCoordMarker(parsed: { lat: number; lon: number }, idPrefix = "coord"): Marker {
+function buildCoordMarker(
+  parsed: { lat: number; lon: number },
+  idPrefix = "coord",
+): Marker {
   const coordsText = `(${parsed.lat.toFixed(4)}, ${parsed.lon.toFixed(4)})`;
   return {
     id: `${idPrefix}-${Date.now()}`,
@@ -2271,7 +2674,7 @@ function buildCoordMarker(parsed: { lat: number; lon: number }, idPrefix = "coor
     sourceType: "coords",
     labelMode: "coords",
     showLabel: true,
-    kind: "label"
+    kind: "label",
   };
 }
 
@@ -2292,7 +2695,10 @@ function addMarkerFromCoordsValue(parsed: { lat: number; lon: number }): void {
   }
 }
 
-function handleCoordSearch(input: HTMLInputElement | null, target: HTMLUListElement | null): void {
+function handleCoordSearch(
+  input: HTMLInputElement | null,
+  target: HTMLUListElement | null,
+): void {
   if (!input || !target) {
     return;
   }
@@ -2325,7 +2731,7 @@ function defaultMarkerStyle(): MarkerStyle {
     textColor: "#fde68a",
     textOffsetX: 8,
     textOffsetY: -6,
-    fontFamily: "IBM Plex Sans, sans-serif"
+    fontFamily: "IBM Plex Sans, sans-serif",
   };
 }
 
@@ -2337,7 +2743,7 @@ function defaultShapeStyle(type: ShapeItem["type"]): ShapeStyle {
     fillOpacity: 0.35,
     textColor: "#fde68a",
     textSize: 16,
-    fontFamily: "IBM Plex Sans, sans-serif"
+    fontFamily: "IBM Plex Sans, sans-serif",
   };
   if (type === "area") {
     base.fillOpacity = 0.4;
@@ -2356,7 +2762,7 @@ function buildManualMarkerAt(center: { lon: number; lat: number }): Marker {
     sourceType: "manual",
     labelMode: "name",
     showLabel: false,
-    kind: "point"
+    kind: "point",
   };
 }
 
@@ -2370,13 +2776,13 @@ function buildPreviewMarkerAt(center: { lon: number; lat: number }): Marker {
     sourceType: "manual",
     labelMode: "name",
     showLabel: false,
-    kind: "point"
+    kind: "point",
   };
 }
 
 function buildShapeAt(
   type: ShapeItem["type"],
-  center: { lon: number; lat: number }
+  center: { lon: number; lat: number },
 ): ShapeItem {
   const size = 140 / Math.max(0.4, view.scale);
   const height = type === "area" ? size * 0.7 : size * 0.4;
@@ -2388,7 +2794,7 @@ function buildShapeAt(
     width: size,
     height,
     text: type === "text" ? "文字標示" : undefined,
-    style: defaultShapeStyle(type)
+    style: defaultShapeStyle(type),
   };
 }
 
@@ -2405,7 +2811,11 @@ function markerLabelText(marker: Marker): string {
     : marker.name;
 }
 
-function markerKey(marker: { name: string; latitude: number; longitude: number }): string {
+function markerKey(marker: {
+  name: string;
+  latitude: number;
+  longitude: number;
+}): string {
   return `${marker.name}|${marker.latitude.toFixed(6)}|${marker.longitude.toFixed(6)}`;
 }
 
@@ -2434,7 +2844,7 @@ function shapeDefaultName(shape: ShapeItem, index: number): string {
     line: "線段",
     area: "區域",
     text: "文字",
-    arrow: "箭頭"
+    arrow: "箭頭",
   };
   if (shape.type === "text" && shape.text && shape.text.trim().length > 0) {
     const rawText = shape.text.trim();
@@ -2466,7 +2876,7 @@ function shapeDisplayNameMap(): Map<string, string> {
     line: 0,
     area: 0,
     text: 0,
-    arrow: 0
+    arrow: 0,
   };
   shapes.forEach((shape) => {
     shapeCounters[shape.type] += 1;
@@ -2474,7 +2884,7 @@ function shapeDisplayNameMap(): Map<string, string> {
       shape.id,
       shape.displayName && shape.displayName.trim().length > 0
         ? shape.displayName.trim()
-        : shapeDefaultName(shape, shapeCounters[shape.type])
+        : shapeDefaultName(shape, shapeCounters[shape.type]),
     );
   });
   return names;
@@ -2494,7 +2904,7 @@ function getOverlayRefs(): OverlayObjectRef[] {
       key,
       kind: "marker",
       id: marker.id,
-      name: markerListName(marker)
+      name: markerListName(marker),
     });
   });
   shapes.forEach((shape) => {
@@ -2503,7 +2913,7 @@ function getOverlayRefs(): OverlayObjectRef[] {
       key,
       kind: "shape",
       id: shape.id,
-      name: shapeNames.get(shape.id) ?? "標示"
+      name: shapeNames.get(shape.id) ?? "標示",
     });
   });
   return refs;
@@ -2512,7 +2922,10 @@ function getOverlayRefs(): OverlayObjectRef[] {
 function syncOrderKeys(): void {
   const refs = getOverlayRefs();
   const valid = new Set(refs.map((item) => item.key));
-  const normalize = (source: string[]) => source.filter((key, index) => valid.has(key) && source.indexOf(key) === index);
+  const normalize = (source: string[]) =>
+    source.filter(
+      (key, index) => valid.has(key) && source.indexOf(key) === index,
+    );
   const normalizedList = normalize(listOrderKeys);
   const normalizedDisplay = normalize(displayOrderKeys);
   refs.forEach((item) => {
@@ -2536,7 +2949,12 @@ function getDisplayRankMap(): Map<string, number> {
   return rank;
 }
 
-function shapeKey(shape: { type: ShapeItem["type"]; text?: string; latitude: number; longitude: number }): string {
+function shapeKey(shape: {
+  type: ShapeItem["type"];
+  text?: string;
+  latitude: number;
+  longitude: number;
+}): string {
   return `${shape.type}|${shape.text ?? ""}|${shape.latitude.toFixed(6)}|${shape.longitude.toFixed(6)}`;
 }
 
@@ -2545,7 +2963,11 @@ function hasDuplicateShape(candidate: ShapeItem): boolean {
   return shapes.some((shape) => shapeKey(shape) === key);
 }
 
-function hasDuplicateMarker(candidate: { name: string; latitude: number; longitude: number }): boolean {
+function hasDuplicateMarker(candidate: {
+  name: string;
+  latitude: number;
+  longitude: number;
+}): boolean {
   const key = markerKey(candidate);
   return selectedMarkers.some((marker) => markerKey(marker) === key);
 }
@@ -2557,7 +2979,7 @@ function hasGeonamesMarker(result: GeonamesResult): boolean {
       marker.sourceType === "geonames" &&
       marker.sourceId === sourceId &&
       marker.latitude === result.latitude &&
-      marker.longitude === result.longitude
+      marker.longitude === result.longitude,
   );
 }
 
@@ -2578,7 +3000,7 @@ function addMarkerFromGeonames(result: GeonamesResult): void {
     sourceType: "geonames",
     labelMode: "name",
     showLabel: true,
-    kind: "label"
+    kind: "label",
   };
   selectedMarkers.push(marker);
   previewMarker = null;
@@ -2593,7 +3015,9 @@ function getSelectedMarker(): Marker | null {
   if (!selectedMarkerId) {
     return null;
   }
-  return selectedMarkers.find((marker) => marker.id === selectedMarkerId) ?? null;
+  return (
+    selectedMarkers.find((marker) => marker.id === selectedMarkerId) ?? null
+  );
 }
 
 function getSelectedShape(): ShapeItem | null {
@@ -2646,9 +3070,7 @@ function syncMarkerControls(marker: Marker | null): void {
   if (markerLabelInput) {
     markerLabelInput.disabled = marker.sourceType !== "geonames";
     markerLabelInput.value =
-      marker.sourceType === "geonames"
-        ? marker.labelName ?? marker.name
-        : "";
+      marker.sourceType === "geonames" ? (marker.labelName ?? marker.name) : "";
   }
 }
 
@@ -2730,7 +3152,10 @@ function syncItemNameControl(): void {
   }
   if (shape) {
     const sameTypeShapes = shapes.filter((item) => item.type === shape.type);
-    const index = Math.max(1, sameTypeShapes.findIndex((item) => item.id === shape.id) + 1);
+    const index = Math.max(
+      1,
+      sameTypeShapes.findIndex((item) => item.id === shape.id) + 1,
+    );
     itemNameInput.value = shape.displayName ?? shapeDefaultName(shape, index);
   }
 }
@@ -2753,7 +3178,10 @@ function updateItemNameFromControl(): void {
   }
 }
 
-function updateSettingsVisibility(marker: Marker | null, shape: ShapeItem | null): void {
+function updateSettingsVisibility(
+  marker: Marker | null,
+  shape: ShapeItem | null,
+): void {
   if (
     !settingsEmpty ||
     !pointSettings ||
@@ -2826,9 +3254,11 @@ function selectMarker(markerId: string | null): void {
   updateMarkerStyles();
   if (markerId) {
     activeTool = "marker";
-    document.querySelectorAll<HTMLButtonElement>(".tool-select").forEach((button) => {
-      button.classList.toggle("active", button.dataset.tool === "marker");
-    });
+    document
+      .querySelectorAll<HTMLButtonElement>(".tool-select")
+      .forEach((button) => {
+        button.classList.toggle("active", button.dataset.tool === "marker");
+      });
   }
 }
 
@@ -2845,9 +3275,11 @@ function selectShape(shapeId: string | null): void {
   renderMarkers();
   if (shape) {
     activeTool = shape.type;
-    document.querySelectorAll<HTMLButtonElement>(".tool-select").forEach((button) => {
-      button.classList.toggle("active", button.dataset.tool === shape.type);
-    });
+    document
+      .querySelectorAll<HTMLButtonElement>(".tool-select")
+      .forEach((button) => {
+        button.classList.toggle("active", button.dataset.tool === shape.type);
+      });
   }
 }
 
@@ -2922,7 +3354,9 @@ function renderMarkerList(): void {
 const DRAG_START_THRESHOLD = 6;
 
 function isReducedMotion(): boolean {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  return (
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+  );
 }
 
 function measurePositions(container: HTMLUListElement): Map<string, DOMRect> {
@@ -2940,12 +3374,14 @@ function measurePositions(container: HTMLUListElement): Map<string, DOMRect> {
 function animateRowsWithFLIP(
   container: HTMLUListElement,
   before: Map<string, DOMRect>,
-  duration = 180
+  duration = 180,
 ): void {
   if (isReducedMotion()) {
     return;
   }
-  const rows = Array.from(container.querySelectorAll<HTMLLIElement>("li.order-item"));
+  const rows = Array.from(
+    container.querySelectorAll<HTMLLIElement>("li.order-item"),
+  );
   rows.forEach((row) => {
     const key = row.dataset.key;
     if (!key) {
@@ -2972,7 +3408,11 @@ function animateRowsWithFLIP(
   });
 }
 
-function scheduleDragMove(session: OrderDragSession, clientX: number, clientY: number): void {
+function scheduleDragMove(
+  session: OrderDragSession,
+  clientX: number,
+  clientY: number,
+): void {
   session.queuedClientX = clientX;
   session.queuedClientY = clientY;
   if (session.rafId !== null) {
@@ -2984,7 +3424,11 @@ function scheduleDragMove(session: OrderDragSession, clientX: number, clientY: n
   });
 }
 
-function updateGhostTransform(session: OrderDragSession, clientX: number, clientY: number): void {
+function updateGhostTransform(
+  session: OrderDragSession,
+  clientX: number,
+  clientY: number,
+): void {
   if (!session.ghost) {
     return;
   }
@@ -2995,7 +3439,7 @@ function updateGhostTransform(session: OrderDragSession, clientX: number, client
 
 function computeInsertReference(
   session: OrderDragSession,
-  clientY: number
+  clientY: number,
 ): { refNode: Node | null } {
   const rows = session.cachedRows.filter((row) => row !== session.sourceItem);
   for (const row of rows) {
@@ -3008,7 +3452,10 @@ function computeInsertReference(
   return { refNode: null };
 }
 
-function movePlaceholderWithFLIP(session: OrderDragSession, clientY: number): void {
+function movePlaceholderWithFLIP(
+  session: OrderDragSession,
+  clientY: number,
+): void {
   if (!session.placeholder) {
     return;
   }
@@ -3054,13 +3501,17 @@ function startDragging(session: OrderDragSession): void {
   ghost.style.height = `${sourceRect.height}px`;
   document.body.appendChild(ghost);
   session.ghost = ghost;
-  session.cachedRows = Array.from(container.querySelectorAll<HTMLLIElement>("li.order-item"));
+  session.cachedRows = Array.from(
+    container.querySelectorAll<HTMLLIElement>("li.order-item"),
+  );
   updateGhostTransform(session, startClientX, startClientY);
 }
 
 function finalizeOrderCommit(session: OrderDragSession): void {
   const { mode, container } = session;
-  const nextOrder = Array.from(container.querySelectorAll<HTMLLIElement>("li.order-item"))
+  const nextOrder = Array.from(
+    container.querySelectorAll<HTMLLIElement>("li.order-item"),
+  )
     .map((row) => row.dataset.key ?? "")
     .filter((key) => key.length > 0);
   const currentOrder = mode === "list" ? listOrderKeys : displayOrderKeys;
@@ -3096,7 +3547,8 @@ function cleanupOrderSession(reason: "commit" | "cancel"): void {
     if (isReducedMotion()) {
       session.ghost.remove();
     } else {
-      session.ghost.style.transition = "transform 120ms ease-out, opacity 120ms ease-out";
+      session.ghost.style.transition =
+        "transform 120ms ease-out, opacity 120ms ease-out";
       session.ghost.style.opacity = "0";
       window.setTimeout(() => session.ghost?.remove(), 130);
     }
@@ -3155,7 +3607,7 @@ function startOrderPending(
   event: PointerEvent,
   mode: OrderMode,
   sourceItem: HTMLLIElement,
-  handle: HTMLElement
+  handle: HTMLElement,
 ): void {
   if (orderDragSession) {
     cleanupOrderSession("cancel");
@@ -3184,12 +3636,15 @@ function startOrderPending(
     rafId: null,
     queuedClientX: event.clientX,
     queuedClientY: event.clientY,
-    orderChanged: false
+    orderChanged: false,
   };
   handle.setPointerCapture(event.pointerId);
 }
 
-function createOrderItem(item: OverlayObjectRef, mode: OrderMode): HTMLLIElement {
+function createOrderItem(
+  item: OverlayObjectRef,
+  mode: OrderMode,
+): HTMLLIElement {
   const li = document.createElement("li");
   li.className = "order-item";
   li.dataset.key = item.key;
@@ -3267,7 +3722,7 @@ function renderOrderDialog(): void {
   const renderList = (
     container: HTMLUListElement,
     keys: string[],
-    mode: "list" | "display"
+    mode: "list" | "display",
   ) => {
     container.innerHTML = "";
     keys.forEach((key) => {
@@ -3317,7 +3772,11 @@ function clearCompleteFeedback(): void {
   completeSaveFeedbackText.textContent = "";
 }
 
-function setCompleteFeedback(state: "loading" | "success" | "error", message: string, autoHideMs = 0): void {
+function setCompleteFeedback(
+  state: "loading" | "success" | "error",
+  message: string,
+  autoHideMs = 0,
+): void {
   if (!completeSaveFeedback || !completeSaveFeedbackText) {
     return;
   }
@@ -3365,7 +3824,10 @@ function deleteMarker(markerId: string): void {
   renderMarkerList();
 }
 
-async function handleSearch(input: HTMLInputElement, button: HTMLButtonElement) {
+async function handleSearch(
+  input: HTMLInputElement,
+  button: HTMLButtonElement,
+) {
   const query = input.value.trim();
   if (!query) {
     return;
@@ -3389,14 +3851,29 @@ async function handleSearch(input: HTMLInputElement, button: HTMLButtonElement) 
   }
 }
 
-function unprojectBBox(box: { x: number; y: number; width: number; height: number }): BBox {
-  const [minLon, minLat] = unproject(box.x, box.y + box.height, MAP_WIDTH, MAP_HEIGHT);
-  const [maxLon, maxLat] = unproject(box.x + box.width, box.y, MAP_WIDTH, MAP_HEIGHT);
+function unprojectBBox(box: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): BBox {
+  const [minLon, minLat] = unproject(
+    box.x,
+    box.y + box.height,
+    MAP_WIDTH,
+    MAP_HEIGHT,
+  );
+  const [maxLon, maxLat] = unproject(
+    box.x + box.width,
+    box.y,
+    MAP_WIDTH,
+    MAP_HEIGHT,
+  );
   return {
     minLon: Math.min(minLon, maxLon),
     minLat: Math.min(minLat, maxLat),
     maxLon: Math.max(minLon, maxLon),
-    maxLat: Math.max(minLat, maxLat)
+    maxLat: Math.max(minLat, maxLat),
   };
 }
 
@@ -3425,7 +3902,7 @@ function buildProject(): MapProject | null {
     canvas: { width: 1200, height: 800, unit: "px" },
     viewport: {
       bbox: currentSelectionBBox(),
-      projection: "EPSG:4326"
+      projection: "EPSG:4326",
     },
     layers: [
       {
@@ -3434,8 +3911,8 @@ function buildProject(): MapProject | null {
         visible: true,
         locked: false,
         opacity: 1,
-        zIndex: 0
-      }
+        zIndex: 0,
+      },
     ],
     objects: selectedMarkers.map((marker, index) => ({
       id: marker.id || `obj-${index + 1}`,
@@ -3450,19 +3927,27 @@ function buildProject(): MapProject | null {
         textOffsetX: marker.style.textOffsetX,
         textOffsetY: marker.style.textOffsetY,
         labelMode: marker.labelMode,
-        labelName: marker.labelName
+        labelName: marker.labelName,
       },
       geometry: { kind: "point", lon: marker.longitude, lat: marker.latitude },
       text: markerLabelText(marker),
       provenance:
         marker.sourceType === "geonames"
-          ? { source: "geonames", sourceId: marker.sourceId ?? String(marker.id) }
-          : { source: "manual", query: marker.sourceType }
-    }))
+          ? {
+              source: "geonames",
+              sourceId: marker.sourceId ?? String(marker.id),
+            }
+          : { source: "manual", query: marker.sourceType },
+    })),
   };
 }
 
-async function handleSave(saveAs = false): Promise<{ ok: boolean; canceled?: boolean; path?: string; error?: string } | null> {
+async function handleSave(saveAs = false): Promise<{
+  ok: boolean;
+  canceled?: boolean;
+  path?: string;
+  error?: string;
+} | null> {
   if (!window.mapSchematic?.saveProject) {
     return null;
   }
@@ -3476,7 +3961,7 @@ async function handleSave(saveAs = false): Promise<{ ok: boolean; canceled?: boo
   const result = await window.mapSchematic.saveProject({
     project,
     path: currentProjectPath,
-    saveAs
+    saveAs,
   });
   if (result?.path) {
     currentProjectPath = result.path;
@@ -3521,25 +4006,33 @@ async function handleLoad() {
       x: Math.min(min[0], max[0]),
       y: Math.min(min[1], max[1]),
       width: Math.abs(max[0] - min[0]),
-      height: Math.abs(max[1] - min[1])
+      height: Math.abs(max[1] - min[1]),
     };
   }
   for (const obj of loadedProject.objects ?? []) {
-    if (obj.geometry?.kind === "point" && obj.geometry.lon != null && obj.geometry.lat != null) {
+    if (
+      obj.geometry?.kind === "point" &&
+      obj.geometry.lon != null &&
+      obj.geometry.lat != null
+    ) {
       const style = (obj.style ?? {}) as Record<string, unknown>;
       const sourceType =
         obj.provenance?.source === "manual" ? "coords" : ("geonames" as const);
-      const coordsText = formatCoords({ latitude: obj.geometry.lat, longitude: obj.geometry.lon });
-      const labelName = typeof style.labelName === "string" ? style.labelName : undefined;
+      const coordsText = formatCoords({
+        latitude: obj.geometry.lat,
+        longitude: obj.geometry.lon,
+      });
+      const labelName =
+        typeof style.labelName === "string" ? style.labelName : undefined;
       const labelMode =
         style.labelMode === "name" || style.labelMode === "coords"
           ? (style.labelMode as "name" | "coords")
           : sourceType === "coords"
-          ? "coords"
-          : "name";
+            ? "coords"
+            : "name";
       selectedMarkers.push({
         id: obj.id ?? `obj-${selectedMarkers.length + 1}`,
-        name: sourceType === "coords" ? coordsText : obj.text ?? "",
+        name: sourceType === "coords" ? coordsText : (obj.text ?? ""),
         nameAlt: sourceType === "coords" ? coordsText : undefined,
         latitude: obj.geometry.lat,
         longitude: obj.geometry.lon,
@@ -3551,13 +4044,16 @@ async function handleLoad() {
           textSize: Number(style.textSize ?? 12),
           fontFamily: String(style.fontFamily ?? "IBM Plex Sans, sans-serif"),
           textOffsetX: Number(style.textOffsetX ?? 8),
-          textOffsetY: Number(style.textOffsetY ?? -6)
+          textOffsetY: Number(style.textOffsetY ?? -6),
         },
         sourceType,
         labelMode,
-        labelName: labelMode === "name" ? labelName ?? (obj.text ?? undefined) : labelName,
+        labelName:
+          labelMode === "name"
+            ? (labelName ?? obj.text ?? undefined)
+            : labelName,
         showLabel: true,
-        kind: "label"
+        kind: "label",
       });
     }
   }
@@ -3576,7 +4072,11 @@ async function handleLoad() {
   }
 }
 
-async function renderExportCanvas(): Promise<{ canvas: HTMLCanvasElement; width: number; height: number } | null> {
+async function renderExportCanvas(): Promise<{
+  canvas: HTMLCanvasElement;
+  width: number;
+  height: number;
+} | null> {
   if (!canvas || !svg || !mapStage) {
     return null;
   }
@@ -3587,7 +4087,7 @@ async function renderExportCanvas(): Promise<{ canvas: HTMLCanvasElement; width:
     left: 0,
     top: 0,
     width: stageRect.width,
-    height: stageRect.height
+    height: stageRect.height,
   };
   const outWidth = Math.max(1, Math.round(crop.width * scaleX));
   const outHeight = Math.max(1, Math.round(crop.height * scaleY));
@@ -3612,7 +4112,13 @@ async function renderExportCanvas(): Promise<{ canvas: HTMLCanvasElement; width:
     img.onerror = () => reject(new Error("svg load failed"));
     img.src = url;
   });
-  ctx.drawImage(img, -crop.left * scaleX, -crop.top * scaleY, canvas.width, canvas.height);
+  ctx.drawImage(
+    img,
+    -crop.left * scaleX,
+    -crop.top * scaleY,
+    canvas.width,
+    canvas.height,
+  );
   URL.revokeObjectURL(url);
   return { canvas: outCanvas, width: outWidth, height: outHeight };
 }
@@ -3635,12 +4141,19 @@ async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
     const encoded = btoa(unescape(encodeURIComponent(svgContent)));
     data = `data:image/svg+xml;base64,${encoded}`;
   }
-  const result = await window.mapSchematic.exportProject({ format, data, width, height });
+  const result = await window.mapSchematic.exportProject({
+    format,
+    data,
+    width,
+    height,
+  });
   if (statusEl) {
     if (result.canceled) {
       statusEl.textContent = "已取消匯出。";
     } else {
-      statusEl.textContent = result.ok ? `已匯出：${result.path}` : `匯出失敗：${result.error ?? ""}`;
+      statusEl.textContent = result.ok
+        ? `已匯出：${result.path}`
+        : `匯出失敗：${result.error ?? ""}`;
     }
   }
 }
@@ -3676,20 +4189,27 @@ function deleteShape(shapeId: string): void {
 }
 
 function openCoordEditor(marker: Marker): void {
-  if (!coordEditModal || !coordLabelInput || !coordEditSave || !coordEditCancel) {
+  if (
+    !coordEditModal ||
+    !coordLabelInput ||
+    !coordEditSave ||
+    !coordEditCancel
+  ) {
     return;
   }
   editingCoordMarker = marker;
   coordEditModal.classList.add("active");
   coordLabelInput.value = marker.labelName ?? "";
-  const radios = coordEditModal.querySelectorAll<HTMLInputElement>("input[name=\"coordLabelMode\"]");
+  const radios = coordEditModal.querySelectorAll<HTMLInputElement>(
+    'input[name="coordLabelMode"]',
+  );
   radios.forEach((radio) => {
     radio.checked = radio.value === marker.labelMode;
   });
   coordEditSave.onclick = () => {
     marker.labelName = coordLabelInput.value.trim() || undefined;
     const selected = coordEditModal.querySelector<HTMLInputElement>(
-      "input[name=\"coordLabelMode\"]:checked"
+      'input[name="coordLabelMode"]:checked',
     );
     marker.labelMode = selected?.value === "name" ? "name" : "coords";
     editingCoordMarker = null;
@@ -3737,25 +4257,27 @@ function attachMarkerControls(): void {
   });
   markerFont?.addEventListener("change", update);
 
-  document.querySelectorAll<HTMLButtonElement>(".color-swatch").forEach((swatch) => {
-    swatch.addEventListener("click", () => {
-      const color = swatch.dataset.color ?? "";
-      const target = swatch.dataset.colorTarget ?? "";
-      const marker = getEditableMarker();
-      if (!marker || !color) {
-        return;
-      }
-      if (target === "dot" && markerDotColor) {
-        markerDotColor.value = color;
-        syncColorInputs("dot", color);
-      }
-      if (target === "text" && markerTextColor) {
-        markerTextColor.value = color;
-        syncColorInputs("text", color);
-      }
-      updateMarkerFromControls();
+  document
+    .querySelectorAll<HTMLButtonElement>(".color-swatch")
+    .forEach((swatch) => {
+      swatch.addEventListener("click", () => {
+        const color = swatch.dataset.color ?? "";
+        const target = swatch.dataset.colorTarget ?? "";
+        const marker = getEditableMarker();
+        if (!marker || !color) {
+          return;
+        }
+        if (target === "dot" && markerDotColor) {
+          markerDotColor.value = color;
+          syncColorInputs("dot", color);
+        }
+        if (target === "text" && markerTextColor) {
+          markerTextColor.value = color;
+          syncColorInputs("text", color);
+        }
+        updateMarkerFromControls();
+      });
     });
-  });
 }
 
 function attachShapeControls(): void {
@@ -3766,40 +4288,42 @@ function attachShapeControls(): void {
   shapeArrowColor?.addEventListener("input", updateShapeFromControls);
   shapeAreaFill?.addEventListener("input", updateShapeFromControls);
   shapeAreaStroke?.addEventListener("input", updateShapeFromControls);
-  document.querySelectorAll<HTMLButtonElement>("[data-shape-color]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const color = button.dataset.shapeColor;
-      const shape = getSelectedShape();
-      if (!color || !shape) {
-        return;
-      }
-      if (shape.type === "text" && shapeTextColor) {
-        shapeTextColor.value = color;
-      }
-      if (shape.type === "line" && shapeLineColor) {
-        shapeLineColor.value = color;
-      }
-      if (shape.type === "arrow" && shapeArrowColor) {
-        shapeArrowColor.value = color;
-      }
-      if (shape.type === "area") {
-        if (shapeAreaFill) {
-          shapeAreaFill.value = color;
+  document
+    .querySelectorAll<HTMLButtonElement>("[data-shape-color]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const color = button.dataset.shapeColor;
+        const shape = getSelectedShape();
+        if (!color || !shape) {
+          return;
         }
-        if (shapeAreaStroke) {
-          shapeAreaStroke.value = color;
+        if (shape.type === "text" && shapeTextColor) {
+          shapeTextColor.value = color;
         }
-      }
-      updateShapeFromControls();
+        if (shape.type === "line" && shapeLineColor) {
+          shapeLineColor.value = color;
+        }
+        if (shape.type === "arrow" && shapeArrowColor) {
+          shapeArrowColor.value = color;
+        }
+        if (shape.type === "area") {
+          if (shapeAreaFill) {
+            shapeAreaFill.value = color;
+          }
+          if (shapeAreaStroke) {
+            shapeAreaStroke.value = color;
+          }
+        }
+        updateShapeFromControls();
+      });
     });
-  });
 }
 
 itemNameInput?.addEventListener("input", updateItemNameFromControl);
 
 function bindFirstClickSelect(
   input: HTMLInputElement | null,
-  isDefault: () => boolean
+  isDefault: () => boolean,
 ): void {
   if (!input) {
     return;
@@ -3863,7 +4387,10 @@ function isCoordLabelDefault(): boolean {
   if (!editingCoordMarker) {
     return false;
   }
-  return !editingCoordMarker.labelName || editingCoordMarker.labelName.trim().length === 0;
+  return (
+    !editingCoordMarker.labelName ||
+    editingCoordMarker.labelName.trim().length === 0
+  );
 }
 
 bindFirstClickSelect(itemNameInput, isItemNameDefault);
@@ -3953,7 +4480,11 @@ function updateShapeFromControls(): void {
   renderMarkers();
 }
 
-function initSlider(root: HTMLDivElement | null, initialValue: number, onChange: (value: number) => void): SliderControl | null {
+function initSlider(
+  root: HTMLDivElement | null,
+  initialValue: number,
+  onChange: (value: number) => void,
+): SliderControl | null {
   if (!root) {
     return null;
   }
@@ -3985,7 +4516,7 @@ function initSlider(root: HTMLDivElement | null, initialValue: number, onChange:
     marksValues: null,
     marksPercents: null,
     defaultIndex,
-    onChange
+    onChange,
   };
   root.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) {
@@ -4033,7 +4564,10 @@ function initSlider(root: HTMLDivElement | null, initialValue: number, onChange:
   });
   renderSliderMarks(control);
   if (control.marksValues && control.defaultIndex != null) {
-    const idx = Math.min(control.marksValues.length - 1, Math.max(0, control.defaultIndex));
+    const idx = Math.min(
+      control.marksValues.length - 1,
+      Math.max(0, control.defaultIndex),
+    );
     control.value = control.marksValues[idx];
   } else {
     control.value = initialValue;
@@ -4042,7 +4576,10 @@ function initSlider(root: HTMLDivElement | null, initialValue: number, onChange:
   return control;
 }
 
-function updateSliderFromPointer(control: SliderControl, clientX: number): void {
+function updateSliderFromPointer(
+  control: SliderControl,
+  clientX: number,
+): void {
   if (!control.rect) {
     control.rect = control.track.getBoundingClientRect();
   }
@@ -4075,7 +4612,11 @@ function snapSliderValue(control: SliderControl, raw: number): number {
   return Math.max(control.min, Math.min(control.max, snapped));
 }
 
-function setSliderValue(control: SliderControl, value: number, silent = false): void {
+function setSliderValue(
+  control: SliderControl,
+  value: number,
+  silent = false,
+): void {
   const clamped = Math.max(control.min, Math.min(control.max, value));
   const next = snapSliderValue(control, clamped);
   if (next === control.value && !silent) {
@@ -4124,7 +4665,9 @@ function renderSliderMarks(control: SliderControl): void {
   control.marksPercents = null;
   const marksCountRaw = control.root.dataset.marks;
   const marksCount = marksCountRaw ? Math.max(2, Number(marksCountRaw)) : 0;
-  const count = marksCount ? marksCount - 1 : Math.max(1, Math.round((control.max - control.min) / control.step));
+  const count = marksCount
+    ? marksCount - 1
+    : Math.max(1, Math.round((control.max - control.min) / control.step));
   const values: number[] = [];
   const percents: number[] = [];
   for (let i = 0; i <= count; i += 1) {
@@ -4165,13 +4708,16 @@ function mapPointFromEvent(event: MouseEvent): { x: number; y: number } {
   const screen = svgPointFromEvent(event);
   return {
     x: (screen.x - view.tx) / view.scale,
-    y: (screen.y - view.ty) / view.scale
+    y: (screen.y - view.ty) / view.scale,
   };
 }
 
 function zoomAt(point: { x: number; y: number }, delta: number): void {
   const prevScale = view.scale;
-  const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * delta));
+  const nextScale = Math.min(
+    MAX_SCALE,
+    Math.max(MIN_SCALE, view.scale * delta),
+  );
   const scaleRatio = nextScale / prevScale;
 
   view.tx = point.x - scaleRatio * (point.x - view.tx);
@@ -4261,7 +4807,9 @@ function onMouseDown(event: MouseEvent): void {
 
 function onMouseMove(event: MouseEvent): void {
   if (labelDrag) {
-    const marker = selectedMarkers.find((item) => item.id === labelDrag?.markerId);
+    const marker = selectedMarkers.find(
+      (item) => item.id === labelDrag?.markerId,
+    );
     if (marker) {
       const current = mapPointFromEvent(event);
       const dx = current.x - labelDrag.startX;
@@ -4273,14 +4821,21 @@ function onMouseMove(event: MouseEvent): void {
     return;
   }
   if (markerDrag) {
-    const marker = selectedMarkers.find((item) => item.id === markerDrag?.markerId);
+    const marker = selectedMarkers.find(
+      (item) => item.id === markerDrag?.markerId,
+    );
     if (marker) {
       const current = mapPointFromEvent(event);
       const dx = current.x - markerDrag.startX;
       const dy = current.y - markerDrag.startY;
       const width = svg?.viewBox.baseVal.width || 1200;
       const height = svg?.viewBox.baseVal.height || 800;
-      const [startX, startY] = project(markerDrag.startLon, markerDrag.startLat, width, height);
+      const [startX, startY] = project(
+        markerDrag.startLon,
+        markerDrag.startLat,
+        width,
+        height,
+      );
       const nextX = startX + dx;
       const nextY = startY + dy;
       const [lon, lat] = unproject(nextX, nextY, width, height);
@@ -4298,7 +4853,12 @@ function onMouseMove(event: MouseEvent): void {
       const dy = current.y - shapeDrag.startY;
       const width = svg?.viewBox.baseVal.width || 1200;
       const height = svg?.viewBox.baseVal.height || 800;
-      const [startX, startY] = project(shapeDrag.startLon, shapeDrag.startLat, width, height);
+      const [startX, startY] = project(
+        shapeDrag.startLon,
+        shapeDrag.startLat,
+        width,
+        height,
+      );
       const nextX = startX + dx;
       const nextY = startY + dy;
       const [lon, lat] = unproject(nextX, nextY, width, height);
@@ -4345,7 +4905,9 @@ function onMouseMove(event: MouseEvent): void {
 function onMouseUp(event: MouseEvent): void {
   if (labelDrag) {
     if (svg) {
-      const draggingLabels = svg.querySelectorAll("text[data-marker=\"label\"][data-dragging=\"true\"]");
+      const draggingLabels = svg.querySelectorAll(
+        'text[data-marker="label"][data-dragging="true"]',
+      );
       draggingLabels.forEach((label) => label.removeAttribute("data-dragging"));
     }
     labelDrag = null;
@@ -4389,7 +4951,10 @@ function onMouseUp(event: MouseEvent): void {
       const height = svg.viewBox.baseVal.height || 800;
       const scaleX = width / w;
       const scaleY = height / h;
-      const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(scaleX, scaleY)));
+      const nextScale = Math.min(
+        MAX_SCALE,
+        Math.max(MIN_SCALE, Math.min(scaleX, scaleY)),
+      );
       const padX = (width - w * nextScale) / 2;
       const padY = (height - h * nextScale) / 2;
       view.tx = padX - x * nextScale;
@@ -4420,27 +4985,31 @@ function attachMapInteractions(): void {
   svg.addEventListener("mousemove", onMouseMove);
   svg.addEventListener("mouseup", onMouseUp);
   svg.addEventListener("mouseleave", () => {
-  if (labelDrag) {
-    if (svg) {
-      const draggingLabels = svg.querySelectorAll("text[data-marker=\"label\"][data-dragging=\"true\"]");
-      draggingLabels.forEach((label) => label.removeAttribute("data-dragging"));
+    if (labelDrag) {
+      if (svg) {
+        const draggingLabels = svg.querySelectorAll(
+          'text[data-marker="label"][data-dragging="true"]',
+        );
+        draggingLabels.forEach((label) =>
+          label.removeAttribute("data-dragging"),
+        );
+      }
+      labelDrag = null;
+      return;
     }
-    labelDrag = null;
-    return;
-  }
-  if (markerDrag) {
-    markerDrag = null;
-    return;
-  }
-  if (shapeDrag) {
-    shapeDrag = null;
-    return;
-  }
-  if (isDragging) {
-    isDragging = false;
-    dragMode = null;
-    clearDragRect();
-    svg.classList.remove("dragging");
+    if (markerDrag) {
+      markerDrag = null;
+      return;
+    }
+    if (shapeDrag) {
+      shapeDrag = null;
+      return;
+    }
+    if (isDragging) {
+      isDragging = false;
+      dragMode = null;
+      clearDragRect();
+      svg.classList.remove("dragging");
       svg.classList.remove("boxing");
     }
   });
@@ -4457,7 +5026,10 @@ async function boot() {
     const relief = await window.mapSchematic?.getRelief?.();
     if (relief?.path) {
       hillshadeProjection = relief.projection ?? null;
-      const texture = await loadHillshadeTexture(relief.path, hillshadeProjection);
+      const texture = await loadHillshadeTexture(
+        relief.path,
+        hillshadeProjection,
+      );
       if (texture) {
         hillshadeTexture = texture;
         requestBasemapDraw();
@@ -4496,7 +5068,9 @@ async function boot() {
 
 function hookToolbar(): void {
   function nextZoom(target: number, dir: 1 | -1): number {
-    const levels = ZOOM_LEVELS.filter((level) => level >= MIN_SCALE && level <= MAX_SCALE);
+    const levels = ZOOM_LEVELS.filter(
+      (level) => level >= MIN_SCALE && level <= MAX_SCALE,
+    );
     let nearestIndex = 0;
     let nearestDelta = Infinity;
     for (let i = 0; i < levels.length; i += 1) {
@@ -4552,45 +5126,51 @@ searchInput3?.addEventListener("keydown", (event) => {
     handleSearch(searchInput3, searchButton3);
   }
 });
-coordButton0?.addEventListener("click", () => handleCoordSearch(coordInput0, resultsEl0));
+coordButton0?.addEventListener("click", () =>
+  handleCoordSearch(coordInput0, resultsEl0),
+);
 coordInput0?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     handleCoordSearch(coordInput0, resultsEl0);
   }
 });
-coordButton3?.addEventListener("click", () => handleCoordSearch(coordInput3, resultsEl3));
+coordButton3?.addEventListener("click", () =>
+  handleCoordSearch(coordInput3, resultsEl3),
+);
 coordInput3?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     handleCoordSearch(coordInput3, resultsEl3);
   }
 });
-document.querySelectorAll<HTMLButtonElement>("[data-clear]").forEach((button) => {
-  const targetId = button.dataset.clear;
-  if (!targetId) {
-    return;
-  }
-  const target = document.getElementById(targetId) as HTMLInputElement | null;
-  const field = button.closest(".search-field") as HTMLElement | null;
-  if (!target) {
-    return;
-  }
-  const syncVisibility = () => {
-    const hasValue = target.value.trim().length > 0;
-    if (field) {
-      field.classList.toggle("has-value", hasValue);
+document
+  .querySelectorAll<HTMLButtonElement>("[data-clear]")
+  .forEach((button) => {
+    const targetId = button.dataset.clear;
+    if (!targetId) {
+      return;
     }
-    button.style.pointerEvents = hasValue ? "auto" : "none";
-    button.tabIndex = hasValue ? 0 : -1;
-    button.setAttribute("aria-hidden", hasValue ? "false" : "true");
-  };
-  syncVisibility();
-  target.addEventListener("input", syncVisibility);
-  button.addEventListener("click", () => {
-    target.value = "";
-    target.focus();
+    const target = document.getElementById(targetId) as HTMLInputElement | null;
+    const field = button.closest(".search-field") as HTMLElement | null;
+    if (!target) {
+      return;
+    }
+    const syncVisibility = () => {
+      const hasValue = target.value.trim().length > 0;
+      if (field) {
+        field.classList.toggle("has-value", hasValue);
+      }
+      button.style.pointerEvents = hasValue ? "auto" : "none";
+      button.tabIndex = hasValue ? 0 : -1;
+      button.setAttribute("aria-hidden", hasValue ? "false" : "true");
+    };
     syncVisibility();
+    target.addEventListener("input", syncVisibility);
+    button.addEventListener("click", () => {
+      target.value = "";
+      target.focus();
+      syncVisibility();
+    });
   });
-});
 saveButton?.addEventListener("click", () => handleSave(false));
 saveAsButton?.addEventListener("click", () => handleSave(true));
 loadButton?.addEventListener("click", handleLoad);
@@ -4696,31 +5276,31 @@ window.mapSchematic?.onMenuAction?.((action) => {
 hookToolbar();
 hookSteps();
 attachOrderDragGlobalEvents();
-  attachCropInteractions();
-  attachMarkerControls();
-  attachShapeControls();
-  dotSizeSlider = initSlider(markerDotSize, 7, () => {
-    updateMarkerFromControls();
-  });
-  textSizeSlider = initSlider(markerTextSize, 7, () => {
-    updateMarkerFromControls();
-  });
-  shapeTextSizeSlider = initSlider(shapeTextSize, 16, () => {
-    updateShapeFromControls();
-  });
-  shapeLineWidthSlider = initSlider(shapeLineWidth, 2, () => {
-    updateShapeFromControls();
-  });
-  shapeArrowWidthSlider = initSlider(shapeArrowWidth, 2, () => {
-    updateShapeFromControls();
-  });
-  shapeAreaOpacitySlider = initSlider(shapeAreaOpacity, 0.4, () => {
-    updateShapeFromControls();
-  });
-  shapeAreaStrokeWidthSlider = initSlider(shapeAreaStrokeWidth, 2, () => {
-    updateShapeFromControls();
-  });
-  boot();
+attachCropInteractions();
+attachMarkerControls();
+attachShapeControls();
+dotSizeSlider = initSlider(markerDotSize, 7, () => {
+  updateMarkerFromControls();
+});
+textSizeSlider = initSlider(markerTextSize, 7, () => {
+  updateMarkerFromControls();
+});
+shapeTextSizeSlider = initSlider(shapeTextSize, 16, () => {
+  updateShapeFromControls();
+});
+shapeLineWidthSlider = initSlider(shapeLineWidth, 2, () => {
+  updateShapeFromControls();
+});
+shapeArrowWidthSlider = initSlider(shapeArrowWidth, 2, () => {
+  updateShapeFromControls();
+});
+shapeAreaOpacitySlider = initSlider(shapeAreaOpacity, 0.4, () => {
+  updateShapeFromControls();
+});
+shapeAreaStrokeWidthSlider = initSlider(shapeAreaStrokeWidth, 2, () => {
+  updateShapeFromControls();
+});
+boot();
 
 window.addEventListener("resize", () => {
   syncStageSize();

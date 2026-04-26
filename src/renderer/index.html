@@ -1526,17 +1526,17 @@
             <button class="secondary ratio-button" id="styleOriginal">
               預設
             </button>
-            <button class="secondary ratio-button" id="styleMinimal">
-              極簡
-            </button>
             <button class="secondary ratio-button" id="styleDefault">
               淺色
             </button>
             <button class="secondary ratio-button" id="styleDark">深色</button>
+            <button class="secondary ratio-button" id="styleSoft">柔和</button>
             <button class="secondary ratio-button" id="styleOutline">
               輪廓
             </button>
-            <button class="secondary ratio-button" id="styleSoft">柔和</button>
+            <button class="secondary ratio-button" id="styleMinimal">
+              極簡
+            </button>
           </div>
           <div class="hint">地形陰影：</div>
           <div class="option-row option-grid">
@@ -2296,9 +2296,18 @@
     </div>
     <div class="modal-backdrop" id="completeModal">
       <div class="modal complete-modal">
-        <button id="completeClose" class="modal-close" type="button" aria-label="關閉">×</button>
+        <button
+          id="completeClose"
+          class="modal-close"
+          type="button"
+          aria-label="關閉"
+        >
+          ×
+        </button>
         <div class="modal-title">完成編輯</div>
-        <div class="complete-note">可立即儲存專案、匯出圖檔，或返回繼續編輯。</div>
+        <div class="complete-note">
+          可立即儲存專案、匯出圖檔，或返回繼續編輯。
+        </div>
         <div class="complete-actions">
           <button id="completeSave" class="secondary">儲存專案</button>
           <button id="completeSaveAs" class="secondary">另存新檔</button>
@@ -2307,7 +2316,11 @@
           <button id="completeExportPdf" class="secondary">匯出 PDF</button>
           <button id="completeContinue" class="full">返回繼續編輯</button>
         </div>
-        <div id="completeSaveFeedback" class="complete-feedback" aria-live="polite">
+        <div
+          id="completeSaveFeedback"
+          class="complete-feedback"
+          aria-live="polite"
+        >
           <span class="complete-feedback-icon" aria-hidden="true"></span>
           <span id="completeSaveFeedbackText"></span>
         </div>
