@@ -761,6 +761,46 @@ function geometryToPath(
 
 type LayerStyle = { fill?: string; stroke?: string; strokeWidth?: number };
 
+function shapeStrokeScale(width: number, height: number): number {
+  const minDim = Math.max(24, Math.min(width, height));
+  return Math.max(0.42, Math.min(1, minDim / 120));
+}
+
+function labelZoomScale(scale: number): number {
+  const normalized = Math.max(1, scale);
+  if (normalized <= 2) {
+    return Math.max(1.52, Math.min(3.4, 3.4 - (normalized - 1) * 1.88));
+  }
+  return Math.max(0.18, 1.52 / Math.pow(normalized / 2, 0.64));
+}
+
+function labelOffsetScale(scale: number): number {
+  const normalized = Math.max(1, scale);
+  if (normalized <= 2) {
+    return 1;
+  }
+  return Math.max(0.38, 1 / Math.pow(normalized / 2, 0.3));
+}
+
+function applyDraggingLabelOutline(label: SVGTextElement, textSize: number): void {
+  const px = Math.max(0.25, Math.min(0.5, textSize / 26));
+  label.setAttribute("paint-order", "stroke fill");
+  label.setAttribute("stroke", "rgba(56, 189, 248, 0.9)");
+  label.setAttribute("stroke-width", px.toFixed(2));
+  label.setAttribute("stroke-dasharray", `${Math.max(1, px * 2).toFixed(2)} ${Math.max(1.5, px * 2.6).toFixed(2)}`);
+  label.setAttribute("stroke-linecap", "round");
+  label.setAttribute("stroke-linejoin", "round");
+}
+
+function clearDraggingLabelOutline(label: SVGTextElement): void {
+  label.removeAttribute("paint-order");
+  label.removeAttribute("stroke");
+  label.removeAttribute("stroke-width");
+  label.removeAttribute("stroke-dasharray");
+  label.removeAttribute("stroke-linecap");
+  label.removeAttribute("stroke-linejoin");
+}
+
 function layerStyleFor(layerId: string): LayerStyle {
   const presets: Record<string, Record<string, LayerStyle>> = {
     styleOriginal: {
@@ -1027,6 +1067,11 @@ function setActiveStep(stepId: string): void {
   if (stepId === "0") {
     updateWrapTransforms(true);
   }
+  if (stepId !== "3") {
+    labelDrag = null;
+    markerDrag = null;
+    shapeDrag = null;
+  }
   if (stepId === "2" || stepId === "3") {
     if (!cropBox && !cropBBox) {
       updateCropFrame();
@@ -1044,6 +1089,9 @@ function setActiveStep(stepId: string): void {
   }
   if (stepId !== "0" && stepId !== "3" && previewMarker) {
     previewMarker = null;
+    renderMarkers();
+  }
+  if (previousStep !== stepId && (previousStep === "3" || stepId === "3")) {
     renderMarkers();
   }
   if (nextStepButton) {
@@ -1138,6 +1186,11 @@ function updateCropFrame(): void {
   cropFrame.style.top = `${cropBox.top}px`;
   cropFrame.style.width = `${cropBox.width}px`;
   cropFrame.style.height = `${cropBox.height}px`;
+  const minDim = Math.max(36, Math.min(cropBox.width, cropBox.height));
+  const stroke = Math.max(0.9, Math.min(1.35, minDim / 260));
+  const handleSize = Math.max(6, Math.min(8, minDim / 70));
+  cropFrame.style.setProperty("--crop-stroke", `${stroke.toFixed(2)}px`);
+  cropFrame.style.setProperty("--crop-handle-size", `${handleSize.toFixed(2)}px`);
   updateCropBBox();
   positionZoomIndicator();
   requestBasemapDraw();
@@ -1941,10 +1994,12 @@ function renderMarkers() {
       circle.setAttribute("data-base", String(marker.style.dotSize));
       circle.setAttribute("r", (marker.style.dotSize / view.scale).toFixed(2));
       circle.setAttribute("fill", marker.style.dotColor);
-      circle.setAttribute(
-        "stroke",
-        marker.id === selectedMarkerId ? "#38bdf8" : "#fff7ed",
-      );
+        circle.setAttribute(
+          "stroke",
+          activeStep === "3" && marker.id === selectedMarkerId
+            ? "#38bdf8"
+            : "#fff7ed",
+        );
       circle.setAttribute("stroke-width", (1.2 / view.scale).toFixed(2));
       if (item.preview) {
         circle.setAttribute("opacity", "0.7");
@@ -1995,13 +2050,14 @@ function renderMarkers() {
         "http://www.w3.org/2000/svg",
         "text",
       );
-      const scale = Math.max(0.5, Math.min(1.6, Math.pow(view.scale, 0.35)));
-      const offsetX = marker.style.textOffsetX;
-      const offsetY = marker.style.textOffsetY;
+      const scale = labelZoomScale(view.scale);
+      const offsetScale = labelOffsetScale(view.scale);
+      const offsetX = marker.style.textOffsetX * offsetScale;
+      const offsetY = marker.style.textOffsetY * offsetScale;
       label.setAttribute("data-x", x.toFixed(2));
       label.setAttribute("data-y", y.toFixed(2));
-      label.setAttribute("data-offset-x", offsetX.toFixed(2));
-      label.setAttribute("data-offset-y", offsetY.toFixed(2));
+      label.setAttribute("data-offset-x", marker.style.textOffsetX.toFixed(2));
+      label.setAttribute("data-offset-y", marker.style.textOffsetY.toFixed(2));
       label.setAttribute("x", (x + offsetX).toFixed(2));
       label.setAttribute("y", (y + offsetY).toFixed(2));
       label.setAttribute("data-marker", "label");
@@ -2013,9 +2069,13 @@ function renderMarkers() {
         (marker.style.textSize * scale).toFixed(2),
       );
       label.setAttribute("font-family", marker.style.fontFamily);
-      label.textContent = markerLabelText(marker);
-      if (labelDrag && labelDrag.markerId === marker.id) {
+      const labelText = markerLabelText(marker);
+      label.textContent = labelText;
+      const isDraggingLabel = !!(labelDrag && labelDrag.markerId === marker.id);
+      if (isDraggingLabel) {
         label.setAttribute("data-dragging", "true");
+      } else {
+        label.removeAttribute("data-dragging");
       }
       label.addEventListener("click", (event) => {
         if (activeStep !== "3") {
@@ -2026,7 +2086,7 @@ function renderMarkers() {
           selectMarker(marker.id);
         }
       });
-      label.addEventListener("mousedown", (event) => {
+      const startLabelDrag = (event: MouseEvent) => {
         if (activeStep !== "3" || item.preview) {
           return;
         }
@@ -2040,8 +2100,70 @@ function renderMarkers() {
           startOffsetX: marker.style.textOffsetX,
           startOffsetY: marker.style.textOffsetY,
         };
-      });
+      };
+      label.addEventListener("mousedown", startLabelDrag);
       wrap.appendChild(label);
+
+      const labelBox = label.getBBox();
+      const labelHit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      const renderedFontSize = marker.style.textSize * scale;
+      const hitPad = Math.max(1.5, renderedFontSize * 0.12);
+      labelHit.setAttribute("x", (labelBox.x - hitPad).toFixed(2));
+      labelHit.setAttribute("y", (labelBox.y - hitPad).toFixed(2));
+      labelHit.setAttribute("width", (labelBox.width + hitPad * 2).toFixed(2));
+      labelHit.setAttribute("height", (labelBox.height + hitPad * 2).toFixed(2));
+      labelHit.setAttribute("fill", "transparent");
+      labelHit.setAttribute("data-marker", "label-hit");
+      labelHit.setAttribute("data-id", marker.id);
+      labelHit.style.pointerEvents = "all";
+      labelHit.addEventListener("click", (event) => {
+        if (activeStep !== "3" || item.preview) {
+          return;
+        }
+        event.stopPropagation();
+        selectMarker(marker.id);
+      });
+      labelHit.addEventListener("mousedown", startLabelDrag);
+      wrap.insertBefore(labelHit, label);
+      if (isDraggingLabel) {
+        const dragBox = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        const pad = Math.max(0.35, Math.min(2.2, renderedFontSize * 0.07));
+        const boxX = labelBox.x - pad;
+        const boxY = labelBox.y - pad;
+        const boxWidth = labelBox.width + pad * 2;
+        const boxHeight = labelBox.height + pad * 2;
+        const dragStroke = Math.max(
+          0.22,
+          Math.min(1.05, renderedFontSize * 0.035),
+        );
+        dragBox.setAttribute("data-marker", "label-drag-box");
+        dragBox.style.pointerEvents = "none";
+        const addDragBoxLine = (
+          x1: number,
+          y1: number,
+          x2: number,
+          y2: number,
+          segments: number,
+        ) => {
+          const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          line.setAttribute("x1", x1.toFixed(2));
+          line.setAttribute("y1", y1.toFixed(2));
+          line.setAttribute("x2", x2.toFixed(2));
+          line.setAttribute("y2", y2.toFixed(2));
+          line.setAttribute("stroke", "rgba(56, 189, 248, 0.95)");
+          line.setAttribute("stroke-width", dragStroke.toFixed(2));
+          line.setAttribute("stroke-linecap", "butt");
+          const lineLength = Math.max(1, Math.hypot(x2 - x1, y2 - y1));
+          const dash = lineLength / Math.max(1, segments * 2 - 1);
+          line.setAttribute("stroke-dasharray", `${dash.toFixed(2)} ${dash.toFixed(2)}`);
+          dragBox.appendChild(line);
+        };
+        addDragBoxLine(boxX, boxY, boxX + boxWidth, boxY, 4);
+        addDragBoxLine(boxX + boxWidth, boxY, boxX + boxWidth, boxY + boxHeight, 3);
+        addDragBoxLine(boxX + boxWidth, boxY + boxHeight, boxX, boxY + boxHeight, 4);
+        addDragBoxLine(boxX, boxY + boxHeight, boxX, boxY, 3);
+        wrap.insertBefore(dragBox, label);
+      }
     }
   }
   renderShapes();
@@ -2255,9 +2377,10 @@ function renderShapes(): void {
         rect.setAttribute("fill", shape.style.fillColor);
         rect.setAttribute("fill-opacity", shape.style.fillOpacity.toFixed(2));
         rect.setAttribute("stroke", shape.style.strokeColor);
+        const areaStrokeScale = shapeStrokeScale(shape.width, shape.height);
         rect.setAttribute(
           "stroke-width",
-          (shape.style.strokeWidth / view.scale).toFixed(2),
+          ((shape.style.strokeWidth * areaStrokeScale) / view.scale).toFixed(2),
         );
         rect.setAttribute("data-shape", "area");
         rect.setAttribute("data-id", shape.id);
@@ -2334,7 +2457,7 @@ function renderShapes(): void {
           "http://www.w3.org/2000/svg",
           "text",
         );
-        const scale = Math.max(0.6, Math.min(1.6, Math.pow(view.scale, 0.35)));
+        const scale = labelZoomScale(view.scale);
         label.setAttribute("x", x.toFixed(2));
         label.setAttribute("y", y.toFixed(2));
         label.setAttribute("fill", shape.style.textColor);
@@ -2442,7 +2565,9 @@ function updateMarkerStyles(): void {
     const id = dot.getAttribute("data-id");
     dot.setAttribute(
       "stroke",
-      id && id === selectedMarkerId ? "#38bdf8" : "#fff7ed",
+      activeStep === "3" && id && id === selectedMarkerId
+        ? "#38bdf8"
+        : "#fff7ed",
     );
   });
   const labels = markerWrap.querySelectorAll<SVGTextElement>(
@@ -2450,14 +2575,15 @@ function updateMarkerStyles(): void {
   );
   labels.forEach((label) => {
     const base = Number(label.getAttribute("data-base") ?? "13");
-    const scale = Math.max(0.5, Math.min(1.6, Math.pow(view.scale, 0.35)));
+    const scale = labelZoomScale(view.scale);
     label.setAttribute("font-size", (base * scale).toFixed(2));
     const baseX = Number(label.getAttribute("data-x") ?? "0");
     const baseY = Number(label.getAttribute("data-y") ?? "0");
     const offsetX = Number(label.getAttribute("data-offset-x") ?? "0");
     const offsetY = Number(label.getAttribute("data-offset-y") ?? "0");
-    label.setAttribute("x", (baseX + offsetX).toFixed(2));
-    label.setAttribute("y", (baseY + offsetY).toFixed(2));
+    const offsetScale = labelOffsetScale(view.scale);
+    label.setAttribute("x", (baseX + offsetX * offsetScale).toFixed(2));
+    label.setAttribute("y", (baseY + offsetY * offsetScale).toFixed(2));
   });
 }
 
@@ -4041,7 +4167,7 @@ async function handleLoad() {
           dotColor: String(style.dotColor ?? "#f97316"),
           textColor: String(style.textColor ?? "#fde68a"),
           dotSize: Number(style.dotSize ?? 4),
-          textSize: Number(style.textSize ?? 12),
+          textSize: Number(style.textSize ?? 7),
           fontFamily: String(style.fontFamily ?? "IBM Plex Sans, sans-serif"),
           textOffsetX: Number(style.textOffsetX ?? 8),
           textOffsetY: Number(style.textOffsetY ?? -6),
@@ -4814,8 +4940,9 @@ function onMouseMove(event: MouseEvent): void {
       const current = mapPointFromEvent(event);
       const dx = current.x - labelDrag.startX;
       const dy = current.y - labelDrag.startY;
-      marker.style.textOffsetX = labelDrag.startOffsetX + dx;
-      marker.style.textOffsetY = labelDrag.startOffsetY + dy;
+      const offsetScale = labelOffsetScale(view.scale);
+      marker.style.textOffsetX = labelDrag.startOffsetX + dx / offsetScale;
+      marker.style.textOffsetY = labelDrag.startOffsetY + dy / offsetScale;
       renderMarkers();
     }
     return;
@@ -4905,10 +5032,13 @@ function onMouseMove(event: MouseEvent): void {
 function onMouseUp(event: MouseEvent): void {
   if (labelDrag) {
     if (svg) {
-      const draggingLabels = svg.querySelectorAll(
+      const draggingLabels = svg.querySelectorAll<SVGTextElement>(
         'text[data-marker="label"][data-dragging="true"]',
       );
-      draggingLabels.forEach((label) => label.removeAttribute("data-dragging"));
+      draggingLabels.forEach((label) => {
+        label.removeAttribute("data-dragging");
+        clearDraggingLabelOutline(label);
+      });
     }
     labelDrag = null;
     return;
@@ -4987,12 +5117,13 @@ function attachMapInteractions(): void {
   svg.addEventListener("mouseleave", () => {
     if (labelDrag) {
       if (svg) {
-        const draggingLabels = svg.querySelectorAll(
+        const draggingLabels = svg.querySelectorAll<SVGTextElement>(
           'text[data-marker="label"][data-dragging="true"]',
         );
-        draggingLabels.forEach((label) =>
-          label.removeAttribute("data-dragging"),
-        );
+        draggingLabels.forEach((label) => {
+          label.removeAttribute("data-dragging");
+          clearDraggingLabelOutline(label);
+        });
       }
       labelDrag = null;
       return;

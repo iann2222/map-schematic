@@ -295,8 +295,7 @@
         opacity: 0;
       }
       #map text[data-marker="label"][data-dragging="true"] {
-        outline: 1px dashed rgba(56, 189, 248, 0.9);
-        outline-offset: 2px;
+        outline: none;
       }
       .color-palette {
         display: flex;
@@ -1084,7 +1083,7 @@
       .crop-frame {
         position: absolute;
         z-index: 2;
-        border: 2px solid rgba(56, 189, 248, 0.9);
+        border: var(--crop-stroke, 1.2px) solid rgba(56, 189, 248, 0.9);
         box-shadow: 0 0 0 2000px rgba(15, 23, 42, 0.55);
         pointer-events: none;
       }
@@ -1094,8 +1093,8 @@
       }
       .crop-handle {
         position: absolute;
-        width: 8px;
-        height: 8px;
+        width: var(--crop-handle-size, 7px);
+        height: var(--crop-handle-size, 7px);
         background: #38bdf8;
         border: 1px solid rgba(15, 23, 42, 0.8);
         border-radius: 0;
@@ -1108,45 +1107,45 @@
         background: transparent;
       }
       .crop-handle.nw {
-        left: -4px;
-        top: -4px;
+        left: calc(var(--crop-handle-size, 7px) / -2);
+        top: calc(var(--crop-handle-size, 7px) / -2);
         cursor: nwse-resize !important;
       }
       .crop-handle.ne {
-        right: -4px;
-        top: -4px;
+        right: calc(var(--crop-handle-size, 7px) / -2);
+        top: calc(var(--crop-handle-size, 7px) / -2);
         cursor: nesw-resize !important;
       }
       .crop-handle.sw {
-        left: -4px;
-        bottom: -4px;
+        left: calc(var(--crop-handle-size, 7px) / -2);
+        bottom: calc(var(--crop-handle-size, 7px) / -2);
         cursor: nesw-resize !important;
       }
       .crop-handle.se {
-        right: -4px;
-        bottom: -4px;
+        right: calc(var(--crop-handle-size, 7px) / -2);
+        bottom: calc(var(--crop-handle-size, 7px) / -2);
         cursor: nwse-resize !important;
       }
       .crop-handle.n {
         left: 50%;
-        top: -4px;
+        top: calc(var(--crop-handle-size, 7px) / -2);
         transform: translateX(-50%);
         cursor: ns-resize !important;
       }
       .crop-handle.s {
         left: 50%;
-        bottom: -4px;
+        bottom: calc(var(--crop-handle-size, 7px) / -2);
         transform: translateX(-50%);
         cursor: ns-resize !important;
       }
       .crop-handle.w {
-        left: -4px;
+        left: calc(var(--crop-handle-size, 7px) / -2);
         top: 50%;
         transform: translateY(-50%);
         cursor: ew-resize !important;
       }
       .crop-handle.e {
-        right: -4px;
+        right: calc(var(--crop-handle-size, 7px) / -2);
         top: 50%;
         transform: translateY(-50%);
         cursor: ew-resize !important;
@@ -1831,8 +1830,8 @@
                 <div
                   class="slider"
                   id="markerTextSize"
-                  data-min="4"
-                  data-max="12"
+                  data-min="3"
+                  data-max="11"
                   data-step="1"
                   data-marks="9"
                   data-default-index="3"
