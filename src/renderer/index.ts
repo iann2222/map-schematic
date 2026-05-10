@@ -4475,6 +4475,55 @@ function projectMarkerSourceType(
   return obj.provenance?.query === "manual" ? "manual" : "coords";
 }
 
+function projectValidationMessage(
+  validation: {
+    valid: boolean;
+    errors: Array<{ path: string; message: string }>;
+  } | undefined,
+): string | null {
+  if (!validation || validation.valid) {
+    return null;
+  }
+  const details = validation.errors
+    .slice(0, 6)
+    .map((error) => `${error.path}: ${error.message}`)
+    .join("\n");
+  const extraCount = Math.max(0, validation.errors.length - 6);
+  return [
+    "專案檔格式驗證失敗，已停止載入。",
+    details,
+    extraCount > 0 ? `另有 ${extraCount} 個錯誤。` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function projectDatapackMismatchMessage(project: MapProject): string | null {
+  const messages: string[] = [];
+  if (
+    project.dataPackId &&
+    currentPackId &&
+    project.dataPackId !== currentPackId
+  ) {
+    messages.push(
+      `資料包 ID 不一致：專案使用 ${project.dataPackId}，本機目前為 ${currentPackId}。`,
+    );
+  }
+  if (
+    project.dataPackVersion &&
+    currentPackVersion &&
+    project.dataPackVersion !== currentPackVersion
+  ) {
+    messages.push(
+      `資料包版本不一致：專案使用 ${project.dataPackVersion}，本機目前為 ${currentPackVersion}。`,
+    );
+  }
+  if (messages.length === 0) {
+    return null;
+  }
+  return `${messages.join("\n")}\n\n若繼續載入，地名或底圖可能與原專案版本不同。`;
+}
+
 async function handleLoad() {
   if (!window.mapSchematic?.loadProject) {
     return;
@@ -4489,6 +4538,26 @@ async function handleLoad() {
     return;
   }
   const loadedProject = result.project;
+  const validationMessage = projectValidationMessage(result.validation);
+  if (validationMessage) {
+    window.alert(validationMessage);
+    if (statusEl) {
+      statusEl.textContent = "專案檔格式驗證失敗，已停止載入。";
+    }
+    return;
+  }
+  const mismatchMessage = projectDatapackMismatchMessage(loadedProject);
+  if (mismatchMessage) {
+    const shouldContinue = window.confirm(
+      `${mismatchMessage}\n\n仍要用目前本機資料包載入此專案嗎？`,
+    );
+    if (!shouldContinue) {
+      if (statusEl) {
+        statusEl.textContent = "已取消載入：專案資料包版本與本機不一致。";
+      }
+      return;
+    }
+  }
   currentProject = loadedProject;
   currentProjectPath = result.path ?? null;
   selectedMarkers.splice(0, selectedMarkers.length);
