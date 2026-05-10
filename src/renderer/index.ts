@@ -196,6 +196,18 @@ type MapProject = {
       query?: string;
     };
   }>;
+  ui?: {
+    listOrderKeys?: string[];
+    displayOrderKeys?: string[];
+    activeStyleId?: string;
+    hillshadeEnabled?: boolean;
+    hillshadeBlend?: string;
+    ratioMode?: "free" | "fixed";
+    activeRatioId?: string;
+    cropRatio?: number;
+    customRatioA?: number;
+    customRatioB?: number;
+  };
 };
 
 type BBox = {
@@ -324,6 +336,9 @@ const markerFont = document.getElementById(
 ) as HTMLSelectElement | null;
 const markerLabelInput = document.getElementById(
   "markerLabelInput",
+) as HTMLInputElement | null;
+const markerCoordsInput = document.getElementById(
+  "markerCoordsInput",
 ) as HTMLInputElement | null;
 const shapeTextInput = document.getElementById(
   "shapeTextInput",
@@ -1169,6 +1184,18 @@ function setActiveStyleButton(targetId: string): void {
   requestBasemapDraw();
 }
 
+function setReliefMode(enabled: boolean, blend?: string): void {
+  hillshadeEnabled = enabled;
+  if (enabled && blend) {
+    hillshadeBlend = blend as GlobalCompositeOperation;
+  }
+  const target = enabled ? hillshadeBlend : "off";
+  reliefBlendButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.relief === target);
+  });
+  requestBasemapDraw();
+}
+
 function applyCanvasRatio(ratio: number, targetId?: string): void {
   ratioMode = "fixed";
   cropRatio = ratio;
@@ -1415,6 +1442,50 @@ function updateCropOverlay(): void {
   cropMaskBottom.style.height = `${Math.max(0, stageHeight - bottom)}px`;
 
   cropOverlay.classList.remove("hidden");
+}
+
+function currentExportCropRect(): {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} | null {
+  if (!mapStage) {
+    return null;
+  }
+  const stageRect = mapStage.getBoundingClientRect();
+  const stageWidth = Math.max(1, stageRect.width);
+  const stageHeight = Math.max(1, stageRect.height);
+  if (cropBBox) {
+    const { scaleFit, offsetX, offsetY } = resizeCanvasToStage();
+    const left = (cropBBox.x * view.scale + view.tx) * scaleFit + offsetX;
+    const top = (cropBBox.y * view.scale + view.ty) * scaleFit + offsetY;
+    const right =
+      ((cropBBox.x + cropBBox.width) * view.scale + view.tx) * scaleFit +
+      offsetX;
+    const bottom =
+      ((cropBBox.y + cropBBox.height) * view.scale + view.ty) * scaleFit +
+      offsetY;
+    const clampedLeft = Math.max(0, Math.min(left, stageWidth));
+    const clampedTop = Math.max(0, Math.min(top, stageHeight));
+    const clampedRight = Math.max(0, Math.min(right, stageWidth));
+    const clampedBottom = Math.max(0, Math.min(bottom, stageHeight));
+    return {
+      left: clampedLeft,
+      top: clampedTop,
+      width: Math.max(1, clampedRight - clampedLeft),
+      height: Math.max(1, clampedBottom - clampedTop),
+    };
+  }
+  if (cropBox) {
+    return { ...cropBox };
+  }
+  return {
+    left: 0,
+    top: 0,
+    width: stageWidth,
+    height: stageHeight,
+  };
 }
 
 function handleRatioInput(): void {
@@ -1690,13 +1761,10 @@ function hookSteps(): void {
         btn.classList.toggle("active", btn === button),
       );
       if (value === "off") {
-        hillshadeEnabled = false;
-        requestBasemapDraw();
+        setReliefMode(false);
         return;
       }
-      hillshadeEnabled = true;
-      hillshadeBlend = value as GlobalCompositeOperation;
-      requestBasemapDraw();
+      setReliefMode(true, value);
     });
   });
   document
@@ -2224,7 +2292,19 @@ function renderMarkers() {
       const labelBox = label.getBBox();
       const labelHit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       const renderedFontSize = marker.style.textSize * scale;
-      const hitPad = Math.max(1.5, renderedFontSize * 0.12);
+      const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.24);
+      const textStroke = renderedFontSize * 0.045;
+      const desiredScreenStroke = Math.max(
+        0.85,
+        Math.min(3.2, zoomStroke + textStroke),
+      );
+      const dragStroke =
+        desiredScreenStroke / Math.max(0.001, view.scale * lastScaleFit);
+      const selectionPad = Math.max(
+        0.35,
+        Math.min(2.4, renderedFontSize * 0.045 + dragStroke * 1.15),
+      );
+      const hitPad = selectionPad;
       labelHit.setAttribute("x", (labelBox.x - hitPad).toFixed(2));
       labelHit.setAttribute("y", (labelBox.y - hitPad).toFixed(2));
       labelHit.setAttribute("width", (labelBox.width + hitPad * 2).toFixed(2));
@@ -2246,18 +2326,7 @@ function renderMarkers() {
       wrap.insertBefore(labelHit, label);
       if (isLabelSelected) {
         const dragBox = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.36);
-        const textStroke = renderedFontSize * 0.045;
-        const desiredScreenStroke = Math.max(
-          0.55,
-          Math.min(3.2, zoomStroke + textStroke),
-        );
-        const dragStroke =
-          desiredScreenStroke / Math.max(0.001, view.scale * lastScaleFit);
-        const pad = Math.max(
-          0.35,
-          Math.min(3.2, renderedFontSize * 0.06 + dragStroke * 1.8),
-        );
+        const pad = selectionPad;
         const boxX = labelBox.x - pad;
         const boxY = labelBox.y - pad;
         const boxWidth = labelBox.width + pad * 2;
@@ -2598,6 +2667,25 @@ function renderShapes(): void {
         if (item.preview) {
           label.setAttribute("opacity", "0.6");
         }
+        const startTextShapeDrag = (event: MouseEvent) => {
+          if (activeStep !== "3") {
+            return;
+          }
+          event.stopPropagation();
+          if (item.preview) {
+            return;
+          }
+          selectShape(shape.id);
+          svg?.classList.add("shape-moving");
+          const start = mapPointFromEvent(event);
+          shapeDrag = {
+            shapeId: shape.id,
+            startX: start.x,
+            startY: start.y,
+            startLon: shape.longitude,
+            startLat: shape.latitude,
+          };
+        };
         label.addEventListener("click", (event) => {
           if (activeStep !== "3") {
             return;
@@ -2607,58 +2695,33 @@ function renderShapes(): void {
             selectShape(shape.id);
           }
         });
-        label.addEventListener("mousedown", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (item.preview) {
-            return;
-          }
-          const start = mapPointFromEvent(event);
-          shapeDrag = {
-            shapeId: shape.id,
-            startX: start.x,
-            startY: start.y,
-            startLon: shape.longitude,
-            startLat: shape.latitude,
-          };
-        });
-        const approxWidth =
-          Math.max(
-            40,
-            (shape.text ?? "文字標示").length * shape.style.textSize * 0.6,
-          ) / view.scale;
-        const approxHeight =
-          Math.max(18, shape.style.textSize * 1.4) / view.scale;
-        const hit = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "rect",
+        label.addEventListener("mousedown", startTextShapeDrag);
+        wrap.appendChild(label);
+
+        const labelBox = label.getBBox();
+        const renderedFontSize = shape.style.textSize * scale;
+        const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.24);
+        const textStroke = renderedFontSize * 0.045;
+        const desiredScreenStroke = Math.max(
+          0.85,
+          Math.min(3.2, zoomStroke + textStroke),
         );
-        hit.setAttribute("x", (x - approxWidth / 2).toFixed(2));
-        hit.setAttribute("y", (y - approxHeight).toFixed(2));
-        hit.setAttribute("width", approxWidth.toFixed(2));
-        hit.setAttribute("height", approxHeight.toFixed(2));
+        const dragStroke =
+          desiredScreenStroke / Math.max(0.001, view.scale * lastScaleFit);
+        const selectionPad = Math.max(
+          0.35,
+          Math.min(2.4, renderedFontSize * 0.045 + dragStroke * 1.15),
+        );
+        const hitPad = selectionPad;
+        const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        hit.setAttribute("x", (labelBox.x - hitPad).toFixed(2));
+        hit.setAttribute("y", (labelBox.y - hitPad).toFixed(2));
+        hit.setAttribute("width", (labelBox.width + hitPad * 2).toFixed(2));
+        hit.setAttribute("height", (labelBox.height + hitPad * 2).toFixed(2));
         hit.setAttribute("fill", "transparent");
         hit.setAttribute("data-shape", "text");
         hit.setAttribute("data-id", shape.id);
-        hit.addEventListener("mousedown", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (item.preview) {
-            return;
-          }
-          const start = mapPointFromEvent(event);
-          shapeDrag = {
-            shapeId: shape.id,
-            startX: start.x,
-            startY: start.y,
-            startLon: shape.longitude,
-            startLat: shape.latitude,
-          };
-        });
+        hit.addEventListener("mousedown", startTextShapeDrag);
         hit.addEventListener("click", (event) => {
           if (activeStep !== "3") {
             return;
@@ -2668,8 +2731,45 @@ function renderShapes(): void {
             selectShape(shape.id);
           }
         });
-        wrap.appendChild(hit);
-        wrap.appendChild(label);
+        wrap.insertBefore(hit, label);
+        const isTextSelected =
+          !item.preview &&
+          (selectedShapeId === shape.id || shapeDrag?.shapeId === shape.id);
+        if (isTextSelected) {
+          const dragBox = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          const pad = selectionPad;
+          const boxX = labelBox.x - pad;
+          const boxY = labelBox.y - pad;
+          const boxWidth = labelBox.width + pad * 2;
+          const boxHeight = labelBox.height + pad * 2;
+          dragBox.setAttribute("data-shape", "text-selection");
+          dragBox.style.pointerEvents = "none";
+          const addDragBoxLine = (
+            x1: number,
+            y1: number,
+            x2: number,
+            y2: number,
+            segments: number,
+          ) => {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", x1.toFixed(2));
+            line.setAttribute("y1", y1.toFixed(2));
+            line.setAttribute("x2", x2.toFixed(2));
+            line.setAttribute("y2", y2.toFixed(2));
+            line.setAttribute("stroke", "rgba(56, 189, 248, 0.95)");
+            line.setAttribute("stroke-width", dragStroke.toFixed(2));
+            line.setAttribute("stroke-linecap", "butt");
+            const lineLength = Math.max(1, Math.hypot(x2 - x1, y2 - y1));
+            const dash = lineLength / Math.max(1, segments * 2 - 1);
+            line.setAttribute("stroke-dasharray", `${dash.toFixed(2)} ${dash.toFixed(2)}`);
+            dragBox.appendChild(line);
+          };
+          addDragBoxLine(boxX, boxY, boxX + boxWidth, boxY, 4);
+          addDragBoxLine(boxX + boxWidth, boxY, boxX + boxWidth, boxY + boxHeight, 3);
+          addDragBoxLine(boxX + boxWidth, boxY + boxHeight, boxX, boxY + boxHeight, 4);
+          addDragBoxLine(boxX, boxY + boxHeight, boxX, boxY, 3);
+          wrap.insertBefore(dragBox, label);
+        }
       }
     }
   }
@@ -2918,7 +3018,7 @@ function buildCoordMarker(
   const coordsText = `(${parsed.lat.toFixed(4)}, ${parsed.lon.toFixed(4)})`;
   return {
     id: `${idPrefix}-${Date.now()}`,
-    name: coordsText,
+    name: "座標標示",
     nameAlt: coordsText,
     latitude: parsed.lat,
     longitude: parsed.lon,
@@ -2998,7 +3098,7 @@ function defaultShapeStyle(type: ShapeItem["type"]): ShapeStyle {
     fillColor: "#38bdf8",
     fillOpacity: 0.35,
     textColor: "#fde68a",
-    textSize: 16,
+    textSize: 7,
     fontFamily: "IBM Plex Sans, sans-serif",
   };
   if (type === "area") {
@@ -3084,12 +3184,8 @@ function markerListName(marker: Marker): string {
   if (marker.displayName && marker.displayName.trim().length > 0) {
     return marker.displayName.trim();
   }
-  const coordsText = formatCoords(marker);
-  if (marker.sourceType === "coords" && marker.labelName) {
-    return `${marker.labelName}/${coordsText}`;
-  }
   if (marker.sourceType === "coords") {
-    return coordsText;
+    return marker.labelName?.trim() || marker.name || "座標標示";
   }
   if (marker.kind === "point") {
     return marker.name;
@@ -3348,6 +3444,10 @@ function syncMarkerControls(marker: Marker | null): void {
       markerLabelInput.value = "";
       markerLabelInput.disabled = true;
     }
+    if (markerCoordsInput) {
+      markerCoordsInput.value = "";
+      markerCoordsInput.disabled = true;
+    }
     return;
   }
   dotSizeSlider && setSliderValue(dotSizeSlider, marker.style.dotSize, true);
@@ -3365,6 +3465,10 @@ function syncMarkerControls(marker: Marker | null): void {
       marker.sourceType === "geonames"
         ? (marker.labelName ?? marker.name)
         : (marker.labelName ?? "");
+  }
+  if (markerCoordsInput) {
+    markerCoordsInput.disabled = false;
+    markerCoordsInput.value = formatCoords(marker);
   }
 }
 
@@ -4177,12 +4281,85 @@ function currentSelectionBBox(): BBox {
   return { ...WORLD };
 }
 
+function projectObjectTypeForShape(type: ShapeItem["type"]): MapProject["objects"][number]["type"] {
+  if (type === "area") {
+    return "areaLabel";
+  }
+  if (type === "text") {
+    return "textOnly";
+  }
+  if (type === "arrow") {
+    return "arrow";
+  }
+  return "polyline";
+}
+
 function buildProject(): MapProject | null {
   if (!currentPackVersion || !currentPackId) {
     return null;
   }
+  syncOrderKeys();
   const now = new Date().toISOString();
   const base = currentProject?.createdAt ?? now;
+  const markerObjects: MapProject["objects"] = selectedMarkers.map(
+    (marker, index) => ({
+      id: marker.id || `obj-${index + 1}`,
+      type: "pointLabel",
+      layerId: "layer-1",
+      style: {
+        name: marker.name,
+        nameAlt: marker.nameAlt,
+        displayName: marker.displayName,
+        sourceType: marker.sourceType,
+        kind: marker.kind,
+        showLabel: marker.showLabel,
+        dotColor: marker.style.dotColor,
+        textColor: marker.style.textColor,
+        dotSize: marker.style.dotSize,
+        textSize: marker.style.textSize,
+        fontFamily: marker.style.fontFamily,
+        textOffsetX: marker.style.textOffsetX,
+        textOffsetY: marker.style.textOffsetY,
+        textAnchor: marker.style.textAnchor,
+        labelMode: marker.labelMode,
+        labelName: marker.labelName,
+      },
+      geometry: {
+        kind: "point",
+        lon: marker.longitude,
+        lat: marker.latitude,
+      },
+      text: markerLabelText(marker),
+      provenance:
+        marker.sourceType === "geonames"
+          ? {
+              source: "geonames",
+              sourceId: marker.sourceId ?? String(marker.id),
+            }
+          : { source: "manual", query: marker.sourceType },
+    }),
+  );
+  const shapeObjects: MapProject["objects"] = shapes.map((shape, index) => ({
+    id: shape.id || `shape-${index + 1}`,
+    type: projectObjectTypeForShape(shape.type),
+    layerId: "layer-1",
+    style: {
+      shapeType: shape.type,
+      displayName: shape.displayName,
+      width: shape.width,
+      height: shape.height,
+      strokeColor: shape.style.strokeColor,
+      strokeWidth: shape.style.strokeWidth,
+      fillColor: shape.style.fillColor,
+      fillOpacity: shape.style.fillOpacity,
+      textColor: shape.style.textColor,
+      textSize: shape.style.textSize,
+      fontFamily: shape.style.fontFamily,
+    },
+    geometry: { kind: "point", lon: shape.longitude, lat: shape.latitude },
+    text: shape.text,
+    provenance: { source: "manual", query: `shape:${shape.type}` },
+  }));
   return {
     schemaVersion: "0.1",
     createdAt: base,
@@ -4204,32 +4381,19 @@ function buildProject(): MapProject | null {
         zIndex: 0,
       },
     ],
-    objects: selectedMarkers.map((marker, index) => ({
-      id: marker.id || `obj-${index + 1}`,
-      type: "pointLabel",
-      layerId: "layer-1",
-      style: {
-        dotColor: marker.style.dotColor,
-        textColor: marker.style.textColor,
-        dotSize: marker.style.dotSize,
-        textSize: marker.style.textSize,
-        fontFamily: marker.style.fontFamily,
-        textOffsetX: marker.style.textOffsetX,
-        textOffsetY: marker.style.textOffsetY,
-        textAnchor: marker.style.textAnchor,
-        labelMode: marker.labelMode,
-        labelName: marker.labelName,
-      },
-      geometry: { kind: "point", lon: marker.longitude, lat: marker.latitude },
-      text: markerLabelText(marker),
-      provenance:
-        marker.sourceType === "geonames"
-          ? {
-              source: "geonames",
-              sourceId: marker.sourceId ?? String(marker.id),
-            }
-          : { source: "manual", query: marker.sourceType },
-    })),
+    objects: [...markerObjects, ...shapeObjects],
+    ui: {
+      listOrderKeys: [...listOrderKeys],
+      displayOrderKeys: [...displayOrderKeys],
+      activeStyleId,
+      hillshadeEnabled,
+      hillshadeBlend,
+      ratioMode,
+      activeRatioId,
+      cropRatio,
+      customRatioA: ratioInputA ? Number(ratioInputA.value) || undefined : undefined,
+      customRatioB: ratioInputB ? Number(ratioInputB.value) || undefined : undefined,
+    },
   };
 }
 
@@ -4269,6 +4433,48 @@ async function handleSave(saveAs = false): Promise<{
   return result;
 }
 
+function projectShapeTypeFromObject(obj: MapProject["objects"][number]): ShapeItem["type"] | null {
+  const style = (obj.style ?? {}) as Record<string, unknown>;
+  if (
+    style.shapeType === "line" ||
+    style.shapeType === "area" ||
+    style.shapeType === "text" ||
+    style.shapeType === "arrow"
+  ) {
+    return style.shapeType;
+  }
+  if (obj.type === "textOnly") {
+    return "text";
+  }
+  if (obj.type === "areaLabel") {
+    return "area";
+  }
+  if (obj.type === "arrow") {
+    return "arrow";
+  }
+  if (obj.type === "polyline") {
+    return "line";
+  }
+  return null;
+}
+
+function projectMarkerSourceType(
+  style: Record<string, unknown>,
+  obj: MapProject["objects"][number],
+): Marker["sourceType"] {
+  if (
+    style.sourceType === "geonames" ||
+    style.sourceType === "coords" ||
+    style.sourceType === "manual"
+  ) {
+    return style.sourceType;
+  }
+  if (obj.provenance?.source === "geonames") {
+    return "geonames";
+  }
+  return obj.provenance?.query === "manual" ? "manual" : "coords";
+}
+
 async function handleLoad() {
   if (!window.mapSchematic?.loadProject) {
     return;
@@ -4286,8 +4492,13 @@ async function handleLoad() {
   currentProject = loadedProject;
   currentProjectPath = result.path ?? null;
   selectedMarkers.splice(0, selectedMarkers.length);
+  shapes.splice(0, shapes.length);
   selectedMarkerId = null;
+  selectedShapeId = null;
+  selectedLabelMarkerId = null;
   previewMarker = null;
+  previewShape = null;
+  previewToolMarker = null;
   cropBox = null;
   if (loadedProject.viewport?.bbox) {
     const bbox = loadedProject.viewport.bbox;
@@ -4302,13 +4513,16 @@ async function handleLoad() {
   }
   for (const obj of loadedProject.objects ?? []) {
     if (
-      obj.geometry?.kind === "point" &&
-      obj.geometry.lon != null &&
-      obj.geometry.lat != null
+      !obj.geometry ||
+      obj.geometry.kind !== "point" ||
+      obj.geometry.lon == null ||
+      obj.geometry.lat == null
     ) {
-      const style = (obj.style ?? {}) as Record<string, unknown>;
-      const sourceType =
-        obj.provenance?.source === "manual" ? "coords" : ("geonames" as const);
+      continue;
+    }
+    const style = (obj.style ?? {}) as Record<string, unknown>;
+    if (obj.type === "pointLabel") {
+      const sourceType = projectMarkerSourceType(style, obj);
       const coordsText = formatCoords({
         latitude: obj.geometry.lat,
         longitude: obj.geometry.lon,
@@ -4321,17 +4535,32 @@ async function handleLoad() {
           : sourceType === "coords"
             ? "coords"
             : "name";
+      const name =
+        typeof style.name === "string" && style.name.trim().length > 0
+          ? style.name
+          : sourceType === "coords"
+            ? "座標標示"
+            : (obj.text ?? "");
       selectedMarkers.push({
         id: obj.id ?? `obj-${selectedMarkers.length + 1}`,
-        name: sourceType === "coords" ? coordsText : (obj.text ?? ""),
-        nameAlt: sourceType === "coords" ? coordsText : undefined,
+        name,
+        nameAlt:
+          typeof style.nameAlt === "string"
+            ? style.nameAlt
+            : sourceType === "coords"
+              ? coordsText
+              : undefined,
+        displayName:
+          typeof style.displayName === "string"
+            ? style.displayName
+            : undefined,
         latitude: obj.geometry.lat,
         longitude: obj.geometry.lon,
         sourceId: obj.provenance?.sourceId,
         style: {
           dotColor: String(style.dotColor ?? "#f97316"),
           textColor: String(style.textColor ?? "#fde68a"),
-          dotSize: Number(style.dotSize ?? 4),
+          dotSize: Number(style.dotSize ?? 7),
           textSize: Number(style.textSize ?? 7),
           fontFamily: String(style.fontFamily ?? "IBM Plex Sans, sans-serif"),
           textOffsetX: Number(style.textOffsetX ?? 8),
@@ -4343,15 +4572,78 @@ async function handleLoad() {
         },
         sourceType,
         labelMode,
-        labelName:
-          labelMode === "name"
-            ? (labelName ?? obj.text ?? undefined)
-            : labelName,
-        showLabel: true,
-        kind: "label",
+        labelName,
+        showLabel:
+          typeof style.showLabel === "boolean" ? style.showLabel : true,
+        kind: style.kind === "point" ? "point" : "label",
       });
+      continue;
     }
+    const shapeType = projectShapeTypeFromObject(obj);
+    if (!shapeType) {
+      continue;
+    }
+    shapes.push({
+      id: obj.id ?? `shape-${shapes.length + 1}`,
+      type: shapeType,
+      displayName:
+        typeof style.displayName === "string" ? style.displayName : undefined,
+      longitude: obj.geometry.lon,
+      latitude: obj.geometry.lat,
+      width: Number(style.width ?? (shapeType === "line" ? 140 : 80)),
+      height: Number(style.height ?? (shapeType === "line" ? 0 : 70)),
+      text: typeof obj.text === "string" ? obj.text : undefined,
+      style: {
+        strokeColor: String(style.strokeColor ?? "#38bdf8"),
+        strokeWidth: Number(style.strokeWidth ?? 2),
+        fillColor: String(style.fillColor ?? "#38bdf8"),
+        fillOpacity: Number(style.fillOpacity ?? 0.35),
+        textColor: String(style.textColor ?? "#fde68a"),
+        textSize: Number(style.textSize ?? 7),
+        fontFamily: String(style.fontFamily ?? "IBM Plex Sans, sans-serif"),
+      },
+    });
   }
+  listOrderKeys = Array.isArray(loadedProject.ui?.listOrderKeys)
+    ? [...loadedProject.ui.listOrderKeys]
+    : [];
+  displayOrderKeys = Array.isArray(loadedProject.ui?.displayOrderKeys)
+    ? [...loadedProject.ui.displayOrderKeys]
+    : [];
+  const loadedStyleId = loadedProject.ui?.activeStyleId;
+  if (
+    typeof loadedStyleId === "string" &&
+    styleButtons.some((button) => button.id === loadedStyleId)
+  ) {
+    setActiveStyleButton(loadedStyleId);
+  }
+  const loadedBlend = loadedProject.ui?.hillshadeBlend;
+  setReliefMode(
+    loadedProject.ui?.hillshadeEnabled === true,
+    typeof loadedBlend === "string" ? loadedBlend : undefined,
+  );
+  if (
+    loadedProject.ui?.ratioMode === "free" ||
+    loadedProject.ui?.ratioMode === "fixed"
+  ) {
+    ratioMode = loadedProject.ui.ratioMode;
+  }
+  if (typeof loadedProject.ui?.cropRatio === "number" && loadedProject.ui.cropRatio > 0) {
+    cropRatio = loadedProject.ui.cropRatio;
+  }
+  if (ratioInputA && typeof loadedProject.ui?.customRatioA === "number") {
+    ratioInputA.value = String(loadedProject.ui.customRatioA);
+  }
+  if (ratioInputB && typeof loadedProject.ui?.customRatioB === "number") {
+    ratioInputB.value = String(loadedProject.ui.customRatioB);
+  }
+  if (
+    typeof loadedProject.ui?.activeRatioId === "string" &&
+    ratioButtons.some((button) => button.id === loadedProject.ui?.activeRatioId)
+  ) {
+    setActiveRatioButton(loadedProject.ui.activeRatioId);
+  }
+  syncOrderKeys();
   syncManualMarkerCount();
   renderMarkers();
   renderMarkerList();
@@ -4378,12 +4670,10 @@ async function renderExportCanvas(): Promise<{
   const stageRect = mapStage.getBoundingClientRect();
   const scaleX = canvas.width / stageRect.width;
   const scaleY = canvas.height / stageRect.height;
-  const crop = cropBox ?? {
-    left: 0,
-    top: 0,
-    width: stageRect.width,
-    height: stageRect.height,
-  };
+  const crop = currentExportCropRect();
+  if (!crop) {
+    return null;
+  }
   const outWidth = Math.max(1, Math.round(crop.width * scaleX));
   const outHeight = Math.max(1, Math.round(crop.height * scaleY));
   const outCanvas = document.createElement("canvas");
@@ -5086,6 +5376,7 @@ function onMouseDown(event: MouseEvent): void {
     labelDrag = null;
     selectedLabelMarkerId = null;
     selectMarker(null);
+    selectShape(null);
     renderMarkers();
     return;
   }
@@ -5226,10 +5517,12 @@ function onMouseUp(event: MouseEvent): void {
   }
   if (shapeDrag) {
     shapeDrag = null;
+    svg?.classList.remove("shape-moving");
     return;
   }
   if (shapeDrag) {
     shapeDrag = null;
+    svg?.classList.remove("shape-moving");
     return;
   }
   if (!svg || !isDragging || !dragStartScreen) {
@@ -5303,6 +5596,7 @@ function attachMapInteractions(): void {
     }
     if (shapeDrag) {
       shapeDrag = null;
+      svg.classList.remove("shape-moving");
       return;
     }
     if (isDragging) {
@@ -5585,7 +5879,7 @@ dotSizeSlider = initSlider(markerDotSize, 7, () => {
 textSizeSlider = initSlider(markerTextSize, 7, () => {
   updateMarkerFromControls();
 });
-shapeTextSizeSlider = initSlider(shapeTextSize, 16, () => {
+shapeTextSizeSlider = initSlider(shapeTextSize, 7, () => {
   updateShapeFromControls();
 });
 shapeLineWidthSlider = initSlider(shapeLineWidth, 2, () => {

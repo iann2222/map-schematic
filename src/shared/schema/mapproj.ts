@@ -88,6 +88,18 @@ export type MapProject = {
   viewport: Viewport;
   layers: Layer[];
   objects: MapObject[];
+  ui?: {
+    listOrderKeys?: string[];
+    displayOrderKeys?: string[];
+    activeStyleId?: string;
+    hillshadeEnabled?: boolean;
+    hillshadeBlend?: string;
+    ratioMode?: "free" | "fixed";
+    activeRatioId?: string;
+    cropRatio?: number;
+    customRatioA?: number;
+    customRatioB?: number;
+  };
 };
 
 export function createEmptyProject(params: {

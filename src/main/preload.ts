@@ -83,6 +83,18 @@ type MapProject = {
       query?: string;
     };
   }>;
+  ui?: {
+    listOrderKeys?: string[];
+    displayOrderKeys?: string[];
+    activeStyleId?: string;
+    hillshadeEnabled?: boolean;
+    hillshadeBlend?: string;
+    ratioMode?: "free" | "fixed";
+    activeRatioId?: string;
+    cropRatio?: number;
+    customRatioA?: number;
+    customRatioB?: number;
+  };
 };
 
 contextBridge.exposeInMainWorld("mapSchematic", {

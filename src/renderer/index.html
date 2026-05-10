@@ -1068,6 +1068,10 @@
         cursor: move;
         pointer-events: all;
       }
+      .map-stage svg#map.shape-moving,
+      .map-stage svg#map.shape-moving [data-shape] {
+        cursor: move !important;
+      }
       .map-toolbar {
         position: absolute;
         right: 16px;
@@ -1850,6 +1854,15 @@
                 />
               </div>
               <div class="option-row">
+                <label class="ratio-label">&#32147;&#32239;&#24230;</label>
+                <input
+                  id="markerCoordsInput"
+                  type="text"
+                  readonly
+                  aria-readonly="true"
+                />
+              </div>
+              <div class="option-row">
                 <label class="ratio-label">字大小</label>
                 <div
                   class="slider"
@@ -1953,8 +1966,8 @@
               <div
                 class="slider"
                 id="shapeTextSize"
-                data-min="6"
-                data-max="28"
+                data-min="3"
+                data-max="11"
                 data-step="1"
                 data-marks="9"
                 data-default-index="3"
