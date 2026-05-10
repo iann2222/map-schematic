@@ -89,6 +89,7 @@ type MarkerStyle = {
   textColor: string;
   textOffsetX: number;
   textOffsetY: number;
+  textAnchor?: "start" | "end";
   fontFamily: string;
 };
 
@@ -656,6 +657,7 @@ let dragStartMap: { x: number; y: number } | null = null;
 let dragMode: DragMode = null;
 let dragRect: SVGRectElement | null = null;
 let labelDrag: LabelDrag | null = null;
+let selectedLabelMarkerId: string | null = null;
 let markerDrag: MarkerDrag | null = null;
 let shapeDrag: ShapeDrag | null = null;
 let cachedBasemapLayers: Array<{ id: string; paths: Path2D[] }> = [];
@@ -1120,6 +1122,7 @@ function setActiveStep(stepId: string): void {
   }
   if (stepId !== "3") {
     labelDrag = null;
+    selectedLabelMarkerId = null;
     markerDrag = null;
     shapeDrag = null;
   }
@@ -1899,6 +1902,50 @@ function viewCenterLonLat(): [number, number] {
   return unproject(centerX, centerY, width, height);
 }
 
+function visibleMapBounds(): { x: number; y: number; width: number; height: number } | null {
+  if (cropBBox && (activeStep === "2" || activeStep === "3")) {
+    return { ...cropBBox };
+  }
+  if (!mapStage) {
+    return null;
+  }
+  const rect = mapStage.getBoundingClientRect();
+  const { scaleFit, offsetX, offsetY } = resizeCanvasToStage();
+  const left = ((0 - offsetX) / scaleFit - view.tx) / view.scale;
+  const top = ((0 - offsetY) / scaleFit - view.ty) / view.scale;
+  const right = ((rect.width - offsetX) / scaleFit - view.tx) / view.scale;
+  const bottom = ((rect.height - offsetY) / scaleFit - view.ty) / view.scale;
+  return {
+    x: Math.min(left, right),
+    y: Math.min(top, bottom),
+    width: Math.abs(right - left),
+    height: Math.abs(bottom - top),
+  };
+}
+
+function placeMarkerLabelInsideView(marker: Marker): void {
+  const bounds = visibleMapBounds();
+  if (!bounds) {
+    return;
+  }
+  const [baseX, y] = project(
+    marker.longitude,
+    marker.latitude,
+    MAP_WIDTH,
+    MAP_HEIGHT,
+  );
+  const centerX = bounds.x + bounds.width / 2;
+  const x = baseX + Math.round((centerX - baseX) / MAP_WIDTH) * MAP_WIDTH;
+  const leftEdge = bounds.x + bounds.width * 0.22;
+  const rightEdge = bounds.x + bounds.width * 0.78;
+  const topEdge = bounds.y + bounds.height * 0.22;
+  const bottomEdge = bounds.y + bounds.height * 0.78;
+  const placeLeft = x > rightEdge;
+  marker.style.textOffsetX = placeLeft ? -8 : 8;
+  marker.style.textOffsetY = y < topEdge ? 10 : y > bottomEdge ? -6 : -6;
+  marker.style.textAnchor = placeLeft ? "end" : "start";
+}
+
 function setActiveTool(tool: typeof activeTool): void {
   activeTool = tool;
   hasActiveToolSelection = true;
@@ -2119,6 +2166,11 @@ function renderMarkers() {
       label.setAttribute("data-offset-y", marker.style.textOffsetY.toFixed(2));
       label.setAttribute("x", (x + offsetX).toFixed(2));
       label.setAttribute("y", (y + offsetY).toFixed(2));
+      label.setAttribute(
+        "text-anchor",
+        marker.style.textAnchor ??
+          (marker.style.textOffsetX < 0 ? "end" : "start"),
+      );
       label.setAttribute("data-marker", "label");
       label.setAttribute("data-id", marker.id);
       label.setAttribute("data-base", String(marker.style.textSize));
@@ -2130,8 +2182,10 @@ function renderMarkers() {
       label.setAttribute("font-family", marker.style.fontFamily);
       const labelText = markerLabelText(marker);
       label.textContent = labelText;
-      const isDraggingLabel = !!(labelDrag && labelDrag.markerId === marker.id);
-      if (isDraggingLabel) {
+      const isLabelSelected =
+        !!(labelDrag && labelDrag.markerId === marker.id) ||
+        selectedLabelMarkerId === marker.id;
+      if (isLabelSelected) {
         label.setAttribute("data-dragging", "true");
       } else {
         label.removeAttribute("data-dragging");
@@ -2143,6 +2197,8 @@ function renderMarkers() {
         event.stopPropagation();
         if (!item.preview) {
           selectMarker(marker.id);
+          selectedLabelMarkerId = marker.id;
+          renderMarkers();
         }
       });
       const startLabelDrag = (event: MouseEvent) => {
@@ -2150,6 +2206,8 @@ function renderMarkers() {
           return;
         }
         event.stopPropagation();
+        selectMarker(marker.id);
+        selectedLabelMarkerId = marker.id;
         label.setAttribute("data-dragging", "true");
         const start = mapPointFromEvent(event);
         labelDrag = {
@@ -2181,20 +2239,29 @@ function renderMarkers() {
         }
         event.stopPropagation();
         selectMarker(marker.id);
+        selectedLabelMarkerId = marker.id;
+        renderMarkers();
       });
       labelHit.addEventListener("mousedown", startLabelDrag);
       wrap.insertBefore(labelHit, label);
-      if (isDraggingLabel) {
+      if (isLabelSelected) {
         const dragBox = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        const pad = Math.max(0.35, Math.min(2.2, renderedFontSize * 0.07));
+        const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.36);
+        const textStroke = renderedFontSize * 0.045;
+        const desiredScreenStroke = Math.max(
+          0.55,
+          Math.min(3.2, zoomStroke + textStroke),
+        );
+        const dragStroke =
+          desiredScreenStroke / Math.max(0.001, view.scale * lastScaleFit);
+        const pad = Math.max(
+          0.35,
+          Math.min(3.2, renderedFontSize * 0.06 + dragStroke * 1.8),
+        );
         const boxX = labelBox.x - pad;
         const boxY = labelBox.y - pad;
         const boxWidth = labelBox.width + pad * 2;
         const boxHeight = labelBox.height + pad * 2;
-        const dragStroke = Math.max(
-          0.22,
-          Math.min(1.05, renderedFontSize * 0.035),
-        );
         dragBox.setAttribute("data-marker", "label-drag-box");
         dragBox.style.pointerEvents = "none";
         const addDragBoxLine = (
@@ -2782,6 +2849,7 @@ function setPreviewMarker(result: GeonamesResult): void {
     showLabel: true,
     kind: "label",
   };
+  placeMarkerLabelInsideView(previewMarker);
   renderMarkers();
   syncMarkerControls(previewMarker);
 }
@@ -2868,6 +2936,7 @@ function addMarkerFromCoordsValue(parsed: { lat: number; lon: number }): void {
   if (hasDuplicateMarker(marker)) {
     return;
   }
+  placeMarkerLabelInsideView(marker);
   selectedMarkers.push(marker);
   previewMarker = null;
   if (activeStep === "3") {
@@ -2903,6 +2972,7 @@ function handleCoordSearch(
   }
   const marker = buildCoordMarker(parsed, "coord-preview");
   marker.labelMode = "coords";
+  placeMarkerLabelInsideView(marker);
   previewMarker = marker;
   renderMarkers();
   syncMarkerControls(previewMarker);
@@ -2916,6 +2986,7 @@ function defaultMarkerStyle(): MarkerStyle {
     textColor: "#fde68a",
     textOffsetX: 8,
     textOffsetY: -6,
+    textAnchor: "start",
     fontFamily: "IBM Plex Sans, sans-serif",
   };
 }
@@ -3220,6 +3291,7 @@ function addMarkerFromGeonames(result: GeonamesResult): void {
     showLabel: true,
     kind: "label",
   };
+  placeMarkerLabelInsideView(marker);
   selectedMarkers.push(marker);
   previewMarker = null;
   if (activeStep === "3") {
@@ -3391,7 +3463,6 @@ function updateItemNameFromControl(): void {
   const shape = getSelectedShape();
   if (marker) {
     marker.displayName = value.length > 0 ? value : undefined;
-    renderMarkers();
     renderMarkerList();
     return;
   }
@@ -3472,6 +3543,9 @@ function selectMarker(markerId: string | null): void {
   previewShape = null;
   selectedMarkerId = markerId;
   selectedShapeId = null;
+  if (selectedLabelMarkerId && selectedLabelMarkerId !== markerId) {
+    selectedLabelMarkerId = null;
+  }
   syncMarkerControls(getSelectedMarker());
   syncItemNameControl();
   updateMarkerStyles();
@@ -3491,6 +3565,7 @@ function selectShape(shapeId: string | null): void {
   previewShape = null;
   selectedShapeId = shapeId;
   selectedMarkerId = null;
+  selectedLabelMarkerId = null;
   previewMarker = null;
   const shape = getSelectedShape();
   syncMarkerControls(null);
@@ -4141,6 +4216,7 @@ function buildProject(): MapProject | null {
         fontFamily: marker.style.fontFamily,
         textOffsetX: marker.style.textOffsetX,
         textOffsetY: marker.style.textOffsetY,
+        textAnchor: marker.style.textAnchor,
         labelMode: marker.labelMode,
         labelName: marker.labelName,
       },
@@ -4260,6 +4336,10 @@ async function handleLoad() {
           fontFamily: String(style.fontFamily ?? "IBM Plex Sans, sans-serif"),
           textOffsetX: Number(style.textOffsetX ?? 8),
           textOffsetY: Number(style.textOffsetY ?? -6),
+          textAnchor:
+            style.textAnchor === "end" || style.textAnchor === "start"
+              ? (style.textAnchor as "start" | "end")
+              : undefined,
         },
         sourceType,
         labelMode,
@@ -4945,6 +5025,9 @@ function zoomAt(point: { x: number; y: number }, delta: number): void {
   clampVertical();
   applyViewTransform();
   updateWrapTransforms(true);
+  if (selectedLabelMarkerId) {
+    renderMarkers();
+  }
 }
 
 function resetView(): void {
@@ -4955,6 +5038,9 @@ function resetView(): void {
   shiftLocked = false;
   applyViewTransform();
   updateWrapTransforms(true);
+  if (selectedLabelMarkerId) {
+    renderMarkers();
+  }
 }
 
 function onWheel(event: WheelEvent): void {
@@ -4994,6 +5080,13 @@ function clearDragRect(): void {
 
 function onMouseDown(event: MouseEvent): void {
   if (!svg) {
+    return;
+  }
+  if (activeStep === "3" && event.button === 0 && event.target === svg) {
+    labelDrag = null;
+    selectedLabelMarkerId = null;
+    selectMarker(null);
+    renderMarkers();
     return;
   }
   if (mapLocked) {
@@ -5123,16 +5216,8 @@ function onMouseMove(event: MouseEvent): void {
 
 function onMouseUp(event: MouseEvent): void {
   if (labelDrag) {
-    if (svg) {
-      const draggingLabels = svg.querySelectorAll<SVGTextElement>(
-        'text[data-marker="label"][data-dragging="true"]',
-      );
-      draggingLabels.forEach((label) => {
-        label.removeAttribute("data-dragging");
-        clearDraggingLabelOutline(label);
-      });
-    }
     labelDrag = null;
+    renderMarkers();
     return;
   }
   if (markerDrag) {
@@ -5208,16 +5293,8 @@ function attachMapInteractions(): void {
   svg.addEventListener("mouseup", onMouseUp);
   svg.addEventListener("mouseleave", () => {
     if (labelDrag) {
-      if (svg) {
-        const draggingLabels = svg.querySelectorAll<SVGTextElement>(
-          'text[data-marker="label"][data-dragging="true"]',
-        );
-        draggingLabels.forEach((label) => {
-          label.removeAttribute("data-dragging");
-          clearDraggingLabelOutline(label);
-        });
-      }
       labelDrag = null;
+      renderMarkers();
       return;
     }
     if (markerDrag) {
