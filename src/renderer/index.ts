@@ -569,9 +569,9 @@ let originalRatio = MAP_WIDTH / MAP_HEIGHT;
 let activeRatioId: string | undefined = undefined;
 let activeStyleId = "styleOriginal";
 let mapLocked = false;
-let cropBBox: { x: number; y: number; width: number; height: number } | null =
-  null;
+let cropBBox: CropBBox | null = null;
 type CropBox = { left: number; top: number; width: number; height: number };
+type CropBBox = { x: number; y: number; width: number; height: number };
 type CropDrag = {
   mode: "move" | "resize";
   handle?: string;
@@ -582,6 +582,14 @@ type CropDrag = {
 
 let cropBox: CropBox | null = null;
 let cropDrag: CropDrag | null = null;
+let stepOneCropSnapshot:
+  | {
+      cropBox: CropBox | null;
+      cropBBox: CropBBox | null;
+      view: { scale: number; tx: number; ty: number };
+      lastStageRect: { width: number; height: number } | null;
+    }
+  | null = null;
 
 const selectedMarkers: Marker[] = [];
 let selectedMarkerId: string | null = null;
@@ -630,11 +638,12 @@ type RenderGeometry =
 let orderDragSession: OrderDragSession | null = null;
 let selectedShapeId: string | null = null;
 let activeTool: "marker" | "line" | "area" | "text" | "arrow" = "marker";
+let hasActiveToolSelection = false;
 let manualMarkerCount = 0;
 let previewToolMarker: Marker | null = null;
 let previewShape: ShapeItem | null = null;
 let currentProjectPath: string | null = null;
-let lastStageRect: DOMRect | null = null;
+let lastStageRect: { width: number; height: number } | null = null;
 let lastScaleFit = 1;
 let currentPackVersion = "";
 let currentPackId = "";
@@ -1008,8 +1017,50 @@ function updateZoomIndicator(): void {
   zoomIndicator.textContent = `${percent}%`;
 }
 
+function saveStepOneCropSnapshot(): void {
+  if (!mapStage) {
+    return;
+  }
+  if (!cropBBox && cropBox) {
+    updateCropBBox();
+  }
+  const rect = mapStage.getBoundingClientRect();
+  stepOneCropSnapshot = {
+    cropBox: cropBox ? { ...cropBox } : null,
+    cropBBox: cropBBox ? { ...cropBBox } : null,
+    view: { scale: view.scale, tx: view.tx, ty: view.ty },
+    lastStageRect: { width: rect.width, height: rect.height },
+  };
+}
+
+function restoreStepOneCropSnapshot(): void {
+  if (!stepOneCropSnapshot) {
+    return;
+  }
+  cropBox = stepOneCropSnapshot.cropBox
+    ? { ...stepOneCropSnapshot.cropBox }
+    : null;
+  cropBBox = stepOneCropSnapshot.cropBBox
+    ? { ...stepOneCropSnapshot.cropBBox }
+    : null;
+  view.scale = stepOneCropSnapshot.view.scale;
+  view.tx = stepOneCropSnapshot.view.tx;
+  view.ty = stepOneCropSnapshot.view.ty;
+  lastStageRect = stepOneCropSnapshot.lastStageRect
+    ? { ...stepOneCropSnapshot.lastStageRect }
+    : null;
+  applyViewTransform();
+  updateWrapTransforms(true);
+}
+
 function setActiveStep(stepId: string): void {
   const previousStep = activeStep;
+  if (previousStep === "1" && (stepId === "2" || stepId === "3")) {
+    saveStepOneCropSnapshot();
+  }
+  if (stepId === "1" && previousStep !== "1" && stepOneCropSnapshot) {
+    restoreStepOneCropSnapshot();
+  }
   activeStep = stepId;
   stepPanels.forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.stepPanel === stepId);
@@ -1850,6 +1901,7 @@ function viewCenterLonLat(): [number, number] {
 
 function setActiveTool(tool: typeof activeTool): void {
   activeTool = tool;
+  hasActiveToolSelection = true;
   document
     .querySelectorAll<HTMLButtonElement>(".tool-select")
     .forEach((button) => {
@@ -1870,6 +1922,13 @@ function addToolItem(tool: typeof activeTool): void {
   if (activeStep !== "3") {
     return;
   }
+  activeTool = tool;
+  hasActiveToolSelection = true;
+  document
+    .querySelectorAll<HTMLButtonElement>(".tool-select")
+    .forEach((button) => {
+      button.classList.toggle("active", button.dataset.tool === tool);
+    });
   const [lon, lat] = viewCenterLonLat();
   if (tool === "marker") {
     const marker = buildManualMarkerAt({ lon, lat });
@@ -2929,12 +2988,17 @@ function formatCoords(marker: { latitude: number; longitude: number }): string {
 }
 
 function markerLabelText(marker: Marker): string {
+  const customLabel = marker.labelName?.trim();
+  if (customLabel) {
+    return customLabel;
+  }
+  if (marker.sourceType === "coords") {
+    return marker.displayName?.trim() || marker.name;
+  }
   if (marker.labelMode === "coords") {
     return formatCoords(marker);
   }
-  return marker.labelName && marker.labelName.trim().length > 0
-    ? marker.labelName
-    : marker.name;
+  return marker.name;
 }
 
 function markerKey(marker: {
@@ -2963,6 +3027,34 @@ function markerListName(marker: Marker): string {
     return `${marker.name} / ${marker.nameAlt}`;
   }
   return marker.name;
+}
+
+function uniqueNameMap(
+  entries: Array<{ key: string; name: string }>,
+): Map<string, string> {
+  const counts = new Map<string, number>();
+  const names = new Map<string, string>();
+  entries.forEach((entry) => {
+    const baseName = entry.name.trim() || "標示";
+    const next = (counts.get(baseName) ?? 0) + 1;
+    counts.set(baseName, next);
+    names.set(entry.key, next === 1 ? baseName : `${baseName} (${next})`);
+  });
+  return names;
+}
+
+function uniqueOverlayNameMap(): Map<string, string> {
+  const shapeNames = shapeDisplayNameMap();
+  return uniqueNameMap([
+    ...selectedMarkers.map((marker) => ({
+      key: markerOverlayKey(marker.id),
+      name: markerListName(marker),
+    })),
+    ...shapes.map((shape) => ({
+      key: shapeOverlayKey(shape.id),
+      name: shapeNames.get(shape.id) ?? "標示",
+    })),
+  ]);
 }
 
 function shapeDefaultName(shape: ShapeItem, index: number): string {
@@ -3018,7 +3110,7 @@ function shapeDisplayNameMap(): Map<string, string> {
 
 function getOverlayRefs(): OverlayObjectRef[] {
   const refs: OverlayObjectRef[] = [];
-  const shapeNames = shapeDisplayNameMap();
+  const uniqueNames = uniqueOverlayNameMap();
   const seen = new Set<string>();
   selectedMarkers.forEach((marker) => {
     const key = markerOverlayKey(marker.id);
@@ -3030,7 +3122,7 @@ function getOverlayRefs(): OverlayObjectRef[] {
       key,
       kind: "marker",
       id: marker.id,
-      name: markerListName(marker),
+      name: uniqueNames.get(key) ?? markerListName(marker),
     });
   });
   shapes.forEach((shape) => {
@@ -3039,7 +3131,7 @@ function getOverlayRefs(): OverlayObjectRef[] {
       key,
       kind: "shape",
       id: shape.id,
-      name: shapeNames.get(shape.id) ?? "標示",
+      name: uniqueNames.get(key) ?? "標示",
     });
   });
   return refs;
@@ -3194,9 +3286,13 @@ function syncMarkerControls(marker: Marker | null): void {
   syncColorInputs("dot", marker.style.dotColor);
   syncColorInputs("text", marker.style.textColor);
   if (markerLabelInput) {
-    markerLabelInput.disabled = marker.sourceType !== "geonames";
+    const canEditLabel =
+      marker.sourceType === "geonames" || marker.sourceType === "coords";
+    markerLabelInput.disabled = !canEditLabel;
     markerLabelInput.value =
-      marker.sourceType === "geonames" ? (marker.labelName ?? marker.name) : "";
+      marker.sourceType === "geonames"
+        ? (marker.labelName ?? marker.name)
+        : (marker.labelName ?? "");
   }
 }
 
@@ -3295,6 +3391,7 @@ function updateItemNameFromControl(): void {
   const shape = getSelectedShape();
   if (marker) {
     marker.displayName = value.length > 0 ? value : undefined;
+    renderMarkers();
     renderMarkerList();
     return;
   }
@@ -3380,6 +3477,7 @@ function selectMarker(markerId: string | null): void {
   updateMarkerStyles();
   if (markerId) {
     activeTool = "marker";
+    hasActiveToolSelection = true;
     document
       .querySelectorAll<HTMLButtonElement>(".tool-select")
       .forEach((button) => {
@@ -3401,6 +3499,7 @@ function selectShape(shapeId: string | null): void {
   renderMarkers();
   if (shape) {
     activeTool = shape.type;
+    hasActiveToolSelection = true;
     document
       .querySelectorAll<HTMLButtonElement>(".tool-select")
       .forEach((button) => {
@@ -3417,7 +3516,7 @@ function renderMarkerList(): void {
   markerList.innerHTML = "";
   const markersById = new Map(selectedMarkers.map((item) => [item.id, item]));
   const shapesById = new Map(shapes.map((item) => [item.id, item]));
-  const shapeNames = shapeDisplayNameMap();
+  const uniqueNames = uniqueOverlayNameMap();
   listOrderKeys.forEach((overlayKey) => {
     const row = document.createElement("div");
     row.className = "marker-item";
@@ -3431,17 +3530,7 @@ function renderMarkerList(): void {
       if (!marker) {
         return;
       }
-      title.textContent = markerListName(marker);
-      if (marker.sourceType === "coords") {
-        const editBtn = document.createElement("button");
-        editBtn.className = "secondary";
-        editBtn.textContent = "編輯";
-        editBtn.addEventListener("click", (event) => {
-          event.stopPropagation();
-          openCoordEditor(marker);
-        });
-        actions.appendChild(editBtn);
-      }
+      title.textContent = uniqueNames.get(overlayKey) ?? markerListName(marker);
       const btn = document.createElement("button");
       btn.className = "secondary";
       btn.textContent = "清除";
@@ -3457,7 +3546,7 @@ function renderMarkerList(): void {
       if (!shape) {
         return;
       }
-      title.textContent = shapeNames.get(shape.id) ?? "標示";
+      title.textContent = uniqueNames.get(overlayKey) ?? "標示";
       const btn = document.createElement("button");
       btn.className = "secondary";
       btn.textContent = "清除";
@@ -4546,7 +4635,10 @@ function updateMarkerFromControls(): void {
   if (markerFont) {
     marker.style.fontFamily = markerFont.value;
   }
-  if (markerLabelInput && marker.sourceType === "geonames") {
+  if (
+    markerLabelInput &&
+    (marker.sourceType === "geonames" || marker.sourceType === "coords")
+  ) {
     const value = markerLabelInput.value.trim();
     marker.labelName = value.length > 0 ? value : undefined;
     marker.labelMode = "name";

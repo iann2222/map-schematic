@@ -1001,6 +1001,18 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        transition:
+          background 0.16s ease,
+          border-color 0.16s ease,
+          box-shadow 0.16s ease,
+          transform 0.16s ease;
+      }
+      .result-actions .icon-btn:hover,
+      .tool-add:hover {
+        background: rgba(56, 189, 248, 0.34);
+        border-color: rgba(125, 211, 252, 0.72);
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.16);
+        transform: translateY(-1px);
       }
       .results li:hover {
         background: rgba(255, 255, 255, 0.08);
@@ -1380,6 +1392,18 @@
         padding: 12px 22px;
         font-size: 14px;
       }
+      .map-footer button:not(.secondary) {
+        background: #1976d2;
+        box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.14);
+      }
+      .map-footer button:not(.secondary):hover,
+      .map-footer button:not(.secondary):focus-visible {
+        background: #2f8be8;
+        box-shadow:
+          0 0 0 2px rgba(56, 189, 248, 0.18),
+          0 8px 20px rgba(25, 118, 210, 0.22);
+        filter: none;
+      }
       .crop-frame.hidden {
         display: none;
       }
@@ -1618,7 +1642,7 @@
             <div class="section-title card-title">新增標示</div>
             <div class="tool-list">
               <div class="tool-item" data-tool="marker">
-                <button class="tool-btn tool-select active" data-tool="marker">
+                <button class="tool-btn tool-select" data-tool="marker">
                   <span class="tool-icon">●</span>
                   點標示
                 </button>
