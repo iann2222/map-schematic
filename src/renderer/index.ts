@@ -2612,10 +2612,10 @@ function renderShapes(): void {
           "http://www.w3.org/2000/svg",
           "rect",
         );
-        hit.setAttribute("x", (x - shape.width / 2 - 6).toFixed(2));
-        hit.setAttribute("y", (y - shape.height / 2 - 6).toFixed(2));
-        hit.setAttribute("width", (shape.width + 12).toFixed(2));
-        hit.setAttribute("height", (shape.height + 12).toFixed(2));
+        hit.setAttribute("x", (x - shape.width / 2).toFixed(2));
+        hit.setAttribute("y", (y - shape.height / 2).toFixed(2));
+        hit.setAttribute("width", shape.width.toFixed(2));
+        hit.setAttribute("height", shape.height.toFixed(2));
         hit.setAttribute("fill", "transparent");
         hit.setAttribute("data-shape", "area");
         hit.setAttribute("data-id", shape.id);
@@ -3684,6 +3684,53 @@ function selectShape(shapeId: string | null): void {
       .forEach((button) => {
         button.classList.toggle("active", button.dataset.tool === shape.type);
       });
+  }
+}
+
+function clearStepThreeSelection(): void {
+  labelDrag = null;
+  selectedLabelMarkerId = null;
+  selectMarker(null);
+  selectShape(null);
+  renderMarkers();
+}
+
+function isStepThreeBlankTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement) && !(target instanceof SVGSVGElement)) {
+    return false;
+  }
+  if (target === svg) {
+    return true;
+  }
+  return target.matches(
+    [
+      ".layout",
+      ".panel",
+      ".panel.card",
+      ".step-panel",
+      ".tool-panel",
+      ".right-panel",
+      ".settings-stack",
+      ".tool-list",
+      ".marker-list",
+      ".map-list-panel",
+      ".map-wrap",
+      ".map-stage",
+      ".map-footer",
+    ].join(","),
+  );
+}
+
+function handleStepThreeBlankMouseDown(event: MouseEvent): void {
+  if (
+    activeStep !== "3" ||
+    event.button !== 0 ||
+    (!selectedMarkerId && !selectedShapeId && !selectedLabelMarkerId)
+  ) {
+    return;
+  }
+  if (isStepThreeBlankTarget(event.target)) {
+    clearStepThreeSelection();
   }
 }
 
@@ -5442,11 +5489,7 @@ function onMouseDown(event: MouseEvent): void {
     return;
   }
   if (activeStep === "3" && event.button === 0 && event.target === svg) {
-    labelDrag = null;
-    selectedLabelMarkerId = null;
-    selectMarker(null);
-    selectShape(null);
-    renderMarkers();
+    clearStepThreeSelection();
     return;
   }
   if (mapLocked) {
@@ -5805,6 +5848,7 @@ coordInput3?.addEventListener("keydown", (event) => {
     handleCoordSearch(coordInput3, resultsEl3);
   }
 });
+document.addEventListener("mousedown", handleStepThreeBlankMouseDown);
 document
   .querySelectorAll<HTMLButtonElement>("[data-clear]")
   .forEach((button) => {
