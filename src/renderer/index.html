@@ -509,6 +509,72 @@
       .complete-modal {
         width: min(440px, 92vw);
       }
+      .frame-modal {
+        width: min(520px, 92vw);
+      }
+      .frame-options {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .frame-option {
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: rgba(15, 23, 42, 0.78);
+        color: #e2e8f0;
+        border-radius: 8px;
+        padding: 10px;
+        display: grid;
+        grid-template-columns: 58px 1fr;
+        align-items: center;
+        gap: 10px;
+        text-align: left;
+        cursor: pointer;
+      }
+      .frame-option.active {
+        border-color: rgba(56, 189, 248, 0.95);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+      }
+      .frame-preview {
+        width: 58px;
+        height: 42px;
+        background: #1d4ed8;
+        border-radius: 2px;
+        box-sizing: border-box;
+      }
+      .frame-preview.none {
+        border: 1px solid rgba(226, 232, 240, 0.35);
+      }
+      .frame-preview.thin {
+        border: 4px solid #111827;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+      }
+      .frame-preview.mat {
+        border: 5px solid #f8fafc;
+        box-shadow:
+          inset 0 0 0 1px rgba(15, 23, 42, 0.24),
+          0 0 0 2px #334155;
+      }
+      .frame-preview.dark {
+        border: 4px solid #1f2937;
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 255, 255, 0.18),
+          0 0 0 2px #020617;
+      }
+      .frame-label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+      .frame-name {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .frame-desc {
+        font-size: 11px;
+        color: #94a3b8;
+        line-height: 1.35;
+      }
       .complete-note {
         font-size: 12px;
         color: #94a3b8;
@@ -1897,6 +1963,33 @@
                     Microsoft JhengHei
                   </option>
                   <option value="PingFang TC, sans-serif">PingFang TC</option>
+                  <option value="刻石錄顏體, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                    刻石錄顏體
+                  </option>
+                  <option value="微軟正黑體, Microsoft JhengHei, Noto Sans TC, sans-serif">
+                    微軟正黑體
+                  </option>
+                  <option value="文鼎楷體U30-M, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                    文鼎楷體U30-M
+                  </option>
+                  <option value="文鼎魏碑簡體繁, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                    文鼎魏碑簡體繁
+                  </option>
+                  <option value="華康仿宋體W4, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                    華康仿宋體W4
+                  </option>
+                  <option value="華康行楷體W5, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                    華康行楷體W5
+                  </option>
+                  <option value="I.Ngaan, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                    I.Ngaan
+                  </option>
+                  <option value="CloudKaiXingGBK, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                    CloudKaiXingGBK
+                  </option>
+                  <option value="FZBeiWeiKaiShu-S19, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                    FZBeiWeiKaiShu-S19
+                  </option>
                   <option value="serif">Serif</option>
                 </select>
               </div>
@@ -1994,6 +2087,33 @@
                   Microsoft JhengHei
                 </option>
                 <option value="PingFang TC, sans-serif">PingFang TC</option>
+                <option value="刻石錄顏體, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                  刻石錄顏體
+                </option>
+                <option value="微軟正黑體, Microsoft JhengHei, Noto Sans TC, sans-serif">
+                  微軟正黑體
+                </option>
+                <option value="文鼎楷體U30-M, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                  文鼎楷體U30-M
+                </option>
+                <option value="文鼎魏碑簡體繁, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                  文鼎魏碑簡體繁
+                </option>
+                <option value="華康仿宋體W4, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                  華康仿宋體W4
+                </option>
+                <option value="華康行楷體W5, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                  華康行楷體W5
+                </option>
+                <option value="I.Ngaan, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                  I.Ngaan
+                </option>
+                <option value="CloudKaiXingGBK, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                  CloudKaiXingGBK
+                </option>
+                <option value="FZBeiWeiKaiShu-S19, 微軟正黑體, Microsoft JhengHei, Noto Sans TC, serif">
+                  FZBeiWeiKaiShu-S19
+                </option>
                 <option value="serif">Serif</option>
               </select>
             </div>
@@ -2365,6 +2485,53 @@
         >
           <span class="complete-feedback-icon" aria-hidden="true"></span>
           <span id="completeSaveFeedbackText"></span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="exportFrameModal">
+      <div class="modal frame-modal">
+        <button
+          id="exportFrameClose"
+          class="modal-close"
+          type="button"
+          aria-label="關閉"
+        >
+          ×
+        </button>
+        <div class="modal-title">選擇輸出外框</div>
+        <div class="frame-options">
+          <button class="frame-option active" type="button" data-export-frame="none">
+            <span class="frame-preview none" aria-hidden="true"></span>
+            <span class="frame-label">
+              <span class="frame-name">無外框</span>
+              <span class="frame-desc">維持目前裁切範圍。</span>
+            </span>
+          </button>
+          <button class="frame-option" type="button" data-export-frame="thin">
+            <span class="frame-preview thin" aria-hidden="true"></span>
+            <span class="frame-label">
+              <span class="frame-name">細邊框</span>
+              <span class="frame-desc">加上俐落黑色細框。</span>
+            </span>
+          </button>
+          <button class="frame-option" type="button" data-export-frame="mat">
+            <span class="frame-preview mat" aria-hidden="true"></span>
+            <span class="frame-label">
+              <span class="frame-name">白色留邊</span>
+              <span class="frame-desc">像紙本裝裱的留白效果。</span>
+            </span>
+          </button>
+          <button class="frame-option" type="button" data-export-frame="dark">
+            <span class="frame-preview dark" aria-hidden="true"></span>
+            <span class="frame-label">
+              <span class="frame-name">深色畫框</span>
+              <span class="frame-desc">加上較厚的深色外框。</span>
+            </span>
+          </button>
+        </div>
+        <div class="modal-actions">
+          <button id="exportFrameCancel" class="secondary">取消</button>
+          <button id="exportFrameApply">匯出</button>
         </div>
       </div>
     </div>

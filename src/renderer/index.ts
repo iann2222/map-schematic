@@ -245,6 +245,7 @@ type ShapeDrag = {
   startLon: number;
   startLat: number;
 };
+type ExportFrameStyle = "none" | "thin" | "mat" | "dark";
 
 const statusEl = document.getElementById("status");
 const layoutEl = document.getElementById("layout");
@@ -424,6 +425,21 @@ const completeSaveFeedback = document.getElementById(
 const completeSaveFeedbackText = document.getElementById(
   "completeSaveFeedbackText",
 ) as HTMLSpanElement | null;
+const exportFrameModal = document.getElementById(
+  "exportFrameModal",
+) as HTMLDivElement | null;
+const exportFrameOptions = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-export-frame]"),
+);
+const exportFrameClose = document.getElementById(
+  "exportFrameClose",
+) as HTMLButtonElement | null;
+const exportFrameCancel = document.getElementById(
+  "exportFrameCancel",
+) as HTMLButtonElement | null;
+const exportFrameApply = document.getElementById(
+  "exportFrameApply",
+) as HTMLButtonElement | null;
 const coordEditModal = document.getElementById(
   "coordEditModal",
 ) as HTMLDivElement | null;
@@ -455,6 +471,8 @@ let shapeArrowWidthSlider: SliderControl | null = null;
 let shapeAreaOpacitySlider: SliderControl | null = null;
 let shapeAreaStrokeWidthSlider: SliderControl | null = null;
 let completeFeedbackTimer: number | null = null;
+let selectedExportFrame: ExportFrameStyle = "none";
+let exportFrameResolver: ((value: ExportFrameStyle | null) => void) | null = null;
 const toolZoomIn = document.getElementById(
   "toolZoomIn",
 ) as HTMLButtonElement | null;
@@ -578,6 +596,7 @@ const MAX_SCALE_CROP = 50;
 const ZOOM_LEVELS = [0.4, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12];
 const MAP_WIDTH = 1200;
 const MAP_HEIGHT = 800;
+const PNG_EXPORT_SCALE = 2;
 let cropRatio = MAP_WIDTH / MAP_HEIGHT;
 let activeStep = "0";
 let ratioMode: "free" | "fixed" = "fixed";
@@ -4201,6 +4220,33 @@ function closeCompleteDialog(): void {
   clearCompleteFeedback();
 }
 
+function syncExportFrameOptions(): void {
+  exportFrameOptions.forEach((button) => {
+    button.classList.toggle(
+      "active",
+      button.dataset.exportFrame === selectedExportFrame,
+    );
+  });
+}
+
+function closeExportFrameDialog(value: ExportFrameStyle | null): void {
+  exportFrameModal?.classList.remove("active");
+  const resolver = exportFrameResolver;
+  exportFrameResolver = null;
+  resolver?.(value);
+}
+
+function chooseExportFrame(): Promise<ExportFrameStyle | null> {
+  if (!exportFrameModal) {
+    return Promise.resolve("none");
+  }
+  syncExportFrameOptions();
+  exportFrameModal.classList.add("active");
+  return new Promise((resolve) => {
+    exportFrameResolver = resolve;
+  });
+}
+
 function clearCompleteFeedback(): void {
   if (completeFeedbackTimer != null) {
     window.clearTimeout(completeFeedbackTimer);
@@ -4775,7 +4821,7 @@ async function handleLoad() {
   }
 }
 
-async function renderExportCanvas(): Promise<{
+async function renderExportCanvas(exportScale = 1): Promise<{
   canvas: HTMLCanvasElement;
   width: number;
   height: number;
@@ -4790,8 +4836,11 @@ async function renderExportCanvas(): Promise<{
   if (!crop) {
     return null;
   }
-  const outWidth = Math.max(1, Math.round(crop.width * scaleX));
-  const outHeight = Math.max(1, Math.round(crop.height * scaleY));
+  const outputScale = Math.max(1, exportScale);
+  const sourceWidth = Math.max(1, Math.round(crop.width * scaleX));
+  const sourceHeight = Math.max(1, Math.round(crop.height * scaleY));
+  const outWidth = Math.max(1, Math.round(sourceWidth * outputScale));
+  const outHeight = Math.max(1, Math.round(sourceHeight * outputScale));
   const outCanvas = document.createElement("canvas");
   outCanvas.width = outWidth;
   outCanvas.height = outHeight;
@@ -4799,11 +4848,21 @@ async function renderExportCanvas(): Promise<{
   if (!ctx) {
     return null;
   }
-  ctx.drawImage(canvas, -crop.left * scaleX, -crop.top * scaleY);
+  const scaledCanvasWidth = canvas.width * outputScale;
+  const scaledCanvasHeight = canvas.height * outputScale;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(
+    canvas,
+    -crop.left * scaleX * outputScale,
+    -crop.top * scaleY * outputScale,
+    scaledCanvasWidth,
+    scaledCanvasHeight,
+  );
   const serializer = new XMLSerializer();
   const svgClone = svg.cloneNode(true) as SVGSVGElement;
-  svgClone.setAttribute("width", String(canvas.width));
-  svgClone.setAttribute("height", String(canvas.height));
+  svgClone.setAttribute("width", String(scaledCanvasWidth));
+  svgClone.setAttribute("height", String(scaledCanvasHeight));
   const svgString = serializer.serializeToString(svgClone);
   const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -4815,24 +4874,120 @@ async function renderExportCanvas(): Promise<{
   });
   ctx.drawImage(
     img,
-    -crop.left * scaleX,
-    -crop.top * scaleY,
-    canvas.width,
-    canvas.height,
+    -crop.left * scaleX * outputScale,
+    -crop.top * scaleY * outputScale,
+    scaledCanvasWidth,
+    scaledCanvasHeight,
   );
   URL.revokeObjectURL(url);
   return { canvas: outCanvas, width: outWidth, height: outHeight };
+}
+
+function frameSizeFor(canvas: HTMLCanvasElement, frame: ExportFrameStyle): number {
+  const base = Math.min(canvas.width, canvas.height);
+  if (frame === "thin") {
+    return Math.max(8, Math.round(base * 0.012));
+  }
+  if (frame === "mat") {
+    return Math.max(24, Math.round(base * 0.0325));
+  }
+  if (frame === "dark") {
+    return Math.max(17, Math.round(base * 0.0225));
+  }
+  return 0;
+}
+
+function applyExportFrame(
+  source: HTMLCanvasElement,
+  frame: ExportFrameStyle,
+): HTMLCanvasElement {
+  const inset = frameSizeFor(source, frame);
+  if (frame === "none" || inset <= 0) {
+    return source;
+  }
+  const framed = document.createElement("canvas");
+  framed.width = source.width + inset * 2;
+  framed.height = source.height + inset * 2;
+  const ctx = framed.getContext("2d");
+  if (!ctx) {
+    return source;
+  }
+
+  if (frame === "mat") {
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(0, 0, framed.width, framed.height);
+    ctx.strokeStyle = "#334155";
+    ctx.lineWidth = Math.max(2, Math.round(inset * 0.06));
+    ctx.strokeRect(
+      ctx.lineWidth / 2,
+      ctx.lineWidth / 2,
+      framed.width - ctx.lineWidth,
+      framed.height - ctx.lineWidth,
+    );
+    ctx.strokeStyle = "rgba(15, 23, 42, 0.24)";
+    ctx.lineWidth = Math.max(1, Math.round(inset * 0.025));
+    ctx.strokeRect(
+      inset - ctx.lineWidth / 2,
+      inset - ctx.lineWidth / 2,
+      source.width + ctx.lineWidth,
+      source.height + ctx.lineWidth,
+    );
+  } else if (frame === "dark") {
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(0, 0, framed.width, framed.height);
+    const outer = Math.max(2, Math.round(inset * 0.08));
+    const inner = Math.max(1, Math.round(inset * 0.04));
+    ctx.strokeStyle = "#020617";
+    ctx.lineWidth = outer;
+    ctx.strokeRect(outer / 2, outer / 2, framed.width - outer, framed.height - outer);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+    ctx.lineWidth = inner;
+    ctx.strokeRect(
+      inset - inner / 2,
+      inset - inner / 2,
+      source.width + inner,
+      source.height + inner,
+    );
+  } else {
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(0, 0, framed.width, framed.height);
+  }
+
+  ctx.drawImage(source, inset, inset);
+  if (frame === "thin") {
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+    ctx.lineWidth = Math.max(1, Math.round(inset * 0.15));
+    ctx.strokeRect(
+      inset - ctx.lineWidth / 2,
+      inset - ctx.lineWidth / 2,
+      source.width + ctx.lineWidth,
+      source.height + ctx.lineWidth,
+    );
+  }
+  return framed;
 }
 
 async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
   if (!window.mapSchematic?.exportProject) {
     return;
   }
-  const rendered = await renderExportCanvas();
+  const exportFrame =
+    format === "png" || format === "pdf" ? await chooseExportFrame() : "none";
+  if (exportFrame == null) {
+    if (statusEl) {
+      statusEl.textContent = "已取消匯出。";
+    }
+    return;
+  }
+  const rendered = await renderExportCanvas(
+    format === "png" ? PNG_EXPORT_SCALE : 1,
+  );
   if (!rendered) {
     return;
   }
-  const { canvas: exportCanvas, width, height } = rendered;
+  const exportCanvas = applyExportFrame(rendered.canvas, exportFrame);
+  const width = exportCanvas.width;
+  const height = exportCanvas.height;
   let data = "";
   if (format === "png" || format === "pdf") {
     data = exportCanvas.toDataURL("image/png");
@@ -5906,6 +6061,26 @@ listOrderModal?.addEventListener("click", (event) => {
 completeModal?.addEventListener("click", (event) => {
   if (event.target === completeModal) {
     closeCompleteDialog();
+  }
+});
+exportFrameOptions.forEach((button) => {
+  button.addEventListener("click", () => {
+    const frame = button.dataset.exportFrame as ExportFrameStyle | undefined;
+    if (!frame) {
+      return;
+    }
+    selectedExportFrame = frame;
+    syncExportFrameOptions();
+  });
+});
+exportFrameClose?.addEventListener("click", () => closeExportFrameDialog(null));
+exportFrameCancel?.addEventListener("click", () => closeExportFrameDialog(null));
+exportFrameApply?.addEventListener("click", () =>
+  closeExportFrameDialog(selectedExportFrame),
+);
+exportFrameModal?.addEventListener("click", (event) => {
+  if (event.target === exportFrameModal) {
+    closeExportFrameDialog(null);
   }
 });
 completeContinue?.addEventListener("click", () => {
