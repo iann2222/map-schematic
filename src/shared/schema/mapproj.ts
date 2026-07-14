@@ -1,4 +1,6 @@
-export type SchemaVersion = "0.1";
+export const CURRENT_SCHEMA_VERSION = "0.2" as const;
+
+export type SchemaVersion = typeof CURRENT_SCHEMA_VERSION;
 
 export type Projection = "EPSG:3857" | "EPSG:4326";
 
@@ -88,7 +90,7 @@ export type MapProject = {
   viewport: Viewport;
   layers: Layer[];
   objects: MapObject[];
-  ui?: {
+  ui: {
     listOrderKeys?: string[];
     displayOrderKeys?: string[];
     activeStyleId?: string;
@@ -127,7 +129,7 @@ export function createEmptyProject(params: {
   };
 
   return {
-    schemaVersion: "0.1",
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     createdAt: now,
     updatedAt: now,
     dataPackVersion: params.dataPackVersion,
@@ -144,6 +146,7 @@ export function createEmptyProject(params: {
         zIndex: 0
       }
     ],
-    objects: []
+    objects: [],
+    ui: {}
   };
 }

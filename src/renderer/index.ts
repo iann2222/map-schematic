@@ -64,6 +64,8 @@ declare global {
         };
         error?: string;
         canceled?: boolean;
+        migratedFromVersion?: string;
+        recoveredFromBackup?: boolean;
       }>;
       onMenuAction?: (handler: (action: string) => void) => () => void;
     };
@@ -150,7 +152,7 @@ type SliderControl = {
 };
 
 type MapProject = {
-  schemaVersion: "0.1";
+  schemaVersion: "0.2";
   createdAt: string;
   updatedAt: string;
   appVersion?: string;
@@ -196,7 +198,7 @@ type MapProject = {
       query?: string;
     };
   }>;
-  ui?: {
+  ui: {
     listOrderKeys?: string[];
     displayOrderKeys?: string[];
     activeStyleId?: string;
@@ -4485,7 +4487,7 @@ function buildProject(): MapProject | null {
     provenance: { source: "manual", query: `shape:${shape.type}` },
   }));
   return {
-    schemaVersion: "0.1",
+    schemaVersion: "0.2",
     createdAt: base,
     updatedAt: now,
     dataPackVersion: currentPackVersion,
@@ -4556,6 +4558,9 @@ async function handleSave(saveAs = false): Promise<{
   }
   if (result?.path) {
     currentProjectPath = result.path;
+  }
+  if (result.ok) {
+    currentProject = project;
   }
   if (statusEl) {
     if (result.canceled) {
@@ -4860,7 +4865,13 @@ async function handleLoad() {
     applyMapClip();
   }
   if (statusEl) {
-    statusEl.textContent = `專案已載入：${result.path}`;
+    if (result.recoveredFromBackup) {
+      statusEl.textContent = `已從備份恢復並載入：${result.path}`;
+    } else if (result.migratedFromVersion) {
+      statusEl.textContent = `已載入並將專案格式從 ${result.migratedFromVersion} 升級為 ${loadedProject.schemaVersion}；下次儲存時會寫入新版格式。`;
+    } else {
+      statusEl.textContent = `專案已載入：${result.path}`;
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-import { MapProject } from "./mapproj";
+import { CURRENT_SCHEMA_VERSION, MapProject } from "./mapproj";
 
 export type ValidationError = {
   path: string;
@@ -84,7 +84,7 @@ export function validateProject(input: unknown): ValidationResult {
     };
   }
 
-  if (input.schemaVersion !== "0.1") {
+  if (input.schemaVersion !== CURRENT_SCHEMA_VERSION) {
     errors.push({ path: "schemaVersion", message: "unsupported schemaVersion" });
   }
 
@@ -273,32 +273,30 @@ export function validateProject(input: unknown): ValidationResult {
     }
   }
 
-  if (input.ui !== undefined) {
-    if (!isRecord(input.ui)) {
-      errors.push({ path: "ui", message: "must be an object" });
-    } else {
-      if (input.ui.listOrderKeys !== undefined) {
-        validateStringArray(input.ui.listOrderKeys, "ui.listOrderKeys", errors);
-      }
-      if (input.ui.displayOrderKeys !== undefined) {
-        validateStringArray(input.ui.displayOrderKeys, "ui.displayOrderKeys", errors);
-      }
-      if (input.ui.hillshadeEnabled !== undefined && typeof input.ui.hillshadeEnabled !== "boolean") {
-        errors.push({ path: "ui.hillshadeEnabled", message: "must be a boolean" });
-      }
-      if (
-        input.ui.ratioMode !== undefined &&
-        input.ui.ratioMode !== "free" &&
-        input.ui.ratioMode !== "fixed"
-      ) {
-        errors.push({ path: "ui.ratioMode", message: "must be free or fixed" });
-      }
-      for (const field of ["cropRatio", "customRatioA", "customRatioB"] as const) {
-        if (input.ui[field] !== undefined && !isFiniteNumber(input.ui[field])) {
-          errors.push({ path: `ui.${field}`, message: "must be a finite number" });
-        } else if (isFiniteNumber(input.ui[field]) && input.ui[field] <= 0) {
-          errors.push({ path: `ui.${field}`, message: "must be positive" });
-        }
+  if (!isRecord(input.ui)) {
+    errors.push({ path: "ui", message: "must be an object" });
+  } else {
+    if (input.ui.listOrderKeys !== undefined) {
+      validateStringArray(input.ui.listOrderKeys, "ui.listOrderKeys", errors);
+    }
+    if (input.ui.displayOrderKeys !== undefined) {
+      validateStringArray(input.ui.displayOrderKeys, "ui.displayOrderKeys", errors);
+    }
+    if (input.ui.hillshadeEnabled !== undefined && typeof input.ui.hillshadeEnabled !== "boolean") {
+      errors.push({ path: "ui.hillshadeEnabled", message: "must be a boolean" });
+    }
+    if (
+      input.ui.ratioMode !== undefined &&
+      input.ui.ratioMode !== "free" &&
+      input.ui.ratioMode !== "fixed"
+    ) {
+      errors.push({ path: "ui.ratioMode", message: "must be free or fixed" });
+    }
+    for (const field of ["cropRatio", "customRatioA", "customRatioB"] as const) {
+      if (input.ui[field] !== undefined && !isFiniteNumber(input.ui[field])) {
+        errors.push({ path: `ui.${field}`, message: "must be a finite number" });
+      } else if (isFiniteNumber(input.ui[field]) && input.ui[field] <= 0) {
+        errors.push({ path: `ui.${field}`, message: "must be positive" });
       }
     }
   }

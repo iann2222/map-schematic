@@ -37,7 +37,7 @@ type GeonamesResult = {
 };
 
 type MapProject = {
-  schemaVersion: "0.1";
+  schemaVersion: "0.2";
   createdAt: string;
   updatedAt: string;
   appVersion?: string;
@@ -83,7 +83,7 @@ type MapProject = {
       query?: string;
     };
   }>;
-  ui?: {
+  ui: {
     listOrderKeys?: string[];
     displayOrderKeys?: string[];
     activeStyleId?: string;

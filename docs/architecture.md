@@ -49,7 +49,7 @@
 - `src/main/index.ts`
   - 建立安全隔離的 Electron 視窗與應用程式選單。
   - 註冊資料包、底圖、地形、GeoNames、專案檔與匯出 IPC。
-  - 管理檔案選擇、PDF 產生及開發版／封裝版輸出路徑。
+  - 管理檔案選擇、專案備份恢復詢問、PDF 產生及開發版／封裝版輸出路徑。
 - `src/main/preload.ts`
   - 透過 `contextBridge` 提供受限的 renderer API。
 - `src/main/datapack-download.ts`
@@ -75,11 +75,13 @@
 - `src/shared/datapack/*`
   - 定義資料包 layout、manifest、版本狀態與路徑解析。
 - `src/shared/schema/mapproj.ts`
-  - 定義 `.mapproj` v0.1 資料模型與初始專案。
+  - 定義目前 `.mapproj` v0.2 資料模型與初始專案。
+- `src/shared/schema/migrate.ts`
+  - 依 schemaVersion 逐版遷移專案；目前支援 v0.1 → v0.2，未知版本不會被猜測轉換。
 - `src/shared/schema/validate.ts`
   - 驗證專案結構、物件、座標、樣式、ID 與圖層引用。
 - `src/shared/schema/io.ts`
-  - 負責純 JSON 專案檔的序列化、儲存與載入。
+  - 負責純 JSON 專案檔的序列化、遷移、原子儲存、`.bak` 備份、恢復與載入。
 
 ## 資料與輸出路徑
 

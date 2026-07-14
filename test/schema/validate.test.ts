@@ -20,7 +20,7 @@ describe("validateProject", () => {
 
   it("reports missing top-level structures without throwing", () => {
     const result = validateProject({
-      schemaVersion: "0.1",
+      schemaVersion: "0.2",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       dataPackVersion: "2026.02"

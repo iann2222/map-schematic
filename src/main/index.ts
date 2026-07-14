@@ -1,7 +1,12 @@
 import { app, BrowserWindow, Menu, ipcMain, dialog, screen } from "electron";
 import fs from "fs/promises";
 import path from "path";
-import { loadProjectFromFile, saveProjectToFile } from "../shared/schema/io";
+import {
+  loadProjectFromFile,
+  loadValidProjectBackup,
+  restoreProjectFromBackup,
+  saveProjectToFile
+} from "../shared/schema/io";
 import { validateProject } from "../shared/schema/validate";
 import type { MapProject } from "../shared/schema/mapproj";
 import { resolvePackRoot } from "../shared/datapack/resolve";
@@ -36,6 +41,8 @@ type LoadResult = {
   validation?: { valid: boolean; errors: Array<{ path: string; message: string }> };
   error?: string;
   canceled?: boolean;
+  migratedFromVersion?: string;
+  recoveredFromBackup?: boolean;
 };
 
 type ExportResult = {
@@ -44,6 +51,17 @@ type ExportResult = {
   error?: string;
   canceled?: boolean;
 };
+
+let projectSaveQueue: Promise<void> = Promise.resolve();
+
+function enqueueProjectSave(operation: () => Promise<void>): Promise<void> {
+  const queued = projectSaveQueue.then(operation, operation);
+  projectSaveQueue = queued.then(
+    () => undefined,
+    () => undefined
+  );
+  return queued;
+}
 
 function createMainWindow() {
   const preloadPath = path.join(app.getAppPath(), "dist", "main", "preload.js");
@@ -251,7 +269,7 @@ app.whenReady().then(() => {
         }
         filePath = result.filePath;
       }
-      await saveProjectToFile(filePath, data.project as MapProject);
+      await enqueueProjectSave(() => saveProjectToFile(filePath, data.project as MapProject));
       return { ok: true, path: filePath };
     } catch (err) {
       return { ok: false, errors: [String(err)] };
@@ -270,9 +288,75 @@ app.whenReady().then(() => {
       if (result.canceled || result.filePaths.length === 0) {
         return { ok: false, canceled: true };
       }
+
       const filePath = result.filePaths[0];
-      const { project, validation } = await loadProjectFromFile(filePath);
-      return { ok: true, path: filePath, project, validation };
+      let primaryError: string | null = null;
+      try {
+        const loaded = await loadProjectFromFile(filePath);
+        if (loaded.validation.valid) {
+          return {
+            ok: true,
+            path: filePath,
+            project: loaded.project,
+            validation: loaded.validation,
+            migratedFromVersion: loaded.migration.migrated
+              ? loaded.migration.fromVersion
+              : undefined
+          };
+        }
+        primaryError = loaded.validation.errors
+          .map((error) => `${error.path}: ${error.message}`)
+          .join("; ");
+      } catch (err) {
+        primaryError = String(err);
+      }
+
+      const backup = await loadValidProjectBackup(filePath);
+      if (!backup) {
+        return {
+          ok: false,
+          path: filePath,
+          error: primaryError ?? "專案檔無法載入"
+        };
+      }
+
+      const options = {
+        type: "warning" as const,
+        title: "專案檔需要恢復",
+        message: "選取的專案檔已損壞或格式無效，但找到上一份有效備份。",
+        detail: `是否使用備份恢復 ${path.basename(filePath)}？恢復後會覆蓋目前損壞的專案檔。`,
+        buttons: ["從備份恢復", "取消"],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true
+      };
+      const parent = BrowserWindow.getFocusedWindow();
+      const confirmation = parent
+        ? await dialog.showMessageBox(parent, options)
+        : await dialog.showMessageBox(options);
+      if (confirmation.response !== 0) {
+        return { ok: false, path: filePath, canceled: true };
+      }
+
+      try {
+        const restored = await restoreProjectFromBackup(filePath);
+        return {
+          ok: true,
+          path: filePath,
+          project: restored.project,
+          validation: restored.validation,
+          migratedFromVersion: backup.migration.migrated
+            ? backup.migration.fromVersion
+            : undefined,
+          recoveredFromBackup: true
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          path: filePath,
+          error: `備份恢復失敗：${String(err)}`
+        };
+      }
     } catch (err) {
       return { ok: false, error: String(err) };
     }
