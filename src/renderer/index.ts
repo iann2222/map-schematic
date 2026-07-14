@@ -473,6 +473,7 @@ let shapeAreaStrokeWidthSlider: SliderControl | null = null;
 let completeFeedbackTimer: number | null = null;
 let selectedExportFrame: ExportFrameStyle = "none";
 let exportFrameResolver: ((value: ExportFrameStyle | null) => void) | null = null;
+let exportInProgress = false;
 const toolZoomIn = document.getElementById(
   "toolZoomIn",
 ) as HTMLButtonElement | null;
@@ -4240,6 +4241,9 @@ function chooseExportFrame(): Promise<ExportFrameStyle | null> {
   if (!exportFrameModal) {
     return Promise.resolve("none");
   }
+  if (exportFrameResolver) {
+    return Promise.resolve(null);
+  }
   syncExportFrameOptions();
   exportFrameModal.classList.add("active");
   return new Promise((resolve) => {
@@ -4495,6 +4499,7 @@ async function handleSave(saveAs = false): Promise<{
   canceled?: boolean;
   path?: string;
   error?: string;
+  errors?: string[];
 } | null> {
   if (!window.mapSchematic?.saveProject) {
     return null;
@@ -4506,11 +4511,22 @@ async function handleSave(saveAs = false): Promise<{
     }
     return null;
   }
-  const result = await window.mapSchematic.saveProject({
-    project,
-    path: currentProjectPath,
-    saveAs,
-  });
+  let result: {
+    ok: boolean;
+    canceled?: boolean;
+    path?: string;
+    error?: string;
+    errors?: string[];
+  };
+  try {
+    result = await window.mapSchematic.saveProject({
+      project,
+      path: currentProjectPath,
+      saveAs,
+    });
+  } catch (error) {
+    result = { ok: false, error: String(error) };
+  }
   if (result?.path) {
     currentProjectPath = result.path;
   }
@@ -4520,7 +4536,7 @@ async function handleSave(saveAs = false): Promise<{
     } else {
       statusEl.textContent = result.ok
         ? `專案已儲存：${result.path}`
-        : "專案儲存失敗";
+        : `專案儲存失敗：${result.error ?? result.errors?.join("；") ?? "未知錯誤"}`;
     }
   }
   return result;
@@ -4867,19 +4883,22 @@ async function renderExportCanvas(exportScale = 1): Promise<{
   const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const img = new Image();
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error("svg load failed"));
-    img.src = url;
-  });
-  ctx.drawImage(
-    img,
-    -crop.left * scaleX * outputScale,
-    -crop.top * scaleY * outputScale,
-    scaledCanvasWidth,
-    scaledCanvasHeight,
-  );
-  URL.revokeObjectURL(url);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("svg load failed"));
+      img.src = url;
+    });
+    ctx.drawImage(
+      img,
+      -crop.left * scaleX * outputScale,
+      -crop.top * scaleY * outputScale,
+      scaledCanvasWidth,
+      scaledCanvasHeight,
+    );
+  } finally {
+    URL.revokeObjectURL(url);
+  }
   return { canvas: outCanvas, width: outWidth, height: outHeight };
 }
 
@@ -4971,46 +4990,61 @@ async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
   if (!window.mapSchematic?.exportProject) {
     return;
   }
-  const exportFrame =
-    format === "png" || format === "pdf" ? await chooseExportFrame() : "none";
-  if (exportFrame == null) {
+  if (exportInProgress) {
     if (statusEl) {
-      statusEl.textContent = "已取消匯出。";
+      statusEl.textContent = "已有匯出作業正在進行。";
     }
     return;
   }
-  const rendered = await renderExportCanvas(
-    format === "png" ? PNG_EXPORT_SCALE : 1,
-  );
-  if (!rendered) {
-    return;
-  }
-  const exportCanvas = applyExportFrame(rendered.canvas, exportFrame);
-  const width = exportCanvas.width;
-  const height = exportCanvas.height;
-  let data = "";
-  if (format === "png" || format === "pdf") {
-    data = exportCanvas.toDataURL("image/png");
-  } else {
-    const pngData = exportCanvas.toDataURL("image/png");
-    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><image href="${pngData}" width="${width}" height="${height}"/></svg>`;
-    const encoded = btoa(unescape(encodeURIComponent(svgContent)));
-    data = `data:image/svg+xml;base64,${encoded}`;
-  }
-  const result = await window.mapSchematic.exportProject({
-    format,
-    data,
-    width,
-    height,
-  });
-  if (statusEl) {
-    if (result.canceled) {
-      statusEl.textContent = "已取消匯出。";
+  exportInProgress = true;
+  try {
+    const exportFrame =
+      format === "png" || format === "pdf" ? await chooseExportFrame() : "none";
+    if (exportFrame == null) {
+      if (statusEl) {
+        statusEl.textContent = "已取消匯出。";
+      }
+      return;
+    }
+    const rendered = await renderExportCanvas(
+      format === "png" ? PNG_EXPORT_SCALE : 1,
+    );
+    if (!rendered) {
+      throw new Error("無法建立匯出畫布");
+    }
+    const exportCanvas = applyExportFrame(rendered.canvas, exportFrame);
+    const width = exportCanvas.width;
+    const height = exportCanvas.height;
+    let data = "";
+    if (format === "png" || format === "pdf") {
+      data = exportCanvas.toDataURL("image/png");
     } else {
-      statusEl.textContent = result.ok
-        ? `已匯出：${result.path}`
-        : `匯出失敗：${result.error ?? ""}`;
+      const pngData = exportCanvas.toDataURL("image/png");
+      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><image href="${pngData}" width="${width}" height="${height}"/></svg>`;
+      const encoded = btoa(unescape(encodeURIComponent(svgContent)));
+      data = `data:image/svg+xml;base64,${encoded}`;
     }
+    const result = await window.mapSchematic.exportProject({
+      format,
+      data,
+      width,
+      height,
+    });
+    if (statusEl) {
+      if (result.canceled) {
+        statusEl.textContent = "已取消匯出。";
+      } else {
+        statusEl.textContent = result.ok
+          ? `已匯出：${result.path}`
+          : `匯出失敗：${result.error ?? "未知錯誤"}`;
+      }
+    }
+  } catch (error) {
+    if (statusEl) {
+      statusEl.textContent = `匯出失敗：${String(error)}`;
+    }
+  } finally {
+    exportInProgress = false;
   }
 }
 

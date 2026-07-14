@@ -22,6 +22,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isIsoDateString(value: unknown): value is string {
+  return isNonEmptyString(value) && Number.isFinite(Date.parse(value));
+}
+
+function validateStringArray(value: unknown, path: string, errors: ValidationError[]): void {
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    errors.push({ path, message: "must be an array of strings" });
+  }
+}
+
 function validateBBox(
   bbox: unknown,
   path: string,
@@ -35,6 +45,16 @@ function validateBBox(
   for (const field of fields) {
     if (!isFiniteNumber(bbox[field])) {
       errors.push({ path: `${path}.${field}`, message: "must be a finite number" });
+    }
+  }
+  for (const field of ["minLon", "maxLon"] as const) {
+    if (isFiniteNumber(bbox[field]) && (bbox[field] < -180 || bbox[field] > 180)) {
+      errors.push({ path: `${path}.${field}`, message: "must be between -180 and 180" });
+    }
+  }
+  for (const field of ["minLat", "maxLat"] as const) {
+    if (isFiniteNumber(bbox[field]) && (bbox[field] < -90 || bbox[field] > 90)) {
+      errors.push({ path: `${path}.${field}`, message: "must be between -90 and 90" });
     }
   }
   if (
@@ -68,11 +88,11 @@ export function validateProject(input: unknown): ValidationResult {
     errors.push({ path: "schemaVersion", message: "unsupported schemaVersion" });
   }
 
-  if (!isNonEmptyString(input.createdAt)) {
+  if (!isIsoDateString(input.createdAt)) {
     errors.push({ path: "createdAt", message: "must be an ISO string" });
   }
 
-  if (!isNonEmptyString(input.updatedAt)) {
+  if (!isIsoDateString(input.updatedAt)) {
     errors.push({ path: "updatedAt", message: "must be an ISO string" });
   }
 
@@ -109,6 +129,7 @@ export function validateProject(input: unknown): ValidationResult {
   if (!Array.isArray(layers)) {
     errors.push({ path: "layers", message: "must be an array" });
   } else {
+    const layerIds = new Set<string>();
     for (let i = 0; i < layers.length; i += 1) {
       const layer = layers[i];
       const prefix = `layers[${i}]`;
@@ -118,6 +139,10 @@ export function validateProject(input: unknown): ValidationResult {
       }
       if (!isNonEmptyString(layer.id)) {
         errors.push({ path: `${prefix}.id`, message: "must be a non-empty string" });
+      } else if (layerIds.has(layer.id)) {
+        errors.push({ path: `${prefix}.id`, message: "must be unique" });
+      } else {
+        layerIds.add(layer.id);
       }
       if (!isNonEmptyString(layer.name)) {
         errors.push({ path: `${prefix}.name`, message: "must be a non-empty string" });
@@ -128,6 +153,12 @@ export function validateProject(input: unknown): ValidationResult {
       if (!isFiniteNumber(layer.zIndex)) {
         errors.push({ path: `${prefix}.zIndex`, message: "must be a number" });
       }
+      if (typeof layer.visible !== "boolean") {
+        errors.push({ path: `${prefix}.visible`, message: "must be a boolean" });
+      }
+      if (typeof layer.locked !== "boolean") {
+        errors.push({ path: `${prefix}.locked`, message: "must be a boolean" });
+      }
     }
   }
 
@@ -135,6 +166,16 @@ export function validateProject(input: unknown): ValidationResult {
   if (!Array.isArray(objects)) {
     errors.push({ path: "objects", message: "must be an array" });
   } else {
+    const objectTypes = new Set(["pointLabel", "areaLabel", "textOnly", "arrow", "polyline"]);
+    const layerIds = new Set(
+      Array.isArray(layers)
+        ? layers
+            .filter((layer): layer is Record<string, unknown> => isRecord(layer))
+            .map((layer) => layer.id)
+            .filter((id): id is string => isNonEmptyString(id))
+        : []
+    );
+    const objectIds = new Set<string>();
     for (let i = 0; i < objects.length; i += 1) {
       const obj = objects[i];
       const prefix = `objects[${i}]`;
@@ -144,12 +185,120 @@ export function validateProject(input: unknown): ValidationResult {
       }
       if (!isNonEmptyString(obj.id)) {
         errors.push({ path: `${prefix}.id`, message: "must be a non-empty string" });
+      } else if (objectIds.has(obj.id)) {
+        errors.push({ path: `${prefix}.id`, message: "must be unique" });
+      } else {
+        objectIds.add(obj.id);
       }
       if (!isNonEmptyString(obj.layerId)) {
         errors.push({ path: `${prefix}.layerId`, message: "must be a non-empty string" });
+      } else if (!layerIds.has(obj.layerId)) {
+        errors.push({ path: `${prefix}.layerId`, message: "must reference an existing layer" });
       }
-      if (!isNonEmptyString(obj.type)) {
-        errors.push({ path: `${prefix}.type`, message: "must be a non-empty string" });
+      if (typeof obj.type !== "string" || !objectTypes.has(obj.type)) {
+        errors.push({ path: `${prefix}.type`, message: "unsupported object type" });
+      }
+
+      const geometry = obj.geometry;
+      if (!isRecord(geometry)) {
+        errors.push({ path: `${prefix}.geometry`, message: "must be an object" });
+      } else if (geometry.kind === "point") {
+        if (!isFiniteNumber(geometry.lon) || geometry.lon < -180 || geometry.lon > 180) {
+          errors.push({ path: `${prefix}.geometry.lon`, message: "must be between -180 and 180" });
+        }
+        if (!isFiniteNumber(geometry.lat) || geometry.lat < -90 || geometry.lat > 90) {
+          errors.push({ path: `${prefix}.geometry.lat`, message: "must be between -90 and 90" });
+        }
+      } else if (geometry.kind === "polygon") {
+        if (
+          !Array.isArray(geometry.rings) ||
+          geometry.rings.some(
+            (ring) =>
+              !Array.isArray(ring) ||
+              ring.length < 3 ||
+              ring.some(
+                (point) =>
+                  !Array.isArray(point) ||
+                  point.length !== 2 ||
+                  !isFiniteNumber(point[0]) ||
+                  !isFiniteNumber(point[1]) ||
+                  point[0] < -180 ||
+                  point[0] > 180 ||
+                  point[1] < -90 ||
+                  point[1] > 90
+              )
+          )
+        ) {
+          errors.push({ path: `${prefix}.geometry.rings`, message: "must contain valid coordinate rings" });
+        }
+      } else if (geometry.kind !== "none") {
+        errors.push({ path: `${prefix}.geometry.kind`, message: "unsupported geometry kind" });
+      }
+
+      const style = obj.style;
+      if (!isRecord(style)) {
+        errors.push({ path: `${prefix}.style`, message: "must be an object" });
+      } else {
+        const numericStyleFields = [
+          "fontSize", "strokeWidth", "fillOpacity", "textOffsetX", "textOffsetY",
+          "dotSize", "textSize", "width", "height"
+        ];
+        for (const field of numericStyleFields) {
+          if (style[field] !== undefined && !isFiniteNumber(style[field])) {
+            errors.push({ path: `${prefix}.style.${field}`, message: "must be a finite number" });
+          }
+        }
+        for (const field of ["fontSize", "strokeWidth", "dotSize", "textSize", "width", "height"]) {
+          if (isFiniteNumber(style[field]) && style[field] < 0) {
+            errors.push({ path: `${prefix}.style.${field}`, message: "must not be negative" });
+          }
+        }
+        if (
+          style.fillOpacity !== undefined &&
+          isFiniteNumber(style.fillOpacity) &&
+          (style.fillOpacity < 0 || style.fillOpacity > 1)
+        ) {
+          errors.push({ path: `${prefix}.style.fillOpacity`, message: "must be between 0 and 1" });
+        }
+      }
+
+      if (obj.provenance !== undefined) {
+        if (
+          !isRecord(obj.provenance) ||
+          (obj.provenance.source !== "geonames" && obj.provenance.source !== "manual")
+        ) {
+          errors.push({ path: `${prefix}.provenance`, message: "must contain a supported source" });
+        }
+      }
+    }
+  }
+
+  if (input.ui !== undefined) {
+    if (!isRecord(input.ui)) {
+      errors.push({ path: "ui", message: "must be an object" });
+    } else {
+      if (input.ui.listOrderKeys !== undefined) {
+        validateStringArray(input.ui.listOrderKeys, "ui.listOrderKeys", errors);
+      }
+      if (input.ui.displayOrderKeys !== undefined) {
+        validateStringArray(input.ui.displayOrderKeys, "ui.displayOrderKeys", errors);
+      }
+      if (input.ui.hillshadeEnabled !== undefined && typeof input.ui.hillshadeEnabled !== "boolean") {
+        errors.push({ path: "ui.hillshadeEnabled", message: "must be a boolean" });
+      }
+      if (
+        input.ui.ratioMode !== undefined &&
+        input.ui.ratioMode !== "free" &&
+        input.ui.ratioMode !== "fixed"
+      ) {
+        errors.push({ path: "ui.ratioMode", message: "must be free or fixed" });
+      }
+      for (const field of ["cropRatio", "customRatioA", "customRatioB"] as const) {
+        if (input.ui[field] !== undefined && !isFiniteNumber(input.ui[field])) {
+          errors.push({ path: `ui.${field}`, message: "must be a finite number" });
+        } else if (isFiniteNumber(input.ui[field]) && input.ui[field] <= 0) {
+          errors.push({ path: `ui.${field}`, message: "must be positive" });
+        }
       }
     }
   }

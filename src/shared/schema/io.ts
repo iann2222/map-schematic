@@ -8,6 +8,11 @@ export function serializeProject(project: MapProject): string {
 }
 
 export async function saveProjectToFile(filePath: string, project: MapProject): Promise<void> {
+  const validation = validateProject(project);
+  if (!validation.valid) {
+    const details = validation.errors.map((error) => `${error.path}: ${error.message}`).join("; ");
+    throw new Error(`Project validation failed: ${details}`);
+  }
   const payload = serializeProject(project);
   await fs.writeFile(filePath, payload, "utf8");
 }

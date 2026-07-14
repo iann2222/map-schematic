@@ -2,6 +2,8 @@ import { app, BrowserWindow, Menu, ipcMain, dialog, screen } from "electron";
 import fs from "fs/promises";
 import path from "path";
 import { loadProjectFromFile, saveProjectToFile } from "../shared/schema/io";
+import { validateProject } from "../shared/schema/validate";
+import type { MapProject } from "../shared/schema/mapproj";
 import { resolvePackRoot } from "../shared/datapack/resolve";
 import { resolveDataRoot } from "../shared/paths";
 import { searchGeonames } from "./geonames";
@@ -52,7 +54,7 @@ function createMainWindow() {
     height: 800,
     webPreferences: {
       contextIsolation: true,
-      nodeIntegration: true,
+      nodeIntegration: false,
       preload: preloadPath
     }
   });
@@ -64,7 +66,23 @@ function createMainWindow() {
 }
 
 async function loadDatapack(): Promise<Datapack> {
-  await ensureDatapackReady();
+  await ensureDatapackReady(async () => {
+    const options = {
+      type: "warning" as const,
+      title: "資料包需要修復",
+      message: "偵測到已安裝的資料包遺失或損壞。",
+      detail: "是否連線至官方 GitHub Releases，重新下載並安裝資料包？取消後將維持離線，地圖資料暫時無法使用。",
+      buttons: ["重新下載", "取消"],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true
+    };
+    const parent = BrowserWindow.getFocusedWindow();
+    const result = parent
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options);
+    return result.response === 0;
+  });
   const packRoot = resolvePackRoot();
   const datapackPath = path.join(packRoot, "datapack.json");
   const raw = await fs.readFile(datapackPath, "utf8");
@@ -166,7 +184,9 @@ function buildAppMenu(): Menu {
 }
 
 function projectFilesRoot(): string {
-  return path.join(app.getAppPath(), "project_files");
+  return app.isPackaged
+    ? path.join(app.getPath("documents"), "map-schematic")
+    : path.join(app.getAppPath(), "project_files");
 }
 
 function defaultProjectPath(): string {
@@ -174,6 +194,7 @@ function defaultProjectPath(): string {
 }
 
 app.whenReady().then(() => {
+  process.env.MAP_SCHEMATIC_ROOT ??= app.isPackaged ? app.getPath("userData") : process.cwd();
   Menu.setApplicationMenu(buildAppMenu());
 
   ipcMain.handle("datapack:get", async () => loadDatapack());
@@ -207,23 +228,34 @@ app.whenReady().then(() => {
     searchGeonames(query, limit)
   );
   ipcMain.handle("project:save", async (_event, payload: unknown): Promise<SaveResult> => {
-    const data = payload as { project: unknown; path?: string | null; saveAs?: boolean };
-    const root = projectFilesRoot();
-    await fs.mkdir(root, { recursive: true });
-    let filePath = data.path ?? null;
-    if (!filePath || data.saveAs) {
-      const result = await dialog.showSaveDialog({
-        title: "儲存專案",
-        defaultPath: filePath ?? defaultProjectPath(),
-        filters: [{ name: "Map Project", extensions: ["mapproj"] }]
-      });
-      if (result.canceled || !result.filePath) {
-        return { ok: false, canceled: true };
+    try {
+      const data = payload as { project?: unknown; path?: string | null; saveAs?: boolean };
+      const validation = validateProject(data?.project);
+      if (!validation.valid) {
+        return {
+          ok: false,
+          errors: validation.errors.map((error) => `${error.path}: ${error.message}`)
+        };
       }
-      filePath = result.filePath;
+      const root = projectFilesRoot();
+      await fs.mkdir(root, { recursive: true });
+      let filePath = data.path ?? null;
+      if (!filePath || data.saveAs) {
+        const result = await dialog.showSaveDialog({
+          title: "儲存專案",
+          defaultPath: filePath ?? defaultProjectPath(),
+          filters: [{ name: "Map Project", extensions: ["mapproj"] }]
+        });
+        if (result.canceled || !result.filePath) {
+          return { ok: false, canceled: true };
+        }
+        filePath = result.filePath;
+      }
+      await saveProjectToFile(filePath, data.project as MapProject);
+      return { ok: true, path: filePath };
+    } catch (err) {
+      return { ok: false, errors: [String(err)] };
     }
-    await saveProjectToFile(filePath, data.project as any);
-    return { ok: true, path: filePath };
   });
   ipcMain.handle("project:load", async (): Promise<LoadResult> => {
     try {
@@ -270,18 +302,21 @@ app.whenReady().then(() => {
             show: false,
             webPreferences: { contextIsolation: true }
           });
-          const html = `<html><body style="margin:0;background:#000;"><img src="${payload.data}" style="width:100%;height:100%;object-fit:contain"/></body></html>`;
-          await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-          const micronsPerPx = 25400 / 96;
-          const pdfData = await win.webContents.printToPDF({
-            printBackground: true,
-            pageSize: {
-              width: Math.round(payload.width * micronsPerPx),
-              height: Math.round(payload.height * micronsPerPx)
-            }
-          });
-          await fs.writeFile(result.filePath, pdfData);
-          win.destroy();
+          try {
+            const html = `<html><body style="margin:0;background:#000;"><img src="${payload.data}" style="width:100%;height:100%;object-fit:contain"/></body></html>`;
+            await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+            const micronsPerPx = 25400 / 96;
+            const pdfData = await win.webContents.printToPDF({
+              printBackground: true,
+              pageSize: {
+                width: Math.round(payload.width * micronsPerPx),
+                height: Math.round(payload.height * micronsPerPx)
+              }
+            });
+            await fs.writeFile(result.filePath, pdfData);
+          } finally {
+            win.destroy();
+          }
         } else {
           let buffer: Buffer;
           if (payload.data.startsWith("data:")) {
