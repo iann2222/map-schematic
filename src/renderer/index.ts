@@ -695,7 +695,11 @@ let labelDrag: LabelDrag | null = null;
 let selectedLabelMarkerId: string | null = null;
 let markerDrag: MarkerDrag | null = null;
 let shapeDrag: ShapeDrag | null = null;
-let cachedBasemapLayers: Array<{ id: string; paths: Path2D[] }> = [];
+let cachedBasemapLayers: Array<{
+  id: string;
+  paths: Path2D[];
+  pathData: string[];
+}> = [];
 let basemapBuilt = false;
 let worldShift = 0;
 let basemapDrawPending = false;
@@ -2128,14 +2132,16 @@ async function renderBasemap() {
   cachedBasemapLayers = rawLayers.map((layer) => {
     const geojson = JSON.parse(layer.geojson);
     const paths: Path2D[] = [];
+    const pathData: string[] = [];
     for (const feature of geojson.features ?? []) {
       const d = geometryToPath(feature.geometry, width, height);
       if (!d) {
         continue;
       }
       paths.push(new Path2D(d));
+      pathData.push(d);
     }
-    return { id: layer.id, paths };
+    return { id: layer.id, paths, pathData };
   });
   drawBasemap();
 }
@@ -2197,6 +2203,7 @@ function renderMarkers() {
       circle.setAttribute("stroke-width", (1.2 / view.scale).toFixed(2));
       if (item.preview) {
         circle.setAttribute("opacity", "0.7");
+        circle.setAttribute("data-preview", "true");
       }
       const hit = document.createElementNS(
         "http://www.w3.org/2000/svg",
@@ -2209,6 +2216,7 @@ function renderMarkers() {
       hit.setAttribute("fill", "transparent");
       hit.setAttribute("data-marker", "dot-hit");
       hit.setAttribute("data-id", marker.id);
+      hit.setAttribute("data-export-ignore", "true");
       hit.style.pointerEvents = "all";
       circle.addEventListener("click", (event) => {
         if (activeStep !== "3") {
@@ -2270,6 +2278,9 @@ function renderMarkers() {
       label.setAttribute("font-family", marker.style.fontFamily);
       const labelText = markerLabelText(marker);
       label.textContent = labelText;
+      if (item.preview) {
+        label.setAttribute("data-preview", "true");
+      }
       const isLabelSelected =
         !!(labelDrag && labelDrag.markerId === marker.id) ||
         selectedLabelMarkerId === marker.id;
@@ -2332,6 +2343,7 @@ function renderMarkers() {
       labelHit.setAttribute("fill", "transparent");
       labelHit.setAttribute("data-marker", "label-hit");
       labelHit.setAttribute("data-id", marker.id);
+      labelHit.setAttribute("data-export-ignore", "true");
       labelHit.style.pointerEvents = "all";
       labelHit.addEventListener("click", (event) => {
         if (activeStep !== "3" || item.preview) {
@@ -2352,6 +2364,7 @@ function renderMarkers() {
         const boxWidth = labelBox.width + pad * 2;
         const boxHeight = labelBox.height + pad * 2;
         dragBox.setAttribute("data-marker", "label-drag-box");
+        dragBox.setAttribute("data-export-ignore", "true");
         dragBox.style.pointerEvents = "none";
         const addDragBoxLine = (
           x1: number,
@@ -2437,6 +2450,7 @@ function renderShapes(): void {
         line.setAttribute("data-id", shape.id);
         if (item.preview) {
           line.setAttribute("opacity", "0.6");
+          line.setAttribute("data-preview", "true");
         }
         const hit = document.createElementNS(
           "http://www.w3.org/2000/svg",
@@ -2454,6 +2468,7 @@ function renderShapes(): void {
         hit.setAttribute("stroke-linecap", "round");
         hit.setAttribute("data-shape", "line");
         hit.setAttribute("data-id", shape.id);
+        hit.setAttribute("data-export-ignore", "true");
         line.addEventListener("click", (event) => {
           if (activeStep !== "3") {
             return;
@@ -2527,6 +2542,12 @@ function renderShapes(): void {
         path.setAttribute("fill", shape.style.strokeColor);
         path.setAttribute("data-shape", "arrow");
         path.setAttribute("data-id", shape.id);
+        if (item.preview) {
+          line.setAttribute("opacity", "0.6");
+          line.setAttribute("data-preview", "true");
+          path.setAttribute("opacity", "0.6");
+          path.setAttribute("data-preview", "true");
+        }
         const onClick = (event: MouseEvent) => {
           if (activeStep !== "3") {
             return;
@@ -2573,6 +2594,7 @@ function renderShapes(): void {
         hit.setAttribute("stroke-linecap", "round");
         hit.setAttribute("data-shape", "arrow");
         hit.setAttribute("data-id", shape.id);
+        hit.setAttribute("data-export-ignore", "true");
         if (!item.preview) {
           hit.addEventListener("mousedown", onDragStart);
           hit.addEventListener("click", onClick);
@@ -2601,6 +2623,7 @@ function renderShapes(): void {
         rect.setAttribute("data-id", shape.id);
         if (item.preview) {
           rect.setAttribute("opacity", "0.6");
+          rect.setAttribute("data-preview", "true");
         }
         rect.addEventListener("click", (event) => {
           if (activeStep !== "3") {
@@ -2639,6 +2662,7 @@ function renderShapes(): void {
         hit.setAttribute("fill", "transparent");
         hit.setAttribute("data-shape", "area");
         hit.setAttribute("data-id", shape.id);
+        hit.setAttribute("data-export-ignore", "true");
         hit.addEventListener("mousedown", (event) => {
           if (activeStep !== "3") {
             return;
@@ -2686,6 +2710,7 @@ function renderShapes(): void {
         label.textContent = shape.text ?? "文字標示";
         if (item.preview) {
           label.setAttribute("opacity", "0.6");
+          label.setAttribute("data-preview", "true");
         }
         const startTextShapeDrag = (event: MouseEvent) => {
           if (activeStep !== "3") {
@@ -2741,6 +2766,7 @@ function renderShapes(): void {
         hit.setAttribute("fill", "transparent");
         hit.setAttribute("data-shape", "text");
         hit.setAttribute("data-id", shape.id);
+        hit.setAttribute("data-export-ignore", "true");
         hit.addEventListener("mousedown", startTextShapeDrag);
         hit.addEventListener("click", (event) => {
           if (activeStep !== "3") {
@@ -2763,6 +2789,7 @@ function renderShapes(): void {
           const boxWidth = labelBox.width + pad * 2;
           const boxHeight = labelBox.height + pad * 2;
           dragBox.setAttribute("data-shape", "text-selection");
+          dragBox.setAttribute("data-export-ignore", "true");
           dragBox.style.pointerEvents = "none";
           const addDragBoxLine = (
             x1: number,
@@ -4902,6 +4929,140 @@ async function renderExportCanvas(exportScale = 1): Promise<{
   return { canvas: outCanvas, width: outWidth, height: outHeight };
 }
 
+function renderExportSvg(): {
+  data: string;
+  width: number;
+  height: number;
+} | null {
+  if (!svg || !mapStage || cachedBasemapLayers.length === 0) {
+    return null;
+  }
+  const crop = currentExportCropRect();
+  if (!crop) {
+    return null;
+  }
+  const stageRect = mapStage.getBoundingClientRect();
+  const { scaleFit, offsetX, offsetY } = resizeCanvasToStage();
+  if (scaleFit <= 0) {
+    return null;
+  }
+
+  const viewBoxX = (crop.left - offsetX) / scaleFit;
+  const viewBoxY = (crop.top - offsetY) / scaleFit;
+  const viewBoxWidth = crop.width / scaleFit;
+  const viewBoxHeight = crop.height / scaleFit;
+  const outputWidth = Math.max(1, Math.round(crop.width));
+  const outputHeight = Math.max(1, Math.round(crop.height));
+  const svgNs = "http://www.w3.org/2000/svg";
+  const xlinkNs = "http://www.w3.org/1999/xlink";
+  const xmlnsNs = "http://www.w3.org/2000/xmlns/";
+  const svgClone = svg.cloneNode(true) as SVGSVGElement;
+  svgClone.setAttribute("xmlns", svgNs);
+  svgClone.setAttributeNS(xmlnsNs, "xmlns:xlink", xlinkNs);
+  svgClone.setAttribute("width", String(outputWidth));
+  svgClone.setAttribute("height", String(outputHeight));
+  svgClone.setAttribute(
+    "viewBox",
+    `${viewBoxX.toFixed(4)} ${viewBoxY.toFixed(4)} ${viewBoxWidth.toFixed(4)} ${viewBoxHeight.toFixed(4)}`,
+  );
+  svgClone.setAttribute("preserveAspectRatio", "none");
+  svgClone.removeAttribute("class");
+
+  svgClone
+    .querySelectorAll('[data-export-ignore="true"], [data-preview="true"]')
+    .forEach((element) => element.remove());
+  svgClone.querySelectorAll("[data-dragging]").forEach((element) => {
+    element.removeAttribute("data-dragging");
+  });
+  svgClone
+    .querySelectorAll<SVGCircleElement>('circle[data-marker="dot"]')
+    .forEach((dot) => dot.setAttribute("stroke", "#fff7ed"));
+
+  let defs = svgClone.querySelector("defs");
+  if (!defs) {
+    defs = document.createElementNS(svgNs, "defs");
+    svgClone.insertBefore(defs, svgClone.firstChild);
+  }
+  defs.querySelector("#map-clip")?.remove();
+  defs.querySelector("#export-basemap-world")?.remove();
+
+  const root = ensureMapRoot(svgClone);
+  root.removeAttribute("clip-path");
+  const basemapContainer = ensureBasemapContainer(root);
+  basemapContainer.innerHTML = "";
+  root.insertBefore(basemapContainer, root.firstChild);
+
+  const worldDefinition = document.createElementNS(svgNs, "g");
+  worldDefinition.setAttribute("id", "export-basemap-world");
+  for (const layer of cachedBasemapLayers) {
+    if (layer.pathData.length === 0) {
+      continue;
+    }
+    const style = layerStyleFor(layer.id);
+    const pathElement = document.createElementNS(svgNs, "path");
+    pathElement.setAttribute("d", layer.pathData.join(" "));
+    pathElement.setAttribute("fill", style.fill ?? "none");
+    pathElement.setAttribute("fill-rule", "evenodd");
+    pathElement.setAttribute("stroke", style.stroke ?? "none");
+    if (style.stroke && style.stroke !== "none") {
+      pathElement.setAttribute(
+        "stroke-width",
+        String((style.strokeWidth ?? 0.4) / view.scale),
+      );
+      pathElement.setAttribute("stroke-linejoin", "round");
+      pathElement.setAttribute("stroke-linecap", "round");
+    }
+    worldDefinition.appendChild(pathElement);
+  }
+
+  if (hillshadeEnabled && hillshadeTexture) {
+    const image = document.createElementNS(svgNs, "image");
+    const imageData = hillshadeTexture.toDataURL("image/png");
+    image.setAttribute("href", imageData);
+    image.setAttributeNS(xlinkNs, "xlink:href", imageData);
+    image.setAttribute("x", "0");
+    image.setAttribute("y", "0");
+    image.setAttribute("width", String(MAP_WIDTH));
+    image.setAttribute("height", String(MAP_HEIGHT));
+    image.setAttribute("preserveAspectRatio", "none");
+    image.setAttribute("opacity", "0.45");
+    const blendMode = hillshadeBlend === "source-over" ? "normal" : hillshadeBlend;
+    image.setAttribute("style", `mix-blend-mode:${blendMode}`);
+    worldDefinition.appendChild(image);
+  }
+  defs.appendChild(worldDefinition);
+
+  const wrapShift = shiftLocked ? shiftLockValue : worldShift;
+  const viewWidthMap =
+    stageRect.width / Math.max(0.0001, scaleFit * view.scale);
+  const wrapSpan = Math.min(
+    5,
+    Math.max(1, Math.ceil(viewWidthMap / MAP_WIDTH / 2) + 1),
+  );
+  for (let i = -wrapSpan; i <= wrapSpan; i += 1) {
+    const use = document.createElementNS(svgNs, "use");
+    use.setAttribute("href", "#export-basemap-world");
+    use.setAttributeNS(xlinkNs, "xlink:href", "#export-basemap-world");
+    use.setAttribute(
+      "transform",
+      `translate(${(i + wrapShift) * MAP_WIDTH} 0)`,
+    );
+    basemapContainer.appendChild(use);
+  }
+
+  const background = document.createElementNS(svgNs, "rect");
+  background.setAttribute("x", viewBoxX.toFixed(4));
+  background.setAttribute("y", viewBoxY.toFixed(4));
+  background.setAttribute("width", viewBoxWidth.toFixed(4));
+  background.setAttribute("height", viewBoxHeight.toFixed(4));
+  background.setAttribute("fill", "#0a1020");
+  svgClone.insertBefore(background, svgClone.firstChild);
+
+  const serializer = new XMLSerializer();
+  const data = `<?xml version="1.0" encoding="UTF-8"?>\n${serializer.serializeToString(svgClone)}`;
+  return { data, width: outputWidth, height: outputHeight };
+}
+
 function frameSizeFor(canvas: HTMLCanvasElement, frame: ExportFrameStyle): number {
   const base = Math.min(canvas.width, canvas.height);
   if (frame === "thin") {
@@ -5006,23 +5167,28 @@ async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
       }
       return;
     }
-    const rendered = await renderExportCanvas(
-      format === "png" ? PNG_EXPORT_SCALE : 1,
-    );
-    if (!rendered) {
-      throw new Error("無法建立匯出畫布");
-    }
-    const exportCanvas = applyExportFrame(rendered.canvas, exportFrame);
-    const width = exportCanvas.width;
-    const height = exportCanvas.height;
-    let data = "";
-    if (format === "png" || format === "pdf") {
-      data = exportCanvas.toDataURL("image/png");
+    let data: string;
+    let width: number;
+    let height: number;
+    if (format === "svg") {
+      const renderedSvg = renderExportSvg();
+      if (!renderedSvg) {
+        throw new Error("無法建立向量 SVG");
+      }
+      data = renderedSvg.data;
+      width = renderedSvg.width;
+      height = renderedSvg.height;
     } else {
-      const pngData = exportCanvas.toDataURL("image/png");
-      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><image href="${pngData}" width="${width}" height="${height}"/></svg>`;
-      const encoded = btoa(unescape(encodeURIComponent(svgContent)));
-      data = `data:image/svg+xml;base64,${encoded}`;
+      const rendered = await renderExportCanvas(
+        format === "png" ? PNG_EXPORT_SCALE : 1,
+      );
+      if (!rendered) {
+        throw new Error("無法建立匯出畫布");
+      }
+      const exportCanvas = applyExportFrame(rendered.canvas, exportFrame);
+      width = exportCanvas.width;
+      height = exportCanvas.height;
+      data = exportCanvas.toDataURL("image/png");
     }
     const result = await window.mapSchematic.exportProject({
       format,
