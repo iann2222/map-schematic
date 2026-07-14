@@ -8,6 +8,7 @@
 - `README.md`：專案簡介與文件索引。
 - `docs/`：規格與架構文件。
 - `src/`：TypeScript 原始碼。
+- `test/`：本機自動化測試與共用測試資料。
 - `scripts/`：建置輔助腳本（資料包建置）。
 - `geodata/`：官方資料包的本機資料根目錄（repo 內、gitignore）。
 - `geodata_source/`：原始資料來源（repo 內、gitignore）。
@@ -23,6 +24,19 @@
 2. `npm run start`
    - 啟動 Electron
    - Renderer 載入並顯示 basemap + GeoNames 搜尋結果
+
+## 本機測試
+
+- `npm test`
+  - 先檢查測試程式與相關原始碼的 TypeScript 型別，再執行全部測試一次。
+  - 適合在提交變更前執行。
+- `npm run test:watch`
+  - 持續監看檔案變更，並自動重新執行相關測試。
+  - 適合開發期間使用；按 `Ctrl+C` 結束。
+- `npm run test:typecheck`
+  - 只執行測試程式與相關原始碼的 TypeScript 型別檢查，不執行測試案例。
+
+測試檔集中於 `test/`，共用測試資料放在 `test/fixtures/`，各模組的測試依照原始碼領域分組。
 
 ## 程式碼結構（目前）
 

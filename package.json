@@ -7,7 +7,10 @@
     "build": "tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json && node scripts/copy-static.mjs",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "start": "electron .",
-    "start:dev": "npm run build && electron ."
+    "start:dev": "npm run build && electron .",
+    "test": "npm run test:typecheck && vitest run",
+    "test:typecheck": "tsc -p tsconfig.test.json",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "adm-zip": "^0.5.12",
@@ -19,6 +22,7 @@
     "@types/node": "^20.11.30",
     "electron": "^30.0.0",
     "electron-rebuild": "^3.2.9",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^4.1.10"
   }
 }
