@@ -1368,6 +1368,26 @@
         flex-direction: column;
         gap: 16px;
       }
+      .editor-history-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 32px;
+      }
+      .editor-history-actions .icon-btn {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border-radius: 6px;
+        font-size: 21px;
+        line-height: 1;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border-soft);
+      }
+      .editor-history-actions .icon-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
       .layout.step-3 .tool-panel {
         display: flex;
       }
@@ -1650,6 +1670,28 @@
           <div class="hint">下一步：加入地名標示或文字。</div>
         </div>
         <div class="step-panel tool-panel" data-step-panel="3">
+          <div class="editor-history-actions" role="toolbar" aria-label="編輯歷史">
+            <button
+              id="undoBtn"
+              class="icon-btn"
+              type="button"
+              title="復原"
+              aria-label="復原"
+              disabled
+            >
+              ↶
+            </button>
+            <button
+              id="redoBtn"
+              class="icon-btn"
+              type="button"
+              title="重做"
+              aria-label="重做"
+              disabled
+            >
+              ↷
+            </button>
+          </div>
           <div class="panel card compact">
             <div class="section-title card-title">地名搜尋</div>
             <div class="field row search-field">

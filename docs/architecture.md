@@ -62,11 +62,20 @@
 - `src/renderer/index.html`
   - Step 0 至 Step 3 介面、搜尋與標示面板、匯出外框 dialog。
 - `src/renderer/index.ts`
-  - 將 EPSG:4326 地理資料投影至 EPSG:3857 並渲染底圖。
+  - 組合 renderer 模組、管理工作流程狀態並綁定畫面事件。
   - 管理範圍裁切、比例、底圖風格與地形陰影。
   - 管理地名／座標搜尋、點、文字、線、區域、箭頭及其排序、拖曳與樣式。
   - 將目前狀態轉換為 `.mapproj`，並從專案檔還原編輯狀態。
   - 產生高解析 PNG、PDF 輸入與真正向量 SVG；地形陰影啟用時僅陰影部分維持點陣圖片。
+- `src/renderer/bridge.ts`
+  - 定義 preload bridge、GeoNames 查詢結果及 renderer 使用的專案契約。
+- `src/renderer/editor/*`
+  - 定義標示／形狀狀態、不可變快照及最多 300 筆的 Undo/Redo 歷史。
+  - 連續文字與滑桿修改可合併；新增、刪除、拖曳、樣式及排序均可復原與重做。
+- `src/renderer/map/geometry.ts`
+  - 集中 EPSG:4326／EPSG:3857 投影與 GeoJSON 至 SVG path 轉換。
+- `src/renderer/ui/slider.ts`
+  - 提供共用滑桿建立、鍵盤操作、數值吸附與畫面同步。
 
 共用模組（Shared）：
 

@@ -152,7 +152,18 @@ function buildAppMenu(): Menu {
     },
     {
       label: "編輯",
-      submenu: [{ role: "undo", label: "復原" }, { role: "redo", label: "取消復原" }]
+      submenu: [
+        {
+          label: "復原",
+          accelerator: "CommandOrControl+Z",
+          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "edit:undo")
+        },
+        {
+          label: "重做",
+          accelerator: process.platform === "darwin" ? "Command+Shift+Z" : "Control+Y",
+          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "edit:redo")
+        }
+      ]
     },
     {
       label: "檢視",

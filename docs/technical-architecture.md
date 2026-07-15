@@ -28,7 +28,8 @@
 
 補充：
 
-- 目前 renderer 使用原生 HTML、CSS 與 TypeScript，尚未引入 React 或 Vue；核心 domain（資料包、schema、查詢）維持與 UI 框架分離。
+- 目前 renderer 使用原生 HTML、CSS 與 TypeScript，尚未引入 React 或 Vue；bridge 契約、編輯歷史、投影幾何與共用控制已由入口檔拆成獨立模組。
+- Step 3 的 Undo/Redo 使用記憶體快照，涵蓋標示與形狀的新增、刪除、拖曳、內容、樣式及排序；專案載入時重設歷史，不將單純選取或地圖縮放記入歷史。
 
 ## 2.2 渲染層策略
 
@@ -659,4 +660,4 @@ npm run build
 - `npm run test:typecheck`：只檢查測試與相關原始碼型別，不執行案例。
 - `npm run build`：編譯 main、renderer 並複製靜態資源。
 
-目前自動化測試涵蓋 `.mapproj` validator、migration、原子儲存與恢復，以及資料包 manifest／release 驗證、首次初始化、更新確認、active 切換、fallback、損壞修復與中斷恢復。下一階段將擴充匯出與 Electron 互動測試。
+目前自動化測試涵蓋 `.mapproj` validator、migration、原子儲存與恢復、資料包 manager，以及 renderer 的 Undo/Redo 歷史與地圖幾何。下一階段將擴充匯出與 Electron 互動測試。

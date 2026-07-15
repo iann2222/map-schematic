@@ -1,216 +1,31 @@
 ﻿export {};
 
-declare global {
-  interface Window {
-    mapSchematic?: {
-      ping?: () => string;
-      getDatapack?: () => Promise<{
-        id: string;
-        version: string;
-        basemap: {
-          format: string;
-          layers: Array<{ id: string; path: string }>;
-        };
-      }>;
-      getBasemapLayers?: () => Promise<Array<{ id: string; geojson: string }>>;
-      getRelief?: () => Promise<{
-        path: string;
-        projection: string | null;
-      } | null>;
-      searchGeonames?: (
-        query: string,
-        limit?: number,
-      ) => Promise<
-        Array<{
-          id: number;
-          name: string;
-          nameAlt: string | null;
-          latitude: number;
-          longitude: number;
-          featureClass: string | null;
-          featureCode: string | null;
-          countryCode: string | null;
-          population: number | null;
-        }>
-      >;
-      saveProject?: (payload: {
-        project: MapProject;
-        path?: string | null;
-        saveAs?: boolean;
-      }) => Promise<{
-        ok: boolean;
-        path?: string;
-        errors?: string[];
-        canceled?: boolean;
-      }>;
-      exportProject?: (payload: {
-        format: "png" | "svg" | "pdf";
-        data: string;
-        width: number;
-        height: number;
-      }) => Promise<{
-        ok: boolean;
-        path?: string;
-        error?: string;
-        canceled?: boolean;
-      }>;
-      loadProject?: () => Promise<{
-        ok: boolean;
-        path?: string;
-        project?: MapProject;
-        validation?: {
-          valid: boolean;
-          errors: Array<{ path: string; message: string }>;
-        };
-        error?: string;
-        canceled?: boolean;
-        migratedFromVersion?: string;
-        recoveredFromBackup?: boolean;
-      }>;
-      onMenuAction?: (handler: (action: string) => void) => () => void;
-    };
-  }
-}
-
-type GeonamesResult = {
-  id: number;
-  name: string;
-  nameAlt: string | null;
-  latitude: number;
-  longitude: number;
-  featureClass: string | null;
-  featureCode: string | null;
-  countryCode: string | null;
-  population: number | null;
-};
-
-type MarkerStyle = {
-  dotSize: number;
-  textSize: number;
-  dotColor: string;
-  textColor: string;
-  textOffsetX: number;
-  textOffsetY: number;
-  textAnchor?: "start" | "end";
-  fontFamily: string;
-};
-
-type Marker = {
-  id: string;
-  name: string;
-  nameAlt?: string;
-  displayName?: string;
-  latitude: number;
-  longitude: number;
-  sourceId?: string;
-  style: MarkerStyle;
-  sourceType: "geonames" | "coords" | "manual";
-  labelMode: "name" | "coords";
-  labelName?: string;
-  showLabel?: boolean;
-  kind?: "label" | "point";
-};
-
-type ShapeStyle = {
-  strokeColor: string;
-  strokeWidth: number;
-  fillColor: string;
-  fillOpacity: number;
-  textColor: string;
-  textSize: number;
-  fontFamily: string;
-};
-
-type ShapeItem = {
-  id: string;
-  type: "line" | "area" | "text" | "arrow";
-  displayName?: string;
-  longitude: number;
-  latitude: number;
-  width: number;
-  height: number;
-  text?: string;
-  style: ShapeStyle;
-};
-
-type SliderControl = {
-  root: HTMLDivElement;
-  track: HTMLDivElement;
-  fill: HTMLDivElement;
-  thumb: HTMLDivElement;
-  marks: HTMLDivElement;
-  min: number;
-  max: number;
-  step: number;
-  value: number;
-  dragging: boolean;
-  rect: DOMRect | null;
-  marksValues: number[] | null;
-  marksPercents: number[] | null;
-  defaultIndex: number | null;
-  onChange: (value: number) => void;
-};
-
-type MapProject = {
-  schemaVersion: "0.2";
-  createdAt: string;
-  updatedAt: string;
-  appVersion?: string;
-  dataPackVersion: string;
-  dataPackId?: string;
-  canvas: {
-    width: number;
-    height: number;
-    unit: "px" | "mm";
-  };
-  viewport: {
-    bbox: {
-      minLon: number;
-      minLat: number;
-      maxLon: number;
-      maxLat: number;
-    };
-    projection: "EPSG:3857" | "EPSG:4326";
-  };
-  layers: Array<{
-    id: string;
-    name: string;
-    visible: boolean;
-    locked: boolean;
-    opacity: number;
-    zIndex: number;
-  }>;
-  objects: Array<{
-    id: string;
-    type: "pointLabel" | "areaLabel" | "textOnly" | "arrow" | "polyline";
-    layerId: string;
-    style: Record<string, unknown>;
-    geometry: {
-      kind: "point" | "polygon" | "none";
-      lon?: number;
-      lat?: number;
-      rings?: Array<Array<[number, number]>>;
-    };
-    text?: string;
-    provenance?: {
-      source: "geonames" | "manual";
-      sourceId?: string;
-      query?: string;
-    };
-  }>;
-  ui: {
-    listOrderKeys?: string[];
-    displayOrderKeys?: string[];
-    activeStyleId?: string;
-    hillshadeEnabled?: boolean;
-    hillshadeBlend?: string;
-    ratioMode?: "free" | "fixed";
-    activeRatioId?: string;
-    cropRatio?: number;
-    customRatioA?: number;
-    customRatioB?: number;
-  };
-};
+import { HistoryManager } from "./editor/history.js";
+import type { GeonamesResult, MapProject } from "./bridge.js";
+import {
+  cloneEditorSnapshot,
+  editorSnapshotsEqual
+} from "./editor/snapshot.js";
+import type {
+  EditorSnapshot,
+  Marker,
+  MarkerStyle,
+  ShapeItem,
+  ShapeStyle
+} from "./editor/types.js";
+import {
+  EARTH_RADIUS,
+  WORLD_BBOX,
+  geometryToPath,
+  project,
+  unproject
+} from "./map/geometry.js";
+import {
+  initSlider,
+  setSliderValue,
+  updateSliderUI
+} from "./ui/slider.js";
+import type { SliderControl } from "./ui/slider.js";
 
 type BBox = {
   minLon: number;
@@ -485,6 +300,8 @@ const toolZoomOut = document.getElementById(
 const toolReset = document.getElementById(
   "toolReset",
 ) as HTMLButtonElement | null;
+const undoButton = document.getElementById("undoBtn") as HTMLButtonElement | null;
+const redoButton = document.getElementById("redoBtn") as HTMLButtonElement | null;
 const zoomIndicator = document.getElementById("zoomIndicator");
 const stepPanels = Array.from(
   document.querySelectorAll<HTMLElement>(".step-panel"),
@@ -584,14 +401,6 @@ const styleButtons = [
   styleSoft,
 ].filter((btn): btn is HTMLButtonElement => Boolean(btn));
 
-const WORLD = {
-  minLon: -180,
-  maxLon: 180,
-  minLat: -85,
-  maxLat: 85,
-};
-
-const RADIUS = 6378137;
 const WRAPS = [-1, 0, 1] as const;
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 12;
@@ -600,6 +409,7 @@ const ZOOM_LEVELS = [0.4, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12];
 const MAP_WIDTH = 1200;
 const MAP_HEIGHT = 800;
 const PNG_EXPORT_SCALE = 2;
+const EDITOR_HISTORY_LIMIT = 300;
 let cropRatio = MAP_WIDTH / MAP_HEIGHT;
 let activeStep = "0";
 let ratioMode: "free" | "fixed" = "fixed";
@@ -658,21 +468,6 @@ type OrderDragSession = {
   orderChanged: boolean;
 };
 
-type LonLat = [number, number];
-type PolygonGeometry = { type: "Polygon"; coordinates: LonLat[][] };
-type MultiPolygonGeometry = { type: "MultiPolygon"; coordinates: LonLat[][][] };
-type LineStringGeometry = { type: "LineString"; coordinates: LonLat[] };
-type MultiLineStringGeometry = {
-  type: "MultiLineString";
-  coordinates: LonLat[][];
-};
-type RenderGeometry =
-  | PolygonGeometry
-  | MultiPolygonGeometry
-  | LineStringGeometry
-  | MultiLineStringGeometry
-  | null
-  | undefined;
 let orderDragSession: OrderDragSession | null = null;
 let selectedShapeId: string | null = null;
 let activeTool: "marker" | "line" | "area" | "text" | "arrow" = "marker";
@@ -713,102 +508,139 @@ let hillshadeImage: HTMLImageElement | null = null;
 let hillshadeTexture: HTMLCanvasElement | null = null;
 let hillshadeProjection: string | null = null;
 let editingCoordMarker: Marker | null = null;
+let editorTransactionBefore: EditorSnapshot | null = null;
 
-function mercatorX(lon: number): number {
-  return (RADIUS * lon * Math.PI) / 180;
+const editorHistory = new HistoryManager<EditorSnapshot>({
+  clone: cloneEditorSnapshot,
+  equals: editorSnapshotsEqual,
+  limit: EDITOR_HISTORY_LIMIT,
+  mergeWindowMs: 750,
+});
+
+function captureEditorSnapshot(): EditorSnapshot {
+  return cloneEditorSnapshot({
+    markers: selectedMarkers,
+    shapes,
+    listOrderKeys,
+    displayOrderKeys,
+    selectedMarkerId,
+    selectedShapeId,
+  });
 }
 
-function mercatorY(lat: number): number {
-  const clamped = Math.max(Math.min(lat, 85), -85);
-  const rad = (clamped * Math.PI) / 180;
-  return RADIUS * Math.log(Math.tan(Math.PI / 4 + rad / 2));
+function syncHistoryControls(): void {
+  if (undoButton) {
+    undoButton.disabled = !editorHistory.canUndo;
+  }
+  if (redoButton) {
+    redoButton.disabled = !editorHistory.canRedo;
+  }
 }
 
-const WORLD_X_MIN = mercatorX(WORLD.minLon);
-const WORLD_X_MAX = mercatorX(WORLD.maxLon);
-const WORLD_Y_MIN = mercatorY(WORLD.minLat);
-const WORLD_Y_MAX = mercatorY(WORLD.maxLat);
-
-function project(
-  lon: number,
-  lat: number,
-  width: number,
-  height: number,
-): [number, number] {
-  const x = mercatorX(lon);
-  const y = mercatorY(lat);
-  const sx = (x - WORLD_X_MIN) / (WORLD_X_MAX - WORLD_X_MIN);
-  const sy = (y - WORLD_Y_MIN) / (WORLD_Y_MAX - WORLD_Y_MIN);
-  return [sx * width, (1 - sy) * height];
+function commitEditorChange(
+  before: EditorSnapshot,
+  mergeKey?: string,
+): void {
+  editorHistory.record(before, captureEditorSnapshot(), { mergeKey });
+  syncHistoryControls();
 }
 
-function unproject(
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): [number, number] {
-  const sx = x / width;
-  const sy = 1 - y / height;
-  const mx = WORLD_X_MIN + sx * (WORLD_X_MAX - WORLD_X_MIN);
-  const my = WORLD_Y_MIN + sy * (WORLD_Y_MAX - WORLD_Y_MIN);
-  const lon = (mx / RADIUS) * (180 / Math.PI);
-  const lat =
-    (2 * Math.atan(Math.exp(my / RADIUS)) - Math.PI / 2) * (180 / Math.PI);
-  return [lon, lat];
+function beginEditorTransaction(): void {
+  if (!editorTransactionBefore) {
+    editorTransactionBefore = captureEditorSnapshot();
+  }
 }
 
-function pathFromCoords(
-  coords: LonLat[],
-  width: number,
-  height: number,
-): string {
-  if (coords.length === 0) {
-    return "";
+function commitEditorTransaction(): void {
+  if (!editorTransactionBefore) {
+    return;
   }
-  const [firstLon, firstLat] = coords[0];
-  const [x0, y0] = project(firstLon, firstLat, width, height);
-  let d = `M ${x0.toFixed(2)} ${y0.toFixed(2)}`;
-  for (let i = 1; i < coords.length; i += 1) {
-    const [lon, lat] = coords[i];
-    const [x, y] = project(lon, lat, width, height);
-    d += ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
-  }
-  return d;
+  const before = editorTransactionBefore;
+  editorTransactionBefore = null;
+  commitEditorChange(before);
 }
 
-function geometryToPath(
-  geometry: RenderGeometry,
-  width: number,
-  height: number,
-): string {
-  if (!geometry) {
-    return "";
+function cancelEditorTransaction(): void {
+  editorTransactionBefore = null;
+}
+
+function restoreEditorSnapshot(snapshot: EditorSnapshot): void {
+  if (orderDragSession) {
+    cleanupOrderSession("cancel");
   }
-  const type = geometry.type;
-  if (type === "Polygon") {
-    return geometry.coordinates
-      .map((ring) => pathFromCoords(ring, width, height) + " Z")
-      .join(" ");
+  selectedMarkers.splice(
+    0,
+    selectedMarkers.length,
+    ...snapshot.markers.map((marker) => ({
+      ...marker,
+      style: { ...marker.style },
+    })),
+  );
+  shapes.splice(
+    0,
+    shapes.length,
+    ...snapshot.shapes.map((shape) => ({
+      ...shape,
+      style: { ...shape.style },
+    })),
+  );
+  listOrderKeys = [...snapshot.listOrderKeys];
+  displayOrderKeys = [...snapshot.displayOrderKeys];
+  selectedMarkerId = snapshot.markers.some(
+    (marker) => marker.id === snapshot.selectedMarkerId,
+  )
+    ? snapshot.selectedMarkerId
+    : null;
+  selectedShapeId = snapshot.shapes.some(
+    (shape) => shape.id === snapshot.selectedShapeId,
+  )
+    ? snapshot.selectedShapeId
+    : null;
+  selectedLabelMarkerId = null;
+  previewMarker = null;
+  previewToolMarker = null;
+  previewShape = null;
+  editingCoordMarker = null;
+  coordEditModal?.classList.remove("active");
+  labelDrag = null;
+  markerDrag = null;
+  shapeDrag = null;
+  svg?.classList.remove("shape-moving");
+  cancelEditorTransaction();
+  syncOrderKeys();
+  syncManualMarkerCount();
+  renderMarkers();
+  renderMarkerList();
+  if (listOrderModal?.classList.contains("active")) {
+    renderOrderDialog();
   }
-  if (type === "MultiPolygon") {
-    return geometry.coordinates
-      .map((poly) =>
-        poly
-          .map((ring) => pathFromCoords(ring, width, height) + " Z")
-          .join(" "),
-      )
-      .join(" ");
+  syncMarkerControls(getSelectedMarker());
+  syncShapeControls(getSelectedShape());
+  syncItemNameControl();
+}
+
+function undoEditorChange(): void {
+  const snapshot = editorHistory.undo();
+  if (!snapshot) {
+    return;
   }
-  if (type === "LineString") {
-    return pathFromCoords(geometry.coordinates, width, height);
+  restoreEditorSnapshot(snapshot);
+  syncHistoryControls();
+}
+
+function redoEditorChange(): void {
+  const snapshot = editorHistory.redo();
+  if (!snapshot) {
+    return;
   }
-  if (type === "MultiLineString") {
-    return geometry.coordinates
-      .map((line) => pathFromCoords(line, width, height))
-      .join(" ");
-  }
-  return "";
+  restoreEditorSnapshot(snapshot);
+  syncHistoryControls();
+}
+
+function resetEditorHistory(): void {
+  cancelEditorTransaction();
+  editorHistory.clear();
+  syncHistoryControls();
 }
 
 type LayerStyle = { fill?: string; stroke?: string; strokeWidth?: number };
@@ -2076,12 +1908,14 @@ function addToolItem(tool: typeof activeTool): void {
     if (hasDuplicateMarker(marker)) {
       return;
     }
+    const before = captureEditorSnapshot();
     selectedMarkers.push(marker);
     previewMarker = null;
     previewToolMarker = null;
     selectMarker(marker.id);
     renderMarkers();
     renderMarkerList();
+    commitEditorChange(before);
     return;
   }
   if (
@@ -2094,10 +1928,12 @@ function addToolItem(tool: typeof activeTool): void {
     if (hasDuplicateShape(shape)) {
       return;
     }
+    const before = captureEditorSnapshot();
     shapes.push(shape);
     previewShape = null;
     selectShape(shape.id);
     renderMarkerList();
+    commitEditorChange(before);
     return;
   }
 }
@@ -2236,6 +2072,7 @@ function renderMarkers() {
         event.stopPropagation();
         selectMarker(marker.id);
         const start = mapPointFromEvent(event);
+        beginEditorTransaction();
         markerDrag = {
           markerId: marker.id,
           startX: start.x,
@@ -2311,6 +2148,7 @@ function renderMarkers() {
         selectedLabelMarkerId = marker.id;
         label.setAttribute("data-dragging", "true");
         const start = mapPointFromEvent(event);
+        beginEditorTransaction();
         labelDrag = {
           markerId: marker.id,
           startX: start.x,
@@ -2489,6 +2327,7 @@ function renderShapes(): void {
             return;
           }
           const start = mapPointFromEvent(event);
+          beginEditorTransaction();
           shapeDrag = {
             shapeId: shape.id,
             startX: start.x,
@@ -2568,6 +2407,7 @@ function renderShapes(): void {
             return;
           }
           const start = mapPointFromEvent(event);
+          beginEditorTransaction();
           shapeDrag = {
             shapeId: shape.id,
             startX: start.x,
@@ -2645,6 +2485,7 @@ function renderShapes(): void {
             return;
           }
           const start = mapPointFromEvent(event);
+          beginEditorTransaction();
           shapeDrag = {
             shapeId: shape.id,
             startX: start.x,
@@ -2674,6 +2515,7 @@ function renderShapes(): void {
             return;
           }
           const start = mapPointFromEvent(event);
+          beginEditorTransaction();
           shapeDrag = {
             shapeId: shape.id,
             startX: start.x,
@@ -2725,6 +2567,7 @@ function renderShapes(): void {
           selectShape(shape.id);
           svg?.classList.add("shape-moving");
           const start = mapPointFromEvent(event);
+          beginEditorTransaction();
           shapeDrag = {
             shapeId: shape.id,
             startX: start.x,
@@ -2874,7 +2717,7 @@ function haversineDistance(a: [number, number], b: [number, number]): number {
   const sinDlon = Math.sin(dLon / 2);
   const h =
     sinDlat * sinDlat + Math.cos(rLat1) * Math.cos(rLat2) * sinDlon * sinDlon;
-  return 2 * RADIUS * Math.asin(Math.min(1, Math.sqrt(h)));
+  return 2 * EARTH_RADIUS * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
 function sortResults(results: GeonamesResult[]): GeonamesResult[] {
@@ -3086,6 +2929,7 @@ function addMarkerFromCoordsValue(parsed: { lat: number; lon: number }): void {
     return;
   }
   placeMarkerLabelInsideView(marker);
+  const before = captureEditorSnapshot();
   selectedMarkers.push(marker);
   previewMarker = null;
   if (activeStep === "3") {
@@ -3093,6 +2937,7 @@ function addMarkerFromCoordsValue(parsed: { lat: number; lon: number }): void {
   }
   renderMarkers();
   renderMarkerList();
+  commitEditorChange(before);
   if (statusEl) {
     statusEl.textContent = `已新增座標：${marker.name}`;
   }
@@ -3437,6 +3282,7 @@ function addMarkerFromGeonames(result: GeonamesResult): void {
     kind: "label",
   };
   placeMarkerLabelInsideView(marker);
+  const before = captureEditorSnapshot();
   selectedMarkers.push(marker);
   previewMarker = null;
   if (activeStep === "3") {
@@ -3444,6 +3290,7 @@ function addMarkerFromGeonames(result: GeonamesResult): void {
   }
   renderMarkers();
   renderMarkerList();
+  commitEditorChange(before);
 }
 
 function getSelectedMarker(): Marker | null {
@@ -4011,6 +3858,7 @@ function finalizeOrderCommit(session: OrderDragSession): void {
   if (!changed) {
     return;
   }
+  const before = captureEditorSnapshot();
   if (mode === "list") {
     listOrderKeys = nextOrder;
   } else {
@@ -4019,6 +3867,7 @@ function finalizeOrderCommit(session: OrderDragSession): void {
   renderOrderDialog();
   renderMarkers();
   renderMarkerList();
+  commitEditorChange(before);
 }
 
 function cleanupOrderSession(reason: "commit" | "cancel"): void {
@@ -4171,6 +4020,7 @@ function createOrderItem(
     const current = mode === "list" ? listOrderKeys : displayOrderKeys;
     const base = current.filter((key) => key !== item.key);
     const next = edge === "top" ? [item.key, ...base] : [...base, item.key];
+    const before = captureEditorSnapshot();
     if (mode === "list") {
       listOrderKeys = next;
     } else {
@@ -4179,6 +4029,7 @@ function createOrderItem(
     renderOrderDialog();
     renderMarkers();
     renderMarkerList();
+    commitEditorChange(before);
   };
   moveTop.addEventListener("click", (event) => {
     event.preventDefault();
@@ -4331,6 +4182,7 @@ function attachOrderDragGlobalEvents(): void {
 }
 
 function deleteMarker(markerId: string): void {
+  const before = captureEditorSnapshot();
   const index = selectedMarkers.findIndex((marker) => marker.id === markerId);
   if (index >= 0) {
     selectedMarkers.splice(index, 1);
@@ -4342,6 +4194,7 @@ function deleteMarker(markerId: string): void {
   }
   renderMarkers();
   renderMarkerList();
+  commitEditorChange(before);
 }
 
 async function handleSearch(
@@ -4404,7 +4257,7 @@ function currentSelectionBBox(): BBox {
   if (cropBBox) {
     return unprojectBBox(cropBBox);
   }
-  return { ...WORLD };
+  return { ...WORLD_BBOX };
 }
 
 function projectObjectTypeForShape(type: ShapeItem["type"]): MapProject["objects"][number]["type"] {
@@ -4853,6 +4706,7 @@ async function handleLoad() {
   ) {
     setActiveRatioButton(loadedProject.ui.activeRatioId);
   }
+  resetEditorHistory();
   syncOrderKeys();
   syncManualMarkerCount();
   renderMarkers();
@@ -5226,6 +5080,7 @@ async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
 }
 
 function handleClearMarkers(): void {
+  const before = captureEditorSnapshot();
   selectedMarkers.splice(0, selectedMarkers.length);
   shapes.splice(0, shapes.length);
   selectedMarkerId = null;
@@ -5239,9 +5094,11 @@ function handleClearMarkers(): void {
   syncItemNameControl();
   renderMarkers();
   renderMarkerList();
+  commitEditorChange(before);
 }
 
 function deleteShape(shapeId: string): void {
+  const before = captureEditorSnapshot();
   const index = shapes.findIndex((shape) => shape.id === shapeId);
   if (index >= 0) {
     shapes.splice(index, 1);
@@ -5253,6 +5110,7 @@ function deleteShape(shapeId: string): void {
   }
   renderMarkers();
   renderMarkerList();
+  commitEditorChange(before);
 }
 
 function openCoordEditor(marker: Marker): void {
@@ -5274,6 +5132,7 @@ function openCoordEditor(marker: Marker): void {
     radio.checked = radio.value === marker.labelMode;
   });
   coordEditSave.onclick = () => {
+    const before = captureEditorSnapshot();
     marker.labelName = coordLabelInput.value.trim() || undefined;
     const selected = coordEditModal.querySelector<HTMLInputElement>(
       'input[name="coordLabelMode"]:checked',
@@ -5283,6 +5142,7 @@ function openCoordEditor(marker: Marker): void {
     coordEditModal.classList.remove("active");
     renderMarkers();
     renderMarkerList();
+    commitEditorChange(before);
   };
   coordEditCancel.onclick = () => {
     editingCoordMarker = null;
@@ -5291,18 +5151,21 @@ function openCoordEditor(marker: Marker): void {
 }
 
 function attachMarkerControls(): void {
-  const update = () => {
+  const update = (property: string) => {
+    const markerId = getEditableMarker()?.id ?? "none";
+    const before = captureEditorSnapshot();
     updateMarkerFromControls();
+    commitEditorChange(before, `marker:${markerId}:${property}`);
   };
 
-  markerLabelInput?.addEventListener("input", update);
+  markerLabelInput?.addEventListener("input", () => update("label"));
   markerDotColor?.addEventListener("input", () => {
     syncColorInputs("dot", markerDotColor.value);
-    update();
+    update("dot-color");
   });
   markerTextColor?.addEventListener("input", () => {
     syncColorInputs("text", markerTextColor.value);
-    update();
+    update("text-color");
   });
   markerDotHex?.addEventListener("input", () => {
     const next = normalizeHexColor(markerDotHex.value);
@@ -5311,7 +5174,7 @@ function attachMarkerControls(): void {
     }
     markerDotColor.value = next;
     syncColorInputs("dot", next);
-    update();
+    update("dot-color");
   });
   markerTextHex?.addEventListener("input", () => {
     const next = normalizeHexColor(markerTextHex.value);
@@ -5320,9 +5183,9 @@ function attachMarkerControls(): void {
     }
     markerTextColor.value = next;
     syncColorInputs("text", next);
-    update();
+    update("text-color");
   });
-  markerFont?.addEventListener("change", update);
+  markerFont?.addEventListener("change", () => update("font"));
 
   document
     .querySelectorAll<HTMLButtonElement>(".color-swatch")
@@ -5334,6 +5197,7 @@ function attachMarkerControls(): void {
         if (!marker || !color) {
           return;
         }
+        const before = captureEditorSnapshot();
         if (target === "dot" && markerDotColor) {
           markerDotColor.value = color;
           syncColorInputs("dot", color);
@@ -5343,18 +5207,25 @@ function attachMarkerControls(): void {
           syncColorInputs("text", color);
         }
         updateMarkerFromControls();
+        commitEditorChange(before);
       });
     });
 }
 
 function attachShapeControls(): void {
-  shapeTextInput?.addEventListener("input", updateShapeFromControls);
-  shapeTextColor?.addEventListener("input", updateShapeFromControls);
-  shapeTextFont?.addEventListener("change", updateShapeFromControls);
-  shapeLineColor?.addEventListener("input", updateShapeFromControls);
-  shapeArrowColor?.addEventListener("input", updateShapeFromControls);
-  shapeAreaFill?.addEventListener("input", updateShapeFromControls);
-  shapeAreaStroke?.addEventListener("input", updateShapeFromControls);
+  const update = (property: string) => {
+    const shapeId = getSelectedShape()?.id ?? "none";
+    const before = captureEditorSnapshot();
+    updateShapeFromControls();
+    commitEditorChange(before, `shape:${shapeId}:${property}`);
+  };
+  shapeTextInput?.addEventListener("input", () => update("text"));
+  shapeTextColor?.addEventListener("input", () => update("text-color"));
+  shapeTextFont?.addEventListener("change", () => update("font"));
+  shapeLineColor?.addEventListener("input", () => update("line-color"));
+  shapeArrowColor?.addEventListener("input", () => update("arrow-color"));
+  shapeAreaFill?.addEventListener("input", () => update("area-fill"));
+  shapeAreaStroke?.addEventListener("input", () => update("area-stroke"));
   document
     .querySelectorAll<HTMLButtonElement>("[data-shape-color]")
     .forEach((button) => {
@@ -5364,6 +5235,7 @@ function attachShapeControls(): void {
         if (!color || !shape) {
           return;
         }
+        const before = captureEditorSnapshot();
         if (shape.type === "text" && shapeTextColor) {
           shapeTextColor.value = color;
         }
@@ -5382,11 +5254,17 @@ function attachShapeControls(): void {
           }
         }
         updateShapeFromControls();
+        commitEditorChange(before);
       });
     });
 }
 
-itemNameInput?.addEventListener("input", updateItemNameFromControl);
+itemNameInput?.addEventListener("input", () => {
+  const selectedId = selectedMarkerId ?? selectedShapeId ?? "none";
+  const before = captureEditorSnapshot();
+  updateItemNameFromControl();
+  commitEditorChange(before, `item:${selectedId}:name`);
+});
 
 function bindFirstClickSelect(
   input: HTMLInputElement | null,
@@ -5548,215 +5426,6 @@ function updateShapeFromControls(): void {
     }
   }
   renderMarkers();
-}
-
-function initSlider(
-  root: HTMLDivElement | null,
-  initialValue: number,
-  onChange: (value: number) => void,
-): SliderControl | null {
-  if (!root) {
-    return null;
-  }
-  const track = root.querySelector(".slider-track") as HTMLDivElement | null;
-  const fill = root.querySelector(".slider-fill") as HTMLDivElement | null;
-  const thumb = root.querySelector(".slider-thumb") as HTMLDivElement | null;
-  const marks = root.querySelector(".slider-marks") as HTMLDivElement | null;
-  if (!track || !fill || !thumb || !marks) {
-    return null;
-  }
-  const min = Number(root.dataset.min || "0");
-  const max = Number(root.dataset.max || "100");
-  const step = Number(root.dataset.step || "1");
-  const defaultIndex = root.dataset.defaultIndex
-    ? Math.max(0, Number(root.dataset.defaultIndex))
-    : null;
-  const control: SliderControl = {
-    root,
-    track,
-    fill,
-    thumb,
-    marks,
-    min,
-    max,
-    step,
-    value: initialValue,
-    dragging: false,
-    rect: null,
-    marksValues: null,
-    marksPercents: null,
-    defaultIndex,
-    onChange,
-  };
-  root.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) {
-      return;
-    }
-    control.dragging = true;
-    control.rect = control.track.getBoundingClientRect();
-    control.root.classList.add("dragging");
-    control.root.setPointerCapture(event.pointerId);
-    updateSliderFromPointer(control, event.clientX);
-  });
-  root.addEventListener("pointermove", (event) => {
-    if (!control.dragging) {
-      return;
-    }
-    updateSliderFromPointer(control, event.clientX);
-  });
-  root.addEventListener("pointerup", (event) => {
-    if (!control.dragging) {
-      return;
-    }
-    control.dragging = false;
-    control.root.classList.remove("dragging");
-    control.root.releasePointerCapture(event.pointerId);
-  });
-  root.addEventListener("pointercancel", () => {
-    control.dragging = false;
-    control.root.classList.remove("dragging");
-  });
-  thumb.addEventListener("keydown", (event) => {
-    let nextValue = control.value;
-    if (event.key === "ArrowRight" || event.key === "ArrowUp") {
-      nextValue += control.step;
-    } else if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
-      nextValue -= control.step;
-    } else if (event.key === "Home") {
-      nextValue = control.min;
-    } else if (event.key === "End") {
-      nextValue = control.max;
-    } else {
-      return;
-    }
-    event.preventDefault();
-    setSliderValue(control, nextValue);
-  });
-  renderSliderMarks(control);
-  if (control.marksValues && control.defaultIndex != null) {
-    const idx = Math.min(
-      control.marksValues.length - 1,
-      Math.max(0, control.defaultIndex),
-    );
-    control.value = control.marksValues[idx];
-  } else {
-    control.value = initialValue;
-  }
-  updateSliderUI(control);
-  return control;
-}
-
-function updateSliderFromPointer(
-  control: SliderControl,
-  clientX: number,
-): void {
-  if (!control.rect) {
-    control.rect = control.track.getBoundingClientRect();
-  }
-  const rect = control.rect;
-  const ratio = (clientX - rect.left) / rect.width;
-  const clamped = Math.max(0, Math.min(1, ratio));
-  const raw = control.min + clamped * (control.max - control.min);
-  const snapped = snapSliderValue(control, raw);
-  setSliderValue(control, snapped);
-}
-
-function snapSliderValue(control: SliderControl, raw: number): number {
-  if (!Number.isFinite(raw)) {
-    return control.value;
-  }
-  if (control.marksValues && control.marksValues.length > 1) {
-    let nearest = control.marksValues[0];
-    let best = Math.abs(raw - nearest);
-    for (const value of control.marksValues) {
-      const dist = Math.abs(raw - value);
-      if (dist < best) {
-        best = dist;
-        nearest = value;
-      }
-    }
-    return Math.max(control.min, Math.min(control.max, nearest));
-  }
-  const index = Math.round((raw - control.min) / control.step);
-  const snapped = control.min + index * control.step;
-  return Math.max(control.min, Math.min(control.max, snapped));
-}
-
-function setSliderValue(
-  control: SliderControl,
-  value: number,
-  silent = false,
-): void {
-  const clamped = Math.max(control.min, Math.min(control.max, value));
-  const next = snapSliderValue(control, clamped);
-  if (next === control.value && !silent) {
-    return;
-  }
-  control.value = next;
-  updateSliderUI(control);
-  if (!silent) {
-    control.onChange(next);
-  }
-}
-
-function updateSliderUI(control: SliderControl): void {
-  let percent = 0;
-  if (control.marksValues && control.marksPercents) {
-    let nearestIndex = 0;
-    let best = Math.abs(control.value - control.marksValues[0]);
-    control.marksValues.forEach((value, index) => {
-      const dist = Math.abs(control.value - value);
-      if (dist < best) {
-        best = dist;
-        nearestIndex = index;
-      }
-    });
-    percent = (control.marksPercents[nearestIndex] ?? 0) * 100;
-  } else {
-    const ratio = (control.value - control.min) / (control.max - control.min);
-    percent = Math.max(0, Math.min(1, ratio)) * 100;
-  }
-  control.thumb.style.left = `${percent}%`;
-  control.fill.style.width = `${percent}%`;
-  control.thumb.setAttribute("role", "slider");
-  control.thumb.setAttribute("aria-valuemin", String(control.min));
-  control.thumb.setAttribute("aria-valuemax", String(control.max));
-  control.thumb.setAttribute("aria-valuenow", String(control.value));
-  const marks = Array.from(control.marks.children) as HTMLDivElement[];
-  marks.forEach((mark) => {
-    const markValue = Number(mark.dataset.value || "0");
-    mark.classList.toggle("active", markValue <= control.value);
-  });
-}
-
-function renderSliderMarks(control: SliderControl): void {
-  control.marks.innerHTML = "";
-  control.marksValues = null;
-  control.marksPercents = null;
-  const marksCountRaw = control.root.dataset.marks;
-  const marksCount = marksCountRaw ? Math.max(2, Number(marksCountRaw)) : 0;
-  const count = marksCount
-    ? marksCount - 1
-    : Math.max(1, Math.round((control.max - control.min) / control.step));
-  const values: number[] = [];
-  const percents: number[] = [];
-  for (let i = 0; i <= count; i += 1) {
-    const ratio = count === 0 ? 0 : i / count;
-    const value = control.min + ratio * (control.max - control.min);
-    const snapped = snapSliderValue(control, value);
-    values.push(snapped);
-    percents.push(ratio);
-    const mark = document.createElement("div");
-    mark.className = "slider-mark";
-    mark.dataset.value = String(snapped);
-    mark.style.left = `${ratio * 100}%`;
-    const tick = document.createElement("div");
-    tick.className = "tick";
-    mark.appendChild(tick);
-    control.marks.appendChild(mark);
-  }
-  control.marksValues = values;
-  control.marksPercents = percents;
 }
 
 function svgPointFromEvent(event: MouseEvent): { x: number; y: number } {
@@ -5987,20 +5656,18 @@ function onMouseUp(event: MouseEvent): void {
   if (labelDrag) {
     labelDrag = null;
     renderMarkers();
+    commitEditorTransaction();
     return;
   }
   if (markerDrag) {
     markerDrag = null;
+    commitEditorTransaction();
     return;
   }
   if (shapeDrag) {
     shapeDrag = null;
     svg?.classList.remove("shape-moving");
-    return;
-  }
-  if (shapeDrag) {
-    shapeDrag = null;
-    svg?.classList.remove("shape-moving");
+    commitEditorTransaction();
     return;
   }
   if (!svg || !isDragging || !dragStartScreen) {
@@ -6066,15 +5733,18 @@ function attachMapInteractions(): void {
     if (labelDrag) {
       labelDrag = null;
       renderMarkers();
+      commitEditorTransaction();
       return;
     }
     if (markerDrag) {
       markerDrag = null;
+      commitEditorTransaction();
       return;
     }
     if (shapeDrag) {
       shapeDrag = null;
       svg.classList.remove("shape-moving");
+      commitEditorTransaction();
       return;
     }
     if (isDragging) {
@@ -6252,6 +5922,8 @@ exportPngButton?.addEventListener("click", () => handleExport("png"));
 exportSvgButton?.addEventListener("click", () => handleExport("svg"));
 exportPdfButton?.addEventListener("click", () => handleExport("pdf"));
 clearMarkersButton?.addEventListener("click", handleClearMarkers);
+undoButton?.addEventListener("click", undoEditorChange);
+redoButton?.addEventListener("click", redoEditorChange);
 listOrderSettingsBtn?.addEventListener("mousedown", (event) => {
   event.preventDefault();
   event.stopPropagation();
@@ -6336,6 +6008,19 @@ completeExportPdf?.addEventListener("click", () => {
   handleExport("pdf");
 });
 window.addEventListener("keydown", (event) => {
+  const key = event.key.toLowerCase();
+  if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+    if (key === "z" && !event.shiftKey) {
+      event.preventDefault();
+      undoEditorChange();
+      return;
+    }
+    if ((key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey)) {
+      event.preventDefault();
+      redoEditorChange();
+      return;
+    }
+  }
   if (event.key === "Escape" && completeModal?.classList.contains("active")) {
     closeCompleteDialog();
   }
@@ -6343,6 +6028,12 @@ window.addEventListener("keydown", (event) => {
 
 window.mapSchematic?.onMenuAction?.((action) => {
   switch (action) {
+    case "edit:undo":
+      undoEditorChange();
+      break;
+    case "edit:redo":
+      redoEditorChange();
+      break;
     case "project:open":
       handleLoad();
       break;
@@ -6373,26 +6064,48 @@ attachCropInteractions();
 attachMarkerControls();
 attachShapeControls();
 dotSizeSlider = initSlider(markerDotSize, 7, () => {
+  const markerId = getEditableMarker()?.id ?? "none";
+  const before = captureEditorSnapshot();
   updateMarkerFromControls();
+  commitEditorChange(before, `marker:${markerId}:dot-size`);
 });
 textSizeSlider = initSlider(markerTextSize, 7, () => {
+  const markerId = getEditableMarker()?.id ?? "none";
+  const before = captureEditorSnapshot();
   updateMarkerFromControls();
+  commitEditorChange(before, `marker:${markerId}:text-size`);
 });
 shapeTextSizeSlider = initSlider(shapeTextSize, 7, () => {
+  const shapeId = getSelectedShape()?.id ?? "none";
+  const before = captureEditorSnapshot();
   updateShapeFromControls();
+  commitEditorChange(before, `shape:${shapeId}:text-size`);
 });
 shapeLineWidthSlider = initSlider(shapeLineWidth, 2, () => {
+  const shapeId = getSelectedShape()?.id ?? "none";
+  const before = captureEditorSnapshot();
   updateShapeFromControls();
+  commitEditorChange(before, `shape:${shapeId}:line-width`);
 });
 shapeArrowWidthSlider = initSlider(shapeArrowWidth, 2, () => {
+  const shapeId = getSelectedShape()?.id ?? "none";
+  const before = captureEditorSnapshot();
   updateShapeFromControls();
+  commitEditorChange(before, `shape:${shapeId}:arrow-width`);
 });
 shapeAreaOpacitySlider = initSlider(shapeAreaOpacity, 0.4, () => {
+  const shapeId = getSelectedShape()?.id ?? "none";
+  const before = captureEditorSnapshot();
   updateShapeFromControls();
+  commitEditorChange(before, `shape:${shapeId}:area-opacity`);
 });
 shapeAreaStrokeWidthSlider = initSlider(shapeAreaStrokeWidth, 2, () => {
+  const shapeId = getSelectedShape()?.id ?? "none";
+  const before = captureEditorSnapshot();
   updateShapeFromControls();
+  commitEditorChange(before, `shape:${shapeId}:area-stroke-width`);
 });
+syncHistoryControls();
 boot();
 
 window.addEventListener("resize", () => {
