@@ -1,4 +1,10 @@
-import type { EditorSnapshot, Marker, ShapeItem } from "./types.js";
+import type {
+  EditorDocument,
+  EditorObject,
+  EditorSnapshot,
+  Marker,
+  ShapeItem
+} from "./types.js";
 
 function cloneMarker(marker: Marker): Marker {
   return { ...marker, style: { ...marker.style } };
@@ -8,12 +14,21 @@ function cloneShape(shape: ShapeItem): ShapeItem {
   return { ...shape, style: { ...shape.style } };
 }
 
+function cloneEditorObject(object: EditorObject): EditorObject {
+  return object.objectKind === "marker" ? cloneMarker(object) : cloneShape(object);
+}
+
+export function cloneEditorDocument(document: EditorDocument): EditorDocument {
+  return {
+    objects: document.objects.map(cloneEditorObject),
+    listOrderKeys: [...document.listOrderKeys],
+    displayOrderKeys: [...document.displayOrderKeys]
+  };
+}
+
 export function cloneEditorSnapshot(snapshot: EditorSnapshot): EditorSnapshot {
   return {
-    markers: snapshot.markers.map(cloneMarker),
-    shapes: snapshot.shapes.map(cloneShape),
-    listOrderKeys: [...snapshot.listOrderKeys],
-    displayOrderKeys: [...snapshot.displayOrderKeys],
+    document: cloneEditorDocument(snapshot.document),
     selectedMarkerId: snapshot.selectedMarkerId,
     selectedShapeId: snapshot.selectedShapeId
   };

@@ -1,3 +1,7 @@
+import type { MapProject } from "../shared/schema/mapproj-contract.js";
+
+export type { MapProject } from "../shared/schema/mapproj-contract.js";
+
 export type GeonamesResult = {
   id: number;
   name: string;
@@ -8,67 +12,6 @@ export type GeonamesResult = {
   featureCode: string | null;
   countryCode: string | null;
   population: number | null;
-};
-
-export type MapProject = {
-  schemaVersion: "0.2";
-  createdAt: string;
-  updatedAt: string;
-  appVersion?: string;
-  dataPackVersion: string;
-  dataPackId?: string;
-  canvas: {
-    width: number;
-    height: number;
-    unit: "px" | "mm";
-  };
-  viewport: {
-    bbox: {
-      minLon: number;
-      minLat: number;
-      maxLon: number;
-      maxLat: number;
-    };
-    projection: "EPSG:3857" | "EPSG:4326";
-  };
-  layers: Array<{
-    id: string;
-    name: string;
-    visible: boolean;
-    locked: boolean;
-    opacity: number;
-    zIndex: number;
-  }>;
-  objects: Array<{
-    id: string;
-    type: "pointLabel" | "areaLabel" | "textOnly" | "arrow" | "polyline";
-    layerId: string;
-    style: Record<string, unknown>;
-    geometry: {
-      kind: "point" | "polygon" | "none";
-      lon?: number;
-      lat?: number;
-      rings?: Array<Array<[number, number]>>;
-    };
-    text?: string;
-    provenance?: {
-      source: "geonames" | "manual";
-      sourceId?: string;
-      query?: string;
-    };
-  }>;
-  ui: {
-    listOrderKeys?: string[];
-    displayOrderKeys?: string[];
-    activeStyleId?: string;
-    hillshadeEnabled?: boolean;
-    hillshadeBlend?: string;
-    ratioMode?: "free" | "fixed";
-    activeRatioId?: string;
-    cropRatio?: number;
-    customRatioA?: number;
-    customRatioB?: number;
-  };
 };
 
 declare global {

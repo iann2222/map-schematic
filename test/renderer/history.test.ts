@@ -5,35 +5,48 @@ import {
   cloneEditorSnapshot,
   editorSnapshotsEqual
 } from "../../src/renderer/editor/snapshot.js";
-import type { EditorSnapshot } from "../../src/renderer/editor/types.js";
+import type {
+  EditorSnapshot,
+  Marker
+} from "../../src/renderer/editor/types.js";
 
 function createSnapshot(name = "A"): EditorSnapshot {
   return {
-    markers: [
-      {
-        id: "marker-1",
-        name,
-        latitude: 25,
-        longitude: 121,
-        sourceType: "manual",
-        labelMode: "name",
-        style: {
-          dotSize: 7,
-          textSize: 7,
-          dotColor: "#f97316",
-          textColor: "#fde68a",
-          textOffsetX: 8,
-          textOffsetY: -6,
-          fontFamily: "sans-serif"
+    document: {
+      objects: [
+        {
+          objectKind: "marker",
+          id: "marker-1",
+          name,
+          latitude: 25,
+          longitude: 121,
+          sourceType: "manual",
+          labelMode: "name",
+          style: {
+            dotSize: 7,
+            textSize: 7,
+            dotColor: "#f97316",
+            textColor: "#fde68a",
+            textOffsetX: 8,
+            textOffsetY: -6,
+            fontFamily: "sans-serif"
+          }
         }
-      }
-    ],
-    shapes: [],
-    listOrderKeys: ["marker:marker-1"],
-    displayOrderKeys: ["marker:marker-1"],
+      ],
+      listOrderKeys: ["marker:marker-1"],
+      displayOrderKeys: ["marker:marker-1"]
+    },
     selectedMarkerId: "marker-1",
     selectedShapeId: null
   };
+}
+
+function firstMarker(snapshot: EditorSnapshot | null): Marker {
+  const object = snapshot?.document.objects[0];
+  if (!object || object.objectKind !== "marker") {
+    throw new Error("Expected first editor object to be a marker");
+  }
+  return object;
 }
 
 function createHistory(limit = 100): HistoryManager<EditorSnapshot> {
@@ -58,9 +71,9 @@ describe("renderer history", () => {
     const history = createHistory();
     history.record(createSnapshot("A"), createSnapshot("B"));
 
-    expect(history.undo()?.markers[0].name).toBe("A");
+    expect(firstMarker(history.undo()).name).toBe("A");
     expect(history.canRedo).toBe(true);
-    expect(history.redo()?.markers[0].name).toBe("B");
+    expect(firstMarker(history.redo()).name).toBe("B");
   });
 
   it("clears the redo branch after a new edit", () => {
@@ -70,7 +83,7 @@ describe("renderer history", () => {
     history.record(createSnapshot("A"), createSnapshot("C"));
 
     expect(history.canRedo).toBe(false);
-    expect(history.undo()?.markers[0].name).toBe("A");
+    expect(firstMarker(history.undo()).name).toBe("A");
   });
 
   it("merges consecutive edits with the same key", () => {
@@ -85,8 +98,8 @@ describe("renderer history", () => {
     });
 
     expect(history.undoCount).toBe(1);
-    expect(history.undo()?.markers[0].name).toBe("A");
-    expect(history.redo()?.markers[0].name).toBe("C");
+    expect(firstMarker(history.undo()).name).toBe("A");
+    expect(firstMarker(history.redo()).name).toBe("C");
   });
 
   it("keeps snapshots isolated from later mutations", () => {
@@ -94,11 +107,11 @@ describe("renderer history", () => {
     const before = createSnapshot("A");
     const after = createSnapshot("B");
     history.record(before, after);
-    before.markers[0].name = "changed-before";
-    after.markers[0].style.dotSize = 99;
+    firstMarker(before).name = "changed-before";
+    firstMarker(after).style.dotSize = 99;
 
-    expect(history.undo()?.markers[0].name).toBe("A");
-    expect(history.redo()?.markers[0].style.dotSize).toBe(7);
+    expect(firstMarker(history.undo()).name).toBe("A");
+    expect(firstMarker(history.redo()).style.dotSize).toBe(7);
   });
 
   it("drops the oldest entries after reaching the limit", () => {
@@ -107,8 +120,8 @@ describe("renderer history", () => {
     history.record(createSnapshot("B"), createSnapshot("C"));
     history.record(createSnapshot("C"), createSnapshot("D"));
 
-    expect(history.undo()?.markers[0].name).toBe("C");
-    expect(history.undo()?.markers[0].name).toBe("B");
+    expect(firstMarker(history.undo()).name).toBe("C");
+    expect(firstMarker(history.undo()).name).toBe("B");
     expect(history.undo()).toBeNull();
   });
 });

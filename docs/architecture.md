@@ -68,13 +68,16 @@
   - 將目前狀態轉換為 `.mapproj`，並從專案檔還原編輯狀態。
   - 產生高解析 PNG、PDF 輸入與真正向量 SVG；地形陰影啟用時僅陰影部分維持點陣圖片。
 - `src/renderer/bridge.ts`
-  - 定義 preload bridge、GeoNames 查詢結果及 renderer 使用的專案契約。
+  - 定義 preload bridge 與 GeoNames 查詢結果；專案契約直接引用 shared schema，避免重複定義。
 - `src/renderer/editor/*`
-  - 定義標示／形狀狀態、不可變快照及最多 300 筆的 Undo/Redo 歷史。
+  - 以單一 `EditorDocument.objects` 管理點標示與形狀，並以可辨識物件型別提供安全存取。
+  - 定義不可變 document 快照及最多 300 筆的 Undo/Redo 歷史。
   - 連續文字與滑桿修改可合併；新增、刪除、拖曳、樣式及排序均可復原與重做。
 - `src/renderer/project/project-state.ts`
   - 比較目前專案與最近一次成功儲存／載入的內容，供未儲存狀態提示使用。
   - 分離目前 renderer 可編輯的 point 物件與尚未支援的幾何物件；後者不顯示，但再次儲存時會原樣保留。
+- `src/renderer/project/v02-adapter.ts`
+  - 集中處理 `.mapproj` v0.2 與 `EditorDocument` 的雙向轉換，renderer 互動邏輯不直接解析專案欄位。
 - `src/renderer/map/geometry.ts`
   - 集中 EPSG:4326／EPSG:3857 投影與 GeoJSON 至 SVG path 轉換。
 - `src/renderer/ui/slider.ts`
@@ -88,7 +91,9 @@
   - 定義 manifest／release 契約、檔案校驗、active 版本、初始化、更新、修復、安全啟用與 fallback。
   - `pack-release.json` 是目標資料包 id／version 的唯一來源，不另在程式碼維護重複版本常數。
 - `src/shared/schema/mapproj.ts`
-  - 定義目前 `.mapproj` v0.2 資料模型與初始專案。
+  - 提供目前 `.mapproj` v0.2 版本常數與初始專案。
+- `src/shared/schema/mapproj-contract.d.ts`
+  - 集中定義 main、preload、renderer 共用的 `.mapproj` 資料契約。
 - `src/shared/schema/migrate.ts`
   - 依 schemaVersion 逐版遷移專案；目前支援 v0.1 → v0.2，未知版本不會被猜測轉換。
 - `src/shared/schema/validate.ts`

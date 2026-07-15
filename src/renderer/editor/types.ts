@@ -10,6 +10,7 @@ export type MarkerStyle = {
 };
 
 export type Marker = {
+  objectKind: "marker";
   id: string;
   name: string;
   nameAlt?: string;
@@ -36,6 +37,7 @@ export type ShapeStyle = {
 };
 
 export type ShapeItem = {
+  objectKind: "shape";
   id: string;
   type: "line" | "area" | "text" | "arrow";
   displayName?: string;
@@ -47,11 +49,24 @@ export type ShapeItem = {
   style: ShapeStyle;
 };
 
-export type EditorSnapshot = {
-  markers: Marker[];
-  shapes: ShapeItem[];
+export type EditorObject = Marker | ShapeItem;
+
+export type EditorDocument = {
+  objects: EditorObject[];
   listOrderKeys: string[];
   displayOrderKeys: string[];
+};
+
+export type EditorSnapshot = {
+  document: EditorDocument;
   selectedMarkerId: string | null;
   selectedShapeId: string | null;
 };
+
+export function isMarker(object: EditorObject): object is Marker {
+  return object.objectKind === "marker";
+}
+
+export function isShape(object: EditorObject): object is ShapeItem {
+  return object.objectKind === "shape";
+}

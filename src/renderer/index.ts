@@ -7,12 +7,15 @@ import {
   editorSnapshotsEqual
 } from "./editor/snapshot.js";
 import type {
+  EditorDocument,
+  EditorObject,
   EditorSnapshot,
   Marker,
   MarkerStyle,
   ShapeItem,
   ShapeStyle
 } from "./editor/types.js";
+import { isMarker, isShape } from "./editor/types.js";
 import {
   EARTH_RADIUS,
   WORLD_BBOX,
@@ -20,10 +23,11 @@ import {
   project,
   unproject
 } from "./map/geometry.js";
+import { projectFingerprint } from "./project/project-state.js";
 import {
-  partitionProjectObjects,
-  projectFingerprint
-} from "./project/project-state.js";
+  editorDocumentToV02Objects,
+  mapProjectToEditorDocument
+} from "./project/v02-adapter.js";
 import {
   initSlider,
   setSliderValue,
@@ -443,13 +447,40 @@ let stepOneCropSnapshot:
     }
   | null = null;
 
-const selectedMarkers: Marker[] = [];
+const editorDocument: EditorDocument = {
+  objects: [],
+  listOrderKeys: [],
+  displayOrderKeys: [],
+};
+
+function markerObjects(): Marker[] {
+  return editorDocument.objects.filter(isMarker);
+}
+
+function shapeObjects(): ShapeItem[] {
+  return editorDocument.objects.filter(isShape);
+}
+
+function addEditorObject(object: EditorObject): void {
+  editorDocument.objects.push(object);
+}
+
+function removeEditorObject(objectId: string): boolean {
+  const index = editorDocument.objects.findIndex((object) => object.id === objectId);
+  if (index < 0) {
+    return false;
+  }
+  editorDocument.objects.splice(index, 1);
+  return true;
+}
+
+function replaceEditorObjects(objects: EditorObject[]): void {
+  editorDocument.objects.splice(0, editorDocument.objects.length, ...objects);
+}
+
 let selectedMarkerId: string | null = null;
 let previewMarker: Marker | null = null;
-const shapes: ShapeItem[] = [];
 const preservedProjectObjects: MapProject["objects"] = [];
-let listOrderKeys: string[] = [];
-let displayOrderKeys: string[] = [];
 type DragPhase = "idle" | "pending" | "dragging" | "settling";
 type OrderMode = "list" | "display";
 type OrderDragSession = {
@@ -528,10 +559,7 @@ const editorHistory = new HistoryManager<EditorSnapshot>({
 
 function captureEditorSnapshot(): EditorSnapshot {
   return cloneEditorSnapshot({
-    markers: selectedMarkers,
-    shapes,
-    listOrderKeys,
-    displayOrderKeys,
+    document: editorDocument,
     selectedMarkerId,
     selectedShapeId,
   });
@@ -578,30 +606,15 @@ function restoreEditorSnapshot(snapshot: EditorSnapshot): void {
   if (orderDragSession) {
     cleanupOrderSession("cancel");
   }
-  selectedMarkers.splice(
-    0,
-    selectedMarkers.length,
-    ...snapshot.markers.map((marker) => ({
-      ...marker,
-      style: { ...marker.style },
-    })),
-  );
-  shapes.splice(
-    0,
-    shapes.length,
-    ...snapshot.shapes.map((shape) => ({
-      ...shape,
-      style: { ...shape.style },
-    })),
-  );
-  listOrderKeys = [...snapshot.listOrderKeys];
-  displayOrderKeys = [...snapshot.displayOrderKeys];
-  selectedMarkerId = snapshot.markers.some(
+  replaceEditorObjects(snapshot.document.objects);
+  editorDocument.listOrderKeys = [...snapshot.document.listOrderKeys];
+  editorDocument.displayOrderKeys = [...snapshot.document.displayOrderKeys];
+  selectedMarkerId = markerObjects().some(
     (marker) => marker.id === snapshot.selectedMarkerId,
   )
     ? snapshot.selectedMarkerId
     : null;
-  selectedShapeId = snapshot.shapes.some(
+  selectedShapeId = shapeObjects().some(
     (shape) => shape.id === snapshot.selectedShapeId,
   )
     ? snapshot.selectedShapeId
@@ -1919,7 +1932,7 @@ function addToolItem(tool: typeof activeTool): void {
       return;
     }
     const before = captureEditorSnapshot();
-    selectedMarkers.push(marker);
+    addEditorObject(marker);
     previewMarker = null;
     previewToolMarker = null;
     selectMarker(marker.id);
@@ -1939,7 +1952,7 @@ function addToolItem(tool: typeof activeTool): void {
       return;
     }
     const before = captureEditorSnapshot();
-    shapes.push(shape);
+    addEditorObject(shape);
     previewShape = null;
     selectShape(shape.id);
     renderMarkerList();
@@ -1950,7 +1963,7 @@ function addToolItem(tool: typeof activeTool): void {
 
 function syncManualMarkerCount(): void {
   let maxIndex = 0;
-  selectedMarkers.forEach((marker) => {
+  markerObjects().forEach((marker) => {
     if (!marker.name.startsWith("點標示")) {
       return;
     }
@@ -2003,7 +2016,7 @@ function renderMarkers() {
   const root = ensureMapRoot(svg);
   const markerWrap = ensureMarkersContainer(root);
   const rankMap = getDisplayRankMap();
-  const sortedMarkers = [...selectedMarkers].sort((a, b) => {
+  const sortedMarkers = [...markerObjects()].sort((a, b) => {
     const ra = rankMap.get(markerOverlayKey(a.id)) ?? Number.MAX_SAFE_INTEGER;
     const rb = rankMap.get(markerOverlayKey(b.id)) ?? Number.MAX_SAFE_INTEGER;
     if (ra !== rb) {
@@ -2256,7 +2269,7 @@ function renderShapes(): void {
   const root = ensureMapRoot(svg);
   const shapeWrap = ensureShapesContainer(root);
   const rankMap = getDisplayRankMap();
-  const sortedShapes = [...shapes].sort((a, b) => {
+  const sortedShapes = [...shapeObjects()].sort((a, b) => {
     const ra = rankMap.get(shapeOverlayKey(a.id)) ?? Number.MAX_SAFE_INTEGER;
     const rb = rankMap.get(shapeOverlayKey(b.id)) ?? Number.MAX_SAFE_INTEGER;
     if (ra !== rb) {
@@ -2836,6 +2849,7 @@ function setResults3Visible(visible: boolean): void {
 
 function setPreviewMarker(result: GeonamesResult): void {
   previewMarker = {
+    objectKind: "marker",
     id: `preview-${result.id}`,
     name:
       result.nameAlt && result.nameAlt !== result.name
@@ -2919,6 +2933,7 @@ function buildCoordMarker(
 ): Marker {
   const coordsText = `(${parsed.lat.toFixed(4)}, ${parsed.lon.toFixed(4)})`;
   return {
+    objectKind: "marker",
     id: `${idPrefix}-${Date.now()}`,
     name: "座標標示",
     nameAlt: coordsText,
@@ -2940,7 +2955,7 @@ function addMarkerFromCoordsValue(parsed: { lat: number; lon: number }): void {
   }
   placeMarkerLabelInsideView(marker);
   const before = captureEditorSnapshot();
-  selectedMarkers.push(marker);
+  addEditorObject(marker);
   previewMarker = null;
   if (activeStep === "3") {
     selectMarker(marker.id);
@@ -3014,6 +3029,7 @@ function defaultShapeStyle(type: ShapeItem["type"]): ShapeStyle {
 function buildManualMarkerAt(center: { lon: number; lat: number }): Marker {
   manualMarkerCount += 1;
   return {
+    objectKind: "marker",
     id: `manual-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     name: `點標示${manualMarkerCount}`,
     latitude: center.lat,
@@ -3028,6 +3044,7 @@ function buildManualMarkerAt(center: { lon: number; lat: number }): Marker {
 
 function buildPreviewMarkerAt(center: { lon: number; lat: number }): Marker {
   return {
+    objectKind: "marker",
     id: "preview-tool-marker",
     name: "點標示",
     latitude: center.lat,
@@ -3047,6 +3064,7 @@ function buildShapeAt(
   const size = 140 / Math.max(0.4, view.scale);
   const height = type === "area" ? size * 0.7 : size * 0.4;
   return {
+    objectKind: "shape",
     id: `shape-${type}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     type,
     longitude: center.lon,
@@ -3117,11 +3135,11 @@ function uniqueNameMap(
 function uniqueOverlayNameMap(): Map<string, string> {
   const shapeNames = shapeDisplayNameMap();
   return uniqueNameMap([
-    ...selectedMarkers.map((marker) => ({
+    ...markerObjects().map((marker) => ({
       key: markerOverlayKey(marker.id),
       name: markerListName(marker),
     })),
-    ...shapes.map((shape) => ({
+    ...shapeObjects().map((shape) => ({
       key: shapeOverlayKey(shape.id),
       name: shapeNames.get(shape.id) ?? "標示",
     })),
@@ -3167,7 +3185,7 @@ function shapeDisplayNameMap(): Map<string, string> {
     text: 0,
     arrow: 0,
   };
-  shapes.forEach((shape) => {
+  shapeObjects().forEach((shape) => {
     shapeCounters[shape.type] += 1;
     names.set(
       shape.id,
@@ -3183,7 +3201,7 @@ function getOverlayRefs(): OverlayObjectRef[] {
   const refs: OverlayObjectRef[] = [];
   const uniqueNames = uniqueOverlayNameMap();
   const seen = new Set<string>();
-  selectedMarkers.forEach((marker) => {
+  markerObjects().forEach((marker) => {
     const key = markerOverlayKey(marker.id);
     if (seen.has(key)) {
       return;
@@ -3196,7 +3214,7 @@ function getOverlayRefs(): OverlayObjectRef[] {
       name: uniqueNames.get(key) ?? markerListName(marker),
     });
   });
-  shapes.forEach((shape) => {
+  shapeObjects().forEach((shape) => {
     const key = shapeOverlayKey(shape.id);
     refs.push({
       key,
@@ -3215,8 +3233,8 @@ function syncOrderKeys(): void {
     source.filter(
       (key, index) => valid.has(key) && source.indexOf(key) === index,
     );
-  const normalizedList = normalize(listOrderKeys);
-  const normalizedDisplay = normalize(displayOrderKeys);
+  const normalizedList = normalize(editorDocument.listOrderKeys);
+  const normalizedDisplay = normalize(editorDocument.displayOrderKeys);
   refs.forEach((item) => {
     if (!normalizedList.includes(item.key)) {
       normalizedList.push(item.key);
@@ -3225,14 +3243,14 @@ function syncOrderKeys(): void {
       normalizedDisplay.push(item.key);
     }
   });
-  listOrderKeys = normalizedList;
-  displayOrderKeys = normalizedDisplay;
+  editorDocument.listOrderKeys = normalizedList;
+  editorDocument.displayOrderKeys = normalizedDisplay;
 }
 
 function getDisplayRankMap(): Map<string, number> {
   syncOrderKeys();
   const rank = new Map<string, number>();
-  displayOrderKeys.forEach((key, index) => {
+  editorDocument.displayOrderKeys.forEach((key, index) => {
     rank.set(key, index);
   });
   return rank;
@@ -3249,7 +3267,7 @@ function shapeKey(shape: {
 
 function hasDuplicateShape(candidate: ShapeItem): boolean {
   const key = shapeKey(candidate);
-  return shapes.some((shape) => shapeKey(shape) === key);
+  return shapeObjects().some((shape) => shapeKey(shape) === key);
 }
 
 function hasDuplicateMarker(candidate: {
@@ -3258,12 +3276,12 @@ function hasDuplicateMarker(candidate: {
   longitude: number;
 }): boolean {
   const key = markerKey(candidate);
-  return selectedMarkers.some((marker) => markerKey(marker) === key);
+  return markerObjects().some((marker) => markerKey(marker) === key);
 }
 
 function hasGeonamesMarker(result: GeonamesResult): boolean {
   const sourceId = String(result.id);
-  return selectedMarkers.some(
+  return markerObjects().some(
     (marker) =>
       marker.sourceType === "geonames" &&
       marker.sourceId === sourceId &&
@@ -3279,6 +3297,7 @@ function addMarkerFromGeonames(result: GeonamesResult): void {
   const nameLocal = result.nameAlt ?? result.name;
   const nameOriginal = result.name;
   const marker: Marker = {
+    objectKind: "marker",
     id: `geo-${result.id}-${Date.now()}`,
     name: nameLocal,
     nameAlt: nameOriginal,
@@ -3293,7 +3312,7 @@ function addMarkerFromGeonames(result: GeonamesResult): void {
   };
   placeMarkerLabelInsideView(marker);
   const before = captureEditorSnapshot();
-  selectedMarkers.push(marker);
+  addEditorObject(marker);
   previewMarker = null;
   if (activeStep === "3") {
     selectMarker(marker.id);
@@ -3308,7 +3327,7 @@ function getSelectedMarker(): Marker | null {
     return null;
   }
   return (
-    selectedMarkers.find((marker) => marker.id === selectedMarkerId) ?? null
+    markerObjects().find((marker) => marker.id === selectedMarkerId) ?? null
   );
 }
 
@@ -3316,7 +3335,7 @@ function getSelectedShape(): ShapeItem | null {
   if (!selectedShapeId) {
     return null;
   }
-  return shapes.find((shape) => shape.id === selectedShapeId) ?? null;
+  return shapeObjects().find((shape) => shape.id === selectedShapeId) ?? null;
 }
 
 function getEditableMarker(): Marker | null {
@@ -3455,7 +3474,7 @@ function syncItemNameControl(): void {
     return;
   }
   if (shape) {
-    const sameTypeShapes = shapes.filter((item) => item.type === shape.type);
+    const sameTypeShapes = shapeObjects().filter((item) => item.type === shape.type);
     const index = Math.max(
       1,
       sameTypeShapes.findIndex((item) => item.id === shape.id) + 1,
@@ -3646,10 +3665,10 @@ function renderMarkerList(): void {
   }
   syncOrderKeys();
   markerList.innerHTML = "";
-  const markersById = new Map(selectedMarkers.map((item) => [item.id, item]));
-  const shapesById = new Map(shapes.map((item) => [item.id, item]));
+  const markersById = new Map(markerObjects().map((item) => [item.id, item]));
+  const shapesById = new Map(shapeObjects().map((item) => [item.id, item]));
   const uniqueNames = uniqueOverlayNameMap();
-  listOrderKeys.forEach((overlayKey) => {
+  editorDocument.listOrderKeys.forEach((overlayKey) => {
     const row = document.createElement("div");
     row.className = "marker-item";
     const title = document.createElement("span");
@@ -3861,7 +3880,8 @@ function finalizeOrderCommit(session: OrderDragSession): void {
   )
     .map((row) => row.dataset.key ?? "")
     .filter((key) => key.length > 0);
-  const currentOrder = mode === "list" ? listOrderKeys : displayOrderKeys;
+  const currentOrder =
+    mode === "list" ? editorDocument.listOrderKeys : editorDocument.displayOrderKeys;
   const changed =
     currentOrder.length !== nextOrder.length ||
     currentOrder.some((key, index) => key !== nextOrder[index]);
@@ -3870,9 +3890,9 @@ function finalizeOrderCommit(session: OrderDragSession): void {
   }
   const before = captureEditorSnapshot();
   if (mode === "list") {
-    listOrderKeys = nextOrder;
+    editorDocument.listOrderKeys = nextOrder;
   } else {
-    displayOrderKeys = nextOrder;
+    editorDocument.displayOrderKeys = nextOrder;
   }
   renderOrderDialog();
   renderMarkers();
@@ -4027,14 +4047,15 @@ function createOrderItem(
   li.appendChild(actions);
 
   const moveToEdge = (edge: "top" | "bottom") => {
-    const current = mode === "list" ? listOrderKeys : displayOrderKeys;
+    const current =
+      mode === "list" ? editorDocument.listOrderKeys : editorDocument.displayOrderKeys;
     const base = current.filter((key) => key !== item.key);
     const next = edge === "top" ? [item.key, ...base] : [...base, item.key];
     const before = captureEditorSnapshot();
     if (mode === "list") {
-      listOrderKeys = next;
+      editorDocument.listOrderKeys = next;
     } else {
-      displayOrderKeys = next;
+      editorDocument.displayOrderKeys = next;
     }
     renderOrderDialog();
     renderMarkers();
@@ -4085,8 +4106,8 @@ function renderOrderDialog(): void {
       container.appendChild(row);
     });
   };
-  renderList(listOrderList, listOrderKeys, "list");
-  renderList(displayOrderList, displayOrderKeys, "display");
+  renderList(listOrderList, editorDocument.listOrderKeys, "list");
+  renderList(displayOrderList, editorDocument.displayOrderKeys, "display");
 }
 
 function openOrderDialog(): void {
@@ -4193,10 +4214,7 @@ function attachOrderDragGlobalEvents(): void {
 
 function deleteMarker(markerId: string): void {
   const before = captureEditorSnapshot();
-  const index = selectedMarkers.findIndex((marker) => marker.id === markerId);
-  if (index >= 0) {
-    selectedMarkers.splice(index, 1);
-  }
+  removeEditorObject(markerId);
   if (selectedMarkerId === markerId) {
     selectedMarkerId = null;
     syncMarkerControls(null);
@@ -4270,19 +4288,6 @@ function currentSelectionBBox(): BBox {
   return { ...WORLD_BBOX };
 }
 
-function projectObjectTypeForShape(type: ShapeItem["type"]): MapProject["objects"][number]["type"] {
-  if (type === "area") {
-    return "areaLabel";
-  }
-  if (type === "text") {
-    return "textOnly";
-  }
-  if (type === "arrow") {
-    return "arrow";
-  }
-  return "polyline";
-}
-
 function buildProject(): MapProject | null {
   if (!currentPackVersion || !currentPackId) {
     return null;
@@ -4312,65 +4317,6 @@ function buildProject(): MapProject | null {
       zIndex: layers.length,
     });
   }
-  const markerObjects: MapProject["objects"] = selectedMarkers.map(
-    (marker, index) => ({
-      id: marker.id || `obj-${index + 1}`,
-      type: "pointLabel",
-      layerId: "layer-1",
-      style: {
-        name: marker.name,
-        nameAlt: marker.nameAlt,
-        displayName: marker.displayName,
-        sourceType: marker.sourceType,
-        kind: marker.kind,
-        showLabel: marker.showLabel,
-        dotColor: marker.style.dotColor,
-        textColor: marker.style.textColor,
-        dotSize: marker.style.dotSize,
-        textSize: marker.style.textSize,
-        fontFamily: marker.style.fontFamily,
-        textOffsetX: marker.style.textOffsetX,
-        textOffsetY: marker.style.textOffsetY,
-        textAnchor: marker.style.textAnchor,
-        labelMode: marker.labelMode,
-        labelName: marker.labelName,
-      },
-      geometry: {
-        kind: "point",
-        lon: marker.longitude,
-        lat: marker.latitude,
-      },
-      text: markerLabelText(marker),
-      provenance:
-        marker.sourceType === "geonames"
-          ? {
-              source: "geonames",
-              sourceId: marker.sourceId ?? String(marker.id),
-            }
-          : { source: "manual", query: marker.sourceType },
-    }),
-  );
-  const shapeObjects: MapProject["objects"] = shapes.map((shape, index) => ({
-    id: shape.id || `shape-${index + 1}`,
-    type: projectObjectTypeForShape(shape.type),
-    layerId: "layer-1",
-    style: {
-      shapeType: shape.type,
-      displayName: shape.displayName,
-      width: shape.width,
-      height: shape.height,
-      strokeColor: shape.style.strokeColor,
-      strokeWidth: shape.style.strokeWidth,
-      fillColor: shape.style.fillColor,
-      fillOpacity: shape.style.fillOpacity,
-      textColor: shape.style.textColor,
-      textSize: shape.style.textSize,
-      fontFamily: shape.style.fontFamily,
-    },
-    geometry: { kind: "point", lon: shape.longitude, lat: shape.latitude },
-    text: shape.text,
-    provenance: { source: "manual", query: `shape:${shape.type}` },
-  }));
   return {
     ...(currentProject ?? {}),
     schemaVersion: "0.2",
@@ -4384,11 +4330,11 @@ function buildProject(): MapProject | null {
       projection: "EPSG:4326",
     },
     layers,
-    objects: [...markerObjects, ...shapeObjects, ...preservedProjectObjects],
+    objects: editorDocumentToV02Objects(editorDocument, preservedProjectObjects),
     ui: {
       ...(currentProject?.ui ?? {}),
-      listOrderKeys: [...listOrderKeys],
-      displayOrderKeys: [...displayOrderKeys],
+      listOrderKeys: [...editorDocument.listOrderKeys],
+      displayOrderKeys: [...editorDocument.displayOrderKeys],
       activeStyleId,
       hillshadeEnabled,
       hillshadeBlend,
@@ -4496,48 +4442,6 @@ async function handleSaveBeforeClose(): Promise<void> {
   }
 }
 
-function projectShapeTypeFromObject(obj: MapProject["objects"][number]): ShapeItem["type"] | null {
-  const style = (obj.style ?? {}) as Record<string, unknown>;
-  if (
-    style.shapeType === "line" ||
-    style.shapeType === "area" ||
-    style.shapeType === "text" ||
-    style.shapeType === "arrow"
-  ) {
-    return style.shapeType;
-  }
-  if (obj.type === "textOnly") {
-    return "text";
-  }
-  if (obj.type === "areaLabel") {
-    return "area";
-  }
-  if (obj.type === "arrow") {
-    return "arrow";
-  }
-  if (obj.type === "polyline") {
-    return "line";
-  }
-  return null;
-}
-
-function projectMarkerSourceType(
-  style: Record<string, unknown>,
-  obj: MapProject["objects"][number],
-): Marker["sourceType"] {
-  if (
-    style.sourceType === "geonames" ||
-    style.sourceType === "coords" ||
-    style.sourceType === "manual"
-  ) {
-    return style.sourceType;
-  }
-  if (obj.provenance?.source === "geonames") {
-    return "geonames";
-  }
-  return obj.provenance?.query === "manual" ? "manual" : "coords";
-}
-
 function projectValidationMessage(
   validation: {
     valid: boolean;
@@ -4633,8 +4537,10 @@ async function handleLoad() {
   }
   currentProject = loadedProject;
   currentProjectPath = result.path ?? null;
-  selectedMarkers.splice(0, selectedMarkers.length);
-  shapes.splice(0, shapes.length);
+  const loadedEditor = mapProjectToEditorDocument(loadedProject);
+  replaceEditorObjects(loadedEditor.document.objects);
+  editorDocument.listOrderKeys = loadedEditor.document.listOrderKeys;
+  editorDocument.displayOrderKeys = loadedEditor.document.displayOrderKeys;
   selectedMarkerId = null;
   selectedShapeId = null;
   selectedLabelMarkerId = null;
@@ -4642,11 +4548,10 @@ async function handleLoad() {
   previewShape = null;
   previewToolMarker = null;
   cropBox = null;
-  const partitionedObjects = partitionProjectObjects(loadedProject.objects ?? []);
   preservedProjectObjects.splice(
     0,
     preservedProjectObjects.length,
-    ...partitionedObjects.preservedObjects,
+    ...loadedEditor.preservedObjects,
   );
   if (loadedProject.viewport?.bbox) {
     const bbox = loadedProject.viewport.bbox;
@@ -4659,105 +4564,6 @@ async function handleLoad() {
       height: Math.abs(max[1] - min[1]),
     };
   }
-  for (const obj of partitionedObjects.editablePointObjects) {
-    if (
-      !obj.geometry ||
-      obj.geometry.kind !== "point" ||
-      obj.geometry.lon == null ||
-      obj.geometry.lat == null
-    ) {
-      continue;
-    }
-    const style = (obj.style ?? {}) as Record<string, unknown>;
-    if (obj.type === "pointLabel") {
-      const sourceType = projectMarkerSourceType(style, obj);
-      const coordsText = formatCoords({
-        latitude: obj.geometry.lat,
-        longitude: obj.geometry.lon,
-      });
-      const labelName =
-        typeof style.labelName === "string" ? style.labelName : undefined;
-      const labelMode =
-        style.labelMode === "name" || style.labelMode === "coords"
-          ? (style.labelMode as "name" | "coords")
-          : sourceType === "coords"
-            ? "coords"
-            : "name";
-      const name =
-        typeof style.name === "string" && style.name.trim().length > 0
-          ? style.name
-          : sourceType === "coords"
-            ? "座標標示"
-            : (obj.text ?? "");
-      selectedMarkers.push({
-        id: obj.id ?? `obj-${selectedMarkers.length + 1}`,
-        name,
-        nameAlt:
-          typeof style.nameAlt === "string"
-            ? style.nameAlt
-            : sourceType === "coords"
-              ? coordsText
-              : undefined,
-        displayName:
-          typeof style.displayName === "string"
-            ? style.displayName
-            : undefined,
-        latitude: obj.geometry.lat,
-        longitude: obj.geometry.lon,
-        sourceId: obj.provenance?.sourceId,
-        style: {
-          dotColor: String(style.dotColor ?? "#f97316"),
-          textColor: String(style.textColor ?? "#fde68a"),
-          dotSize: Number(style.dotSize ?? 7),
-          textSize: Number(style.textSize ?? 7),
-          fontFamily: String(style.fontFamily ?? "IBM Plex Sans, sans-serif"),
-          textOffsetX: Number(style.textOffsetX ?? 8),
-          textOffsetY: Number(style.textOffsetY ?? -6),
-          textAnchor:
-            style.textAnchor === "end" || style.textAnchor === "start"
-              ? (style.textAnchor as "start" | "end")
-              : undefined,
-        },
-        sourceType,
-        labelMode,
-        labelName,
-        showLabel:
-          typeof style.showLabel === "boolean" ? style.showLabel : true,
-        kind: style.kind === "point" ? "point" : "label",
-      });
-      continue;
-    }
-    const shapeType = projectShapeTypeFromObject(obj);
-    if (!shapeType) {
-      continue;
-    }
-    shapes.push({
-      id: obj.id ?? `shape-${shapes.length + 1}`,
-      type: shapeType,
-      displayName:
-        typeof style.displayName === "string" ? style.displayName : undefined,
-      longitude: obj.geometry.lon,
-      latitude: obj.geometry.lat,
-      width: Number(style.width ?? (shapeType === "line" ? 140 : 80)),
-      height: Number(style.height ?? (shapeType === "line" ? 0 : 70)),
-      text: typeof obj.text === "string" ? obj.text : undefined,
-      style: {
-        strokeColor: String(style.strokeColor ?? "#38bdf8"),
-        strokeWidth: Number(style.strokeWidth ?? 2),
-        fillColor: String(style.fillColor ?? "#38bdf8"),
-        fillOpacity: Number(style.fillOpacity ?? 0.35),
-        textColor: String(style.textColor ?? "#fde68a"),
-        textSize: Number(style.textSize ?? 7),
-        fontFamily: String(style.fontFamily ?? "IBM Plex Sans, sans-serif"),
-      },
-    });
-  }
-  listOrderKeys = Array.isArray(loadedProject.ui?.listOrderKeys)
-    ? [...loadedProject.ui.listOrderKeys]
-    : [];
-  displayOrderKeys = Array.isArray(loadedProject.ui?.displayOrderKeys)
-    ? [...loadedProject.ui.displayOrderKeys]
-    : [];
   const loadedStyleId = loadedProject.ui?.activeStyleId;
   if (
     typeof loadedStyleId === "string" &&
@@ -5175,8 +4981,7 @@ async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
 
 function handleClearMarkers(): void {
   const before = captureEditorSnapshot();
-  selectedMarkers.splice(0, selectedMarkers.length);
-  shapes.splice(0, shapes.length);
+  replaceEditorObjects([]);
   selectedMarkerId = null;
   selectedShapeId = null;
   previewMarker = null;
@@ -5193,10 +4998,7 @@ function handleClearMarkers(): void {
 
 function deleteShape(shapeId: string): void {
   const before = captureEditorSnapshot();
-  const index = shapes.findIndex((shape) => shape.id === shapeId);
-  if (index >= 0) {
-    shapes.splice(index, 1);
-  }
+  removeEditorObject(shapeId);
   if (selectedShapeId === shapeId) {
     selectedShapeId = null;
     syncShapeControls(null);
@@ -5652,7 +5454,7 @@ function onMouseDown(event: MouseEvent): void {
 
 function onMouseMove(event: MouseEvent): void {
   if (labelDrag) {
-    const marker = selectedMarkers.find(
+    const marker = markerObjects().find(
       (item) => item.id === labelDrag?.markerId,
     );
     if (marker) {
@@ -5667,7 +5469,7 @@ function onMouseMove(event: MouseEvent): void {
     return;
   }
   if (markerDrag) {
-    const marker = selectedMarkers.find(
+    const marker = markerObjects().find(
       (item) => item.id === markerDrag?.markerId,
     );
     if (marker) {
@@ -5692,7 +5494,7 @@ function onMouseMove(event: MouseEvent): void {
     return;
   }
   if (shapeDrag) {
-    const shape = shapes.find((item) => item.id === shapeDrag?.shapeId);
+    const shape = shapeObjects().find((item) => item.id === shapeDrag?.shapeId);
     if (shape) {
       const current = mapPointFromEvent(event);
       const dx = current.x - shapeDrag.startX;

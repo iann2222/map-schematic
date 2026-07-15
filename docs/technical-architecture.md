@@ -28,8 +28,9 @@
 
 補充：
 
-- 目前 renderer 使用原生 HTML、CSS 與 TypeScript，尚未引入 React 或 Vue；bridge 契約、編輯歷史、投影幾何與共用控制已由入口檔拆成獨立模組。
-- Step 3 的 Undo/Redo 使用記憶體快照，涵蓋標示與形狀的新增、刪除、拖曳、內容、樣式及排序；專案載入時重設歷史，不將單純選取或地圖縮放記入歷史。
+- 目前 renderer 使用原生 HTML、CSS 與 TypeScript，尚未引入 React 或 Vue；bridge、編輯模型、專案 adapter、編輯歷史、投影幾何與共用控制已由入口檔拆成獨立模組。
+- Step 3 以單一 `EditorDocument.objects` 管理點標示與形狀；Undo/Redo 使用完整 document 記憶體快照，涵蓋新增、刪除、拖曳、內容、樣式及排序。專案載入時重設歷史，不將單純選取或地圖縮放記入歷史。
+- `.mapproj` 契約由 shared schema 集中定義；renderer 透過 v0.2 adapter 載入與輸出，不另外維護專案資料型別。
 
 ## 2.2 渲染層策略
 
