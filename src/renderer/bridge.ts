@@ -126,6 +126,8 @@ declare global {
         migratedFromVersion?: string;
         recoveredFromBackup?: boolean;
       }>;
+      setProjectDirty?: (dirty: boolean) => void;
+      closeAfterSave?: () => Promise<boolean>;
       onMenuAction?: (handler: (action: string) => void) => () => void;
     };
   }

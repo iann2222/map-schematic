@@ -109,6 +109,8 @@ contextBridge.exposeInMainWorld("mapSchematic", {
   saveProject: (payload: { project: MapProject; path?: string | null; saveAs?: boolean }) =>
     ipcRenderer.invoke("project:save", payload),
   loadProject: () => ipcRenderer.invoke("project:load"),
+  setProjectDirty: (dirty: boolean) => ipcRenderer.send("project:dirty-state", dirty),
+  closeAfterSave: (): Promise<boolean> => ipcRenderer.invoke("project:close-after-save"),
   exportProject: (payload: {
     format: "png" | "svg" | "pdf";
     data: string;

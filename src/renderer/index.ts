@@ -21,6 +21,10 @@ import {
   unproject
 } from "./map/geometry.js";
 import {
+  partitionProjectObjects,
+  projectFingerprint
+} from "./project/project-state.js";
+import {
   initSlider,
   setSliderValue,
   updateSliderUI
@@ -443,6 +447,7 @@ const selectedMarkers: Marker[] = [];
 let selectedMarkerId: string | null = null;
 let previewMarker: Marker | null = null;
 const shapes: ShapeItem[] = [];
+const preservedProjectObjects: MapProject["objects"] = [];
 let listOrderKeys: string[] = [];
 let displayOrderKeys: string[] = [];
 type DragPhase = "idle" | "pending" | "dragging" | "settling";
@@ -481,6 +486,10 @@ let lastScaleFit = 1;
 let currentPackVersion = "";
 let currentPackId = "";
 let currentProject: MapProject | null = null;
+let savedProjectFingerprint: string | null = null;
+let projectDirty = false;
+let reportedProjectDirty: boolean | null = null;
+let dirtyCheckPending = false;
 
 const view: ViewTransform = { scale: 1, tx: 0, ty: 0 };
 let isDragging = false;
@@ -543,6 +552,7 @@ function commitEditorChange(
 ): void {
   editorHistory.record(before, captureEditorSnapshot(), { mergeKey });
   syncHistoryControls();
+  scheduleProjectDirtyCheck();
 }
 
 function beginEditorTransaction(): void {
@@ -4280,6 +4290,28 @@ function buildProject(): MapProject | null {
   syncOrderKeys();
   const now = new Date().toISOString();
   const base = currentProject?.createdAt ?? now;
+  const layers = currentProject?.layers?.length
+    ? currentProject.layers.map((layer) => ({ ...layer }))
+    : [
+        {
+          id: "layer-1",
+          name: "Default",
+          visible: true,
+          locked: false,
+          opacity: 1,
+          zIndex: 0,
+        },
+      ];
+  if (!layers.some((layer) => layer.id === "layer-1")) {
+    layers.push({
+      id: "layer-1",
+      name: "Default",
+      visible: true,
+      locked: false,
+      opacity: 1,
+      zIndex: layers.length,
+    });
+  }
   const markerObjects: MapProject["objects"] = selectedMarkers.map(
     (marker, index) => ({
       id: marker.id || `obj-${index + 1}`,
@@ -4340,28 +4372,21 @@ function buildProject(): MapProject | null {
     provenance: { source: "manual", query: `shape:${shape.type}` },
   }));
   return {
+    ...(currentProject ?? {}),
     schemaVersion: "0.2",
     createdAt: base,
     updatedAt: now,
     dataPackVersion: currentPackVersion,
     dataPackId: currentPackId,
-    canvas: { width: 1200, height: 800, unit: "px" },
+    canvas: currentProject?.canvas ?? { width: 1200, height: 800, unit: "px" },
     viewport: {
       bbox: currentSelectionBBox(),
       projection: "EPSG:4326",
     },
-    layers: [
-      {
-        id: "layer-1",
-        name: "Default",
-        visible: true,
-        locked: false,
-        opacity: 1,
-        zIndex: 0,
-      },
-    ],
-    objects: [...markerObjects, ...shapeObjects],
+    layers,
+    objects: [...markerObjects, ...shapeObjects, ...preservedProjectObjects],
     ui: {
+      ...(currentProject?.ui ?? {}),
       listOrderKeys: [...listOrderKeys],
       displayOrderKeys: [...displayOrderKeys],
       activeStyleId,
@@ -4374,6 +4399,42 @@ function buildProject(): MapProject | null {
       customRatioB: ratioInputB ? Number(ratioInputB.value) || undefined : undefined,
     },
   };
+}
+
+function setProjectDirtyState(dirty: boolean): void {
+  if (projectDirty === dirty && reportedProjectDirty === dirty) {
+    return;
+  }
+  projectDirty = dirty;
+  reportedProjectDirty = dirty;
+  document.title = dirty ? "* 地圖示意圖" : "地圖示意圖";
+  window.mapSchematic?.setProjectDirty?.(dirty);
+}
+
+function syncProjectDirtyState(): void {
+  const project = buildProject();
+  if (!project || savedProjectFingerprint == null) {
+    setProjectDirtyState(false);
+    return;
+  }
+  setProjectDirtyState(projectFingerprint(project) !== savedProjectFingerprint);
+}
+
+function scheduleProjectDirtyCheck(): void {
+  if (dirtyCheckPending) {
+    return;
+  }
+  dirtyCheckPending = true;
+  window.requestAnimationFrame(() => {
+    dirtyCheckPending = false;
+    syncProjectDirtyState();
+  });
+}
+
+function setProjectBaseline(project?: MapProject | null): void {
+  const baseline = project ?? buildProject();
+  savedProjectFingerprint = baseline ? projectFingerprint(baseline) : null;
+  syncProjectDirtyState();
 }
 
 async function handleSave(saveAs = false): Promise<{
@@ -4414,6 +4475,7 @@ async function handleSave(saveAs = false): Promise<{
   }
   if (result.ok) {
     currentProject = project;
+    setProjectBaseline(project);
   }
   if (statusEl) {
     if (result.canceled) {
@@ -4425,6 +4487,13 @@ async function handleSave(saveAs = false): Promise<{
     }
   }
   return result;
+}
+
+async function handleSaveBeforeClose(): Promise<void> {
+  const result = await handleSave(false);
+  if (result?.ok) {
+    await window.mapSchematic?.closeAfterSave?.();
+  }
 }
 
 function projectShapeTypeFromObject(obj: MapProject["objects"][number]): ShapeItem["type"] | null {
@@ -4522,6 +4591,16 @@ async function handleLoad() {
   if (!window.mapSchematic?.loadProject) {
     return;
   }
+  syncProjectDirtyState();
+  if (
+    projectDirty &&
+    !window.confirm("目前專案有尚未儲存的變更。繼續載入其他專案將放棄這些變更，仍要繼續嗎？")
+  ) {
+    if (statusEl) {
+      statusEl.textContent = "已取消載入，未儲存的變更仍保留。";
+    }
+    return;
+  }
   const result = await window.mapSchematic.loadProject();
   if (!result.ok || !result.project) {
     if (statusEl) {
@@ -4563,6 +4642,12 @@ async function handleLoad() {
   previewShape = null;
   previewToolMarker = null;
   cropBox = null;
+  const partitionedObjects = partitionProjectObjects(loadedProject.objects ?? []);
+  preservedProjectObjects.splice(
+    0,
+    preservedProjectObjects.length,
+    ...partitionedObjects.preservedObjects,
+  );
   if (loadedProject.viewport?.bbox) {
     const bbox = loadedProject.viewport.bbox;
     const min = project(bbox.minLon, bbox.minLat, MAP_WIDTH, MAP_HEIGHT);
@@ -4574,7 +4659,7 @@ async function handleLoad() {
       height: Math.abs(max[1] - min[1]),
     };
   }
-  for (const obj of loadedProject.objects ?? []) {
+  for (const obj of partitionedObjects.editablePointObjects) {
     if (
       !obj.geometry ||
       obj.geometry.kind !== "point" ||
@@ -4718,13 +4803,22 @@ async function handleLoad() {
     updateCropOverlay();
     applyMapClip();
   }
+  setProjectBaseline();
+  const preservedCount = preservedProjectObjects.length;
+  if (preservedCount > 0) {
+    window.alert(
+      `此專案有 ${preservedCount} 個物件使用目前編輯器尚未支援的幾何格式。這些物件不會顯示或提供編輯，但再次儲存時會原樣保留。`,
+    );
+  }
   if (statusEl) {
+    const preservedNotice =
+      preservedCount > 0 ? `；另保留 ${preservedCount} 個目前無法編輯的物件` : "";
     if (result.recoveredFromBackup) {
-      statusEl.textContent = `已從備份恢復並載入：${result.path}`;
+      statusEl.textContent = `已從備份恢復並載入：${result.path}${preservedNotice}`;
     } else if (result.migratedFromVersion) {
-      statusEl.textContent = `已載入並將專案格式從 ${result.migratedFromVersion} 升級為 ${loadedProject.schemaVersion}；下次儲存時會寫入新版格式。`;
+      statusEl.textContent = `已載入並將專案格式從 ${result.migratedFromVersion} 升級為 ${loadedProject.schemaVersion}；下次儲存時會寫入新版格式${preservedNotice}。`;
     } else {
-      statusEl.textContent = `專案已載入：${result.path}`;
+      statusEl.textContent = `專案已載入：${result.path}${preservedNotice}`;
     }
   }
 }
@@ -5469,6 +5563,7 @@ function zoomAt(point: { x: number; y: number }, delta: number): void {
   if (selectedLabelMarkerId) {
     renderMarkers();
   }
+  scheduleProjectDirtyCheck();
 }
 
 function resetView(): void {
@@ -5482,6 +5577,7 @@ function resetView(): void {
   if (selectedLabelMarkerId) {
     renderMarkers();
   }
+  scheduleProjectDirtyCheck();
 }
 
 function onWheel(event: WheelEvent): void {
@@ -5799,6 +5895,7 @@ async function boot() {
     if (datapack) {
       currentPackId = datapack.id;
       currentPackVersion = datapack.version;
+      setProjectBaseline();
       statusEl.textContent = `載入資料包 ${datapack.id} ${datapack.version}使用`;
     } else {
       statusEl.textContent = "資料包不可用。";
@@ -6043,6 +6140,9 @@ window.mapSchematic?.onMenuAction?.((action) => {
     case "project:saveAs":
       handleSave(true);
       break;
+    case "project:saveBeforeClose":
+      void handleSaveBeforeClose();
+      break;
     case "export:png":
       handleExport("png");
       break;
@@ -6063,6 +6163,10 @@ attachOrderDragGlobalEvents();
 attachCropInteractions();
 attachMarkerControls();
 attachShapeControls();
+document.addEventListener("click", scheduleProjectDirtyCheck, true);
+document.addEventListener("input", scheduleProjectDirtyCheck, true);
+document.addEventListener("change", scheduleProjectDirtyCheck, true);
+document.addEventListener("pointerup", scheduleProjectDirtyCheck, true);
 dotSizeSlider = initSlider(markerDotSize, 7, () => {
   const markerId = getEditableMarker()?.id ?? "none";
   const before = captureEditorSnapshot();

@@ -49,7 +49,7 @@
 - `src/main/index.ts`
   - 建立安全隔離的 Electron 視窗與應用程式選單。
   - 註冊資料包、底圖、地形、GeoNames、專案檔與匯出 IPC。
-  - 管理檔案選擇、專案備份恢復詢問、PDF 產生及開發版／封裝版輸出路徑。
+  - 管理檔案選擇、未儲存變更確認、專案備份恢復詢問、PDF 產生及開發版／封裝版輸出路徑。
 - `src/main/preload.ts`
   - 透過 `contextBridge` 提供受限的 renderer API。
 - `src/main/datapack-download.ts`
@@ -72,6 +72,9 @@
 - `src/renderer/editor/*`
   - 定義標示／形狀狀態、不可變快照及最多 300 筆的 Undo/Redo 歷史。
   - 連續文字與滑桿修改可合併；新增、刪除、拖曳、樣式及排序均可復原與重做。
+- `src/renderer/project/project-state.ts`
+  - 比較目前專案與最近一次成功儲存／載入的內容，供未儲存狀態提示使用。
+  - 分離目前 renderer 可編輯的 point 物件與尚未支援的幾何物件；後者不顯示，但再次儲存時會原樣保留。
 - `src/renderer/map/geometry.ts`
   - 集中 EPSG:4326／EPSG:3857 投影與 GeoJSON 至 SVG path 轉換。
 - `src/renderer/ui/slider.ts`

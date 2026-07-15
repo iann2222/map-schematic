@@ -47,7 +47,14 @@ type ExportResult = {
   canceled?: boolean;
 };
 
+type WindowCloseState = {
+  dirty: boolean;
+  allowClose: boolean;
+  promptOpen: boolean;
+};
+
 let projectSaveQueue: Promise<void> = Promise.resolve();
+const windowCloseStates = new WeakMap<BrowserWindow, WindowCloseState>();
 
 function enqueueProjectSave(operation: () => Promise<void>): Promise<void> {
   const queued = projectSaveQueue.then(operation, operation);
@@ -56,6 +63,61 @@ function enqueueProjectSave(operation: () => Promise<void>): Promise<void> {
     () => undefined
   );
   return queued;
+}
+
+function closeWindowWithoutPrompt(win: BrowserWindow): void {
+  const state = windowCloseStates.get(win);
+  if (state) {
+    state.dirty = false;
+    state.allowClose = true;
+  }
+  if (!win.isDestroyed()) {
+    win.close();
+  }
+}
+
+function attachUnsavedChangesGuard(win: BrowserWindow): void {
+  const state: WindowCloseState = {
+    dirty: false,
+    allowClose: false,
+    promptOpen: false
+  };
+  windowCloseStates.set(win, state);
+
+  win.on("close", (event) => {
+    if (state.allowClose || !state.dirty) {
+      return;
+    }
+    event.preventDefault();
+    if (state.promptOpen) {
+      return;
+    }
+    state.promptOpen = true;
+    void dialog
+      .showMessageBox(win, {
+        type: "warning",
+        title: "尚未儲存變更",
+        message: "目前專案還有尚未儲存的變更。",
+        detail: "關閉前要先儲存專案嗎？",
+        buttons: ["儲存並關閉", "不儲存", "取消"],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true
+      })
+      .then((result) => {
+        if (win.isDestroyed()) {
+          return;
+        }
+        if (result.response === 0) {
+          win.webContents.send("menu:action", "project:saveBeforeClose");
+        } else if (result.response === 1) {
+          closeWindowWithoutPrompt(win);
+        }
+      })
+      .finally(() => {
+        state.promptOpen = false;
+      });
+  });
 }
 
 function createMainWindow() {
@@ -71,6 +133,8 @@ function createMainWindow() {
       preload: preloadPath
     }
   });
+
+  attachUnsavedChangesGuard(win);
 
   win.loadFile(htmlPath);
 
@@ -232,6 +296,24 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(buildAppMenu());
 
   ipcMain.handle("datapack:get", async () => loadDatapack());
+  ipcMain.on("project:dirty-state", (event, dirty: unknown) => {
+    if (typeof dirty !== "boolean") {
+      return;
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const state = win ? windowCloseStates.get(win) : undefined;
+    if (state) {
+      state.dirty = dirty;
+    }
+  });
+  ipcMain.handle("project:close-after-save", (event): boolean => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) {
+      return false;
+    }
+    closeWindowWithoutPrompt(win);
+    return true;
+  });
   ipcMain.handle("basemap:get", async () => {
     const ready = await getReadyDatapack();
     const layers = ready.manifest.basemap.layers;
