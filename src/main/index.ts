@@ -9,23 +9,18 @@ import {
 } from "../shared/schema/io";
 import { validateProject } from "../shared/schema/validate";
 import type { MapProject } from "../shared/schema/mapproj";
-import { resolvePackRoot } from "../shared/datapack/resolve";
+import { resolveInsidePack } from "../shared/datapack/manifest";
+import type {
+  DataPackDownloadReason,
+  DataPackManifest,
+  DataPackRelease,
+  ReadyDataPack
+} from "../shared/datapack/types";
 import { resolveDataRoot } from "../shared/paths";
 import { searchGeonames } from "./geonames";
 import { ensureDatapackReady } from "./datapack-download";
 
-type Datapack = {
-  id?: string;
-  version?: string;
-  basemap?: {
-    layers?: Array<{ id: string; path: string }>;
-  };
-  relief?: {
-    format?: string;
-    path?: string;
-    projection?: string | null;
-  } | null;
-};
+type Datapack = DataPackManifest;
 
 type SaveResult = {
   ok: boolean;
@@ -83,28 +78,38 @@ function createMainWindow() {
   resolveDataRoot();
 }
 
+async function confirmDatapackDownload(
+  reason: DataPackDownloadReason,
+  release: DataPackRelease
+): Promise<boolean> {
+  const isUpdate = reason === "update";
+  const options = {
+    type: "warning" as const,
+    title: isUpdate ? "官方資料包可更新" : "資料包需要修復",
+    message: isUpdate
+      ? `已設定新版官方資料包 ${release.id} ${release.version}。`
+      : "偵測到已安裝的資料包遺失或損壞。",
+    detail: isUpdate
+      ? "是否連線至官方 GitHub Releases 下載並安裝？取消後會繼續使用目前有效的本機資料包。"
+      : "是否連線至官方 GitHub Releases，重新下載並安裝資料包？取消後將維持離線，地圖資料暫時無法使用。",
+    buttons: [isUpdate ? "下載並更新" : "重新下載", "取消"],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true
+  };
+  const parent = BrowserWindow.getFocusedWindow();
+  const result = parent
+    ? await dialog.showMessageBox(parent, options)
+    : await dialog.showMessageBox(options);
+  return result.response === 0;
+}
+
+async function getReadyDatapack(): Promise<ReadyDataPack> {
+  return ensureDatapackReady(confirmDatapackDownload);
+}
+
 async function loadDatapack(): Promise<Datapack> {
-  await ensureDatapackReady(async () => {
-    const options = {
-      type: "warning" as const,
-      title: "資料包需要修復",
-      message: "偵測到已安裝的資料包遺失或損壞。",
-      detail: "是否連線至官方 GitHub Releases，重新下載並安裝資料包？取消後將維持離線，地圖資料暫時無法使用。",
-      buttons: ["重新下載", "取消"],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true
-    };
-    const parent = BrowserWindow.getFocusedWindow();
-    const result = parent
-      ? await dialog.showMessageBox(parent, options)
-      : await dialog.showMessageBox(options);
-    return result.response === 0;
-  });
-  const packRoot = resolvePackRoot();
-  const datapackPath = path.join(packRoot, "datapack.json");
-  const raw = await fs.readFile(datapackPath, "utf8");
-  return JSON.parse(raw) as Datapack;
+  return (await getReadyDatapack()).manifest;
 }
 
 function buildAppMenu(): Menu {
@@ -217,34 +222,34 @@ app.whenReady().then(() => {
 
   ipcMain.handle("datapack:get", async () => loadDatapack());
   ipcMain.handle("basemap:get", async () => {
-    const datapack = await loadDatapack();
-    const packRoot = resolvePackRoot();
-    const layers = datapack?.basemap?.layers ?? [];
+    const ready = await getReadyDatapack();
+    const layers = ready.manifest.basemap.layers;
     const payload = [] as Array<{ id: string; geojson: string }>;
     for (const layer of layers) {
-      const filePath = path.join(packRoot, layer.path);
+      const filePath = resolveInsidePack(ready.rootPath, layer.path);
       const geojson = await fs.readFile(filePath, "utf8");
       payload.push({ id: layer.id, geojson });
     }
     return payload;
   });
   ipcMain.handle("relief:get", async () => {
-    const datapack = await loadDatapack();
-    const packRoot = resolvePackRoot();
-    const reliefPath = datapack?.relief?.path;
+    const ready = await getReadyDatapack();
+    const reliefPath = ready.manifest.relief?.path;
     if (!reliefPath) {
       return null;
     }
-    const filePath = path.join(packRoot, reliefPath);
+    const filePath = resolveInsidePack(ready.rootPath, reliefPath);
     const { pathToFileURL } = await import("url");
     return {
       path: pathToFileURL(filePath).toString(),
-      projection: datapack?.relief?.projection ?? null
+      projection: ready.manifest.relief?.projection ?? null
     };
   });
-  ipcMain.handle("geonames:search", async (_event, query: string, limit: number) =>
-    searchGeonames(query, limit)
-  );
+  ipcMain.handle("geonames:search", async (_event, query: string, limit: number) => {
+    const ready = await getReadyDatapack();
+    const dbPath = resolveInsidePack(ready.rootPath, ready.manifest.geonames.dbPath);
+    return searchGeonames(query, limit, dbPath);
+  });
   ipcMain.handle("project:save", async (_event, payload: unknown): Promise<SaveResult> => {
     try {
       const data = payload as { project?: unknown; path?: string | null; saveAs?: boolean };

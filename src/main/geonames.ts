@@ -1,8 +1,4 @@
-import path from "path";
-
 import Database from "better-sqlite3";
-
-import { resolvePackRoot } from "../shared/datapack/resolve";
 
 export type GeonamesResult = {
   id: number;
@@ -17,14 +13,15 @@ export type GeonamesResult = {
 };
 
 let cachedDb: Database.Database | null = null;
+let cachedDbPath: string | null = null;
 
-function openDatabase(): Database.Database {
-  if (cachedDb) {
+function openDatabase(dbPath: string): Database.Database {
+  if (cachedDb && cachedDbPath === dbPath) {
     return cachedDb;
   }
-  const packRoot = resolvePackRoot();
-  const dbPath = path.join(packRoot, "geonames", "geonames.sqlite");
+  cachedDb?.close();
   cachedDb = new Database(dbPath, { readonly: true, fileMustExist: true });
+  cachedDbPath = dbPath;
   return cachedDb;
 }
 
@@ -37,12 +34,12 @@ function normalizeQuery(input: string): string {
   return `${safe}*`;
 }
 
-export function searchGeonames(query: string, limit: number): GeonamesResult[] {
+export function searchGeonames(query: string, limit: number, dbPath: string): GeonamesResult[] {
   const match = normalizeQuery(query);
   if (!match) {
     return [];
   }
-  const db = openDatabase();
+  const db = openDatabase(dbPath);
   const stmt = db.prepare(
     `
     SELECT g.geonameid as id,

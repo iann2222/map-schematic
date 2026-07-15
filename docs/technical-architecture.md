@@ -92,6 +92,7 @@
 用途：
 
 - 官方資料包（可多版本並存）
+- `active.json`（目前啟用的已驗證版本）
 - 解壓後資料
 - 本地索引
 - 快取資料
@@ -144,6 +145,7 @@
   - 由使用者確認是否仍要載入，不在背景自動下載或替換資料包。
 - 目前 schema 版本為 `0.2`，載入時會依明確 migration chain 逐版轉換；目前支援 `0.1 → 0.2`，未知與較新版本會停止載入。
 - 更新資料包時需下載完成並通過 SHA-256 與內容驗證後才切換。
+- `pack-release.json` 是 App 目標資料包 id／version 的唯一設定來源，避免 runtime 常數與 release 設定不一致。
 
 ---
 
@@ -249,15 +251,17 @@ Natural Earth 為公開可自由使用資料集，適合製圖用途。
 
 ## 資料包載入與失敗處理
 
-- 啟動與首次讀取資料時會驗證 manifest、資料包 id／version、必要檔案與檔案大小。
+- 啟動與首次讀取資料時會驗證 manifest、資料包 id／version、必要檔案、檔案大小與每個內容檔的 SHA-256。
 - 若上一次切換留下有效的前一版本，會先嘗試恢復，不直接連網。
 - 首次缺少資料包時，依 `pack-release.json` 初始化官方資料包。
+- 若 `pack-release.json` 指向新版本，先詢問使用者；取消後繼續使用 `active.json` 指向的有效舊版。
 - 已安裝資料包損壞且無法恢復時，先詢問使用者；只有取得同意才連網重新下載。
 - 下載、checksum、解壓或驗證失敗會回報錯誤並清理暫存檔，不把不完整資料包當成可用版本。
 
 ## 資料包發佈與下載設定
 
 - 下載資訊集中於 `pack-release.json`（repo 根目錄）
+- `pack-release.json` 同時是目標資料包 id／version 的唯一來源
 - App 啟動時若發現本機資料包不存在，會讀取 `pack-release.json` 進行下載、校驗、解壓
 - `pack-release.json` 內容包含：
   - `id`
@@ -273,13 +277,15 @@ Natural Earth 為公開可自由使用資料集，適合製圖用途。
 1. 原始資料放入 `geodata_source/`
 2. 執行 `scripts/build_datapack.py` 產出 `geodata/packs/{id}/{version}/`
 3. 將資料包打包成 zip 並發布到 GitHub Releases（tag 對應資料包版本）
-4. 執行 `scripts/update_pack_release.py` 更新 `pack-release.json`（含 url、sha256、sourceFiles）
+4. 執行 `scripts/update_pack_release.py` 驗證 zip 並更新 `pack-release.json`（含 url、sha256、sourceFiles）
    - 需手動提供 `--url`（Release asset 直連）與 `--zip`（本地 zip 路徑）
+   - id／version 直接讀取 zip 根目錄的 `datapack.json`；可選的 `--id`／`--version` 只用來交叉檢查
 5. App 啟動時若偵測本機缺少資料包：
    - 依 `pack-release.json` 下載 zip → 驗證 SHA-256 → 解壓至暫存安裝目錄
-   - 驗證暫存資料包的 manifest 與必要檔案
-   - 保留現有版本作為暫時備份，再將完整的新版本切換至正式目錄
-   - 切換失敗時恢復原有版本；成功後清除備份、暫存目錄與 zip
+   - 驗證暫存資料包的 manifest、引用路徑與所有內容檔 checksum
+   - 完整安裝目標版本後才原子更新 `active.json`
+   - 不覆蓋其他有效版本；下載或切換失敗時仍沿用原 active 版本
+   - 成功或失敗都清除下載 zip 與暫存安裝目錄
 - 正式使用建議以 GDAL 轉成 `EPSG:3857` 的 `hillshade_3857.png`，確保與渲染投影一致。
 - 地形陰影顯示採 Canvas 混合模式（如 `overlay` / `multiply` / `screen`）可調，以平衡可讀性與清晰度。
 
@@ -502,9 +508,10 @@ PNG 與 PDF 匯出前可選擇無外框、細邊框、白色留邊或深色畫�
 
 ## 11.4 更新策略
 
-- 預設手動更新
+- 新版目標由隨 App 發佈的 `pack-release.json` 指定
+- 已有有效舊版時，必須由使用者確認才下載並更新
 - 不在一般編輯流程中自動連網檢查或下載
-- 安裝切換期間暫時保留前一版本，失敗時自動恢復
+- 新版完整驗證後才切換 `active.json`，舊版保留為離線 fallback
 - 已安裝資料包損壞時，重新下載前必須取得使用者同意
 - 可刪除舊 release 以控制儲存
 
@@ -604,6 +611,8 @@ python scripts/build_datapack.py --id standard --version 2026.02 --geonames citi
 - `--out`：輸出根目錄（預設 `geodata/packs/standard`）
 - `--geonames`：`cities1000 | cities15000 | all`
 
+非 manifest-only 建置若目標版本已存在，必須使用 `--force`。腳本會先在同層暫存建置目錄產生並驗證完整資料包，成功後才替換正式版本；切換失敗時恢復舊建置。必要底圖或 GeoNames 資料缺失時會直接失敗，不以半成品覆蓋既有產物。
+
 ## 15.5 成功輸出檢查
 
 至少應看到：
@@ -628,6 +637,8 @@ python scripts/build_datapack.py --id standard --version 2026.02 --geonames citi
 2. 上傳到 GitHub Releases
 3. 更新 pack-release.json（至少更新 url 與 sha256）
 
+`scripts/update_pack_release.py` 會先確認 zip 根目錄存在 `datapack.json`，且所有封裝檔案均在 manifest 中列出並符合 size／SHA-256；通過後才寫入 release 設定。新版 manifest 不再將 `datapack.json` 自己列入 `files`，避免自我 checksum。
+
 > 每次發佈新資料包版本都必須同步更新 pack-release.json。
 
 ---
@@ -648,4 +659,4 @@ npm run build
 - `npm run test:typecheck`：只檢查測試與相關原始碼型別，不執行案例。
 - `npm run build`：編譯 main、renderer 並複製靜態資源。
 
-目前自動化測試涵蓋 `.mapproj` validator、序列化、逐版 migration、原子儲存失敗、備份更新、損壞恢復與載入。下一階段將擴充資料包切換、匯出與 Electron 互動測試。
+目前自動化測試涵蓋 `.mapproj` validator、migration、原子儲存與恢復，以及資料包 manifest／release 驗證、首次初始化、更新確認、active 切換、fallback、損壞修復與中斷恢復。下一階段將擴充匯出與 Electron 互動測試。

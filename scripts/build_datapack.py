@@ -36,17 +36,21 @@ def sha256_file(path: pathlib.Path) -> str:
 
 def write_json(path: pathlib.Path, payload: Dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp_path = path.with_name(f".{path.name}.writing")
+    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temp_path, path)
 
 
 def collect_files(root: pathlib.Path) -> List[Dict[str, object]]:
     files: List[Dict[str, object]] = []
     if not root.exists():
         return files
-    for path in root.rglob("*"):
+    for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
         rel = path.relative_to(root).as_posix()
+        if rel == "datapack.json":
+            continue
         files.append(
             {
                 "path": rel,
@@ -474,8 +478,24 @@ def main() -> None:
 
     raw_root = pathlib.Path(args.raw).resolve()
     out_root = pathlib.Path(args.out).resolve()
-    pack_root = out_root / args.version
+    final_pack_root = out_root / args.version
     manifest_only = os.getenv("MAPSCHEM_MANIFEST_ONLY") == "1"
+
+    if manifest_only and not final_pack_root.is_dir():
+        raise SystemExit(
+            f"Cannot rebuild manifest; target pack does not exist: {final_pack_root}"
+        )
+    if final_pack_root.exists() and not manifest_only:
+        if not args.force:
+            raise SystemExit(
+                f"Target pack already exists; use --force to rebuild: {final_pack_root}"
+            )
+
+    if manifest_only:
+        pack_root = final_pack_root
+    else:
+        pack_root = out_root / f".{args.version}-building"
+        shutil.rmtree(pack_root, ignore_errors=True)
 
     basemap_dir = pack_root / "basemap"
     geonames_dir = pack_root / "geonames"
@@ -521,7 +541,32 @@ def main() -> None:
         else:
             print("GeoNames skipped (source zip missing).")
 
-    hillshade_info = build_hillshade(raw_root, relief_dir)
+    if manifest_only:
+        hillshade_info = None
+        for candidate in [
+            relief_dir / "hillshade_3857.png",
+            relief_dir / "hillshade.png",
+            relief_dir / "hillshade.jpg",
+            relief_dir / "hillshade.jpeg",
+        ]:
+            if candidate.exists():
+                hillshade_info = {
+                    "format": candidate.suffix.lstrip(".").lower(),
+                    "path": f"relief/{candidate.name}",
+                    "source": candidate.name,
+                    "projection": "EPSG:3857" if candidate.name.endswith("_3857.png") else "EPSG:4326",
+                }
+                break
+    else:
+        hillshade_info = build_hillshade(raw_root, relief_dir)
+
+    expected_layer_ids = {layer_id for layer_id, _ in BASEMAP_LAYERS}
+    actual_layer_ids = {layer["id"] for layer in basemap_layers}
+    missing_layers = sorted(expected_layer_ids - actual_layer_ids)
+    if missing_layers:
+        raise SystemExit(f"Datapack build incomplete; missing basemap layers: {', '.join(missing_layers)}")
+    if not geonames_db.is_file() or geonames_db.stat().st_size == 0:
+        raise SystemExit("Datapack build incomplete; GeoNames database is missing or empty")
 
     datapack = {
         "id": args.id,
@@ -542,9 +587,30 @@ def main() -> None:
     }
 
     datapack["files"] = collect_files(pack_root)
+    referenced_paths = {layer["path"] for layer in basemap_layers}
+    referenced_paths.add("geonames/geonames.sqlite")
+    if hillshade_info:
+        referenced_paths.add(hillshade_info["path"])
+    collected_paths = {entry["path"] for entry in datapack["files"]}
+    missing_files = sorted(referenced_paths - collected_paths)
+    if missing_files:
+        raise SystemExit(f"Datapack build incomplete; files missing from manifest: {', '.join(missing_files)}")
     write_json(pack_root / "datapack.json", datapack)
 
-    print(f"Data pack initialized at: {pack_root}")
+    if not manifest_only:
+        previous_root = out_root / f".{args.version}-previous-build"
+        shutil.rmtree(previous_root, ignore_errors=True)
+        if final_pack_root.exists():
+            final_pack_root.rename(previous_root)
+        try:
+            pack_root.rename(final_pack_root)
+        except Exception:
+            if previous_root.exists() and not final_pack_root.exists():
+                previous_root.rename(final_pack_root)
+            raise
+        shutil.rmtree(previous_root, ignore_errors=True)
+
+    print(f"Data pack initialized at: {final_pack_root}")
 
 
 if __name__ == "__main__":

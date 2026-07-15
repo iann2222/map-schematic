@@ -40,7 +40,7 @@
 - `npm run test:typecheck`
   - 只執行測試程式與相關原始碼的 TypeScript 型別檢查，不執行測試案例。
 
-測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj` validator、序列化、儲存與載入。
+測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj` 與資料包 manifest、manager、初始化、更新、修復及 fallback。
 
 ## 程式碼結構
 
@@ -53,7 +53,7 @@
 - `src/main/preload.ts`
   - 透過 `contextBridge` 提供受限的 renderer API。
 - `src/main/datapack-download.ts`
-  - 處理資料包下載、SHA-256 驗證、解壓、完整性驗證、安全切換與上一版本恢復。
+  - 提供 GitHub HTTPS 下載、ZIP 解壓與 Electron app 路徑 adapter；狀態與安裝決策由 shared manager 負責。
 - `src/main/geonames.ts`
   - 查詢官方資料包內的 GeoNames SQLite 索引。
 
@@ -70,10 +70,11 @@
 
 共用模組（Shared）：
 
-- `src/shared/paths.ts`、`src/shared/config.ts`
-  - 統一解析資料根目錄與目前資料包設定。
+- `src/shared/paths.ts`
+  - 統一解析資料根目錄。
 - `src/shared/datapack/*`
-  - 定義資料包 layout、manifest、版本狀態與路徑解析。
+  - 定義 manifest／release 契約、檔案校驗、active 版本、初始化、更新、修復、安全啟用與 fallback。
+  - `pack-release.json` 是目標資料包 id／version 的唯一來源，不另在程式碼維護重複版本常數。
 - `src/shared/schema/mapproj.ts`
   - 定義目前 `.mapproj` v0.2 資料模型與初始專案。
 - `src/shared/schema/migrate.ts`
@@ -92,8 +93,8 @@
 ## 資料包建置與發佈
 
 - `scripts/build_datapack.py`
-  - 讀取 `geodata_source/`，建立 Natural Earth 底圖、GeoNames SQLite 與選用的地形陰影資料。
+  - 讀取 `geodata_source/`，在暫存建置目錄建立並驗證完整資料包，成功後才替換正式產物；缺少必要內容時保留舊建置。
 - `scripts/update_pack_release.py`
-  - 依資料包 zip 與來源資料更新 `pack-release.json` 的版本、下載位置與 SHA-256。
+  - 驗證資料包 ZIP 內的 manifest、檔案清單、大小與 checksum，再由 manifest 產生 `pack-release.json` 的 id／version。
 - `dist/`
   - 存放 TypeScript 編譯結果與 renderer 靜態檔，不是原始碼來源。
