@@ -57,12 +57,6 @@ export type EditorDocument = {
   displayOrderKeys: string[];
 };
 
-export type EditorSnapshot = {
-  document: EditorDocument;
-  selectedMarkerId: string | null;
-  selectedShapeId: string | null;
-};
-
 export function isMarker(object: EditorObject): object is Marker {
   return object.objectKind === "marker";
 }

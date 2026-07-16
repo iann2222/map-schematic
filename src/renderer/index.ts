@@ -1,15 +1,18 @@
 ﻿export {};
 
-import { HistoryManager } from "./editor/history.js";
 import type { GeonamesResult, MapProject } from "./bridge.js";
 import {
-  cloneEditorSnapshot,
-  editorSnapshotsEqual
-} from "./editor/snapshot.js";
+  createAddObjectCommand,
+  createClearObjectsCommand,
+  createRemoveObjectCommand,
+  createReorderCommand,
+  createUpdateObjectCommand
+} from "./editor/commands.js";
+import type { EditorCommand } from "./editor/commands.js";
+import { EditorCore } from "./editor/editor-core.js";
+import { cloneEditorObject } from "./editor/document.js";
 import type {
   EditorDocument,
-  EditorObject,
-  EditorSnapshot,
   Marker,
   MarkerStyle,
   ShapeItem,
@@ -447,11 +450,11 @@ let stepOneCropSnapshot:
     }
   | null = null;
 
-const editorDocument: EditorDocument = {
-  objects: [],
-  listOrderKeys: [],
-  displayOrderKeys: [],
-};
+const editorCore = new EditorCore(
+  { objects: [], listOrderKeys: [], displayOrderKeys: [] },
+  { limit: EDITOR_HISTORY_LIMIT, mergeWindowMs: 750 },
+);
+const editorDocument: EditorDocument = editorCore.document;
 
 function markerObjects(): Marker[] {
   return editorDocument.objects.filter(isMarker);
@@ -459,23 +462,6 @@ function markerObjects(): Marker[] {
 
 function shapeObjects(): ShapeItem[] {
   return editorDocument.objects.filter(isShape);
-}
-
-function addEditorObject(object: EditorObject): void {
-  editorDocument.objects.push(object);
-}
-
-function removeEditorObject(objectId: string): boolean {
-  const index = editorDocument.objects.findIndex((object) => object.id === objectId);
-  if (index < 0) {
-    return false;
-  }
-  editorDocument.objects.splice(index, 1);
-  return true;
-}
-
-function replaceEditorObjects(objects: EditorObject[]): void {
-  editorDocument.objects.splice(0, editorDocument.objects.length, ...objects);
 }
 
 let selectedMarkerId: string | null = null;
@@ -548,77 +534,54 @@ let hillshadeImage: HTMLImageElement | null = null;
 let hillshadeTexture: HTMLCanvasElement | null = null;
 let hillshadeProjection: string | null = null;
 let editingCoordMarker: Marker | null = null;
-let editorTransactionBefore: EditorSnapshot | null = null;
-
-const editorHistory = new HistoryManager<EditorSnapshot>({
-  clone: cloneEditorSnapshot,
-  equals: editorSnapshotsEqual,
-  limit: EDITOR_HISTORY_LIMIT,
-  mergeWindowMs: 750,
-});
-
-function captureEditorSnapshot(): EditorSnapshot {
-  return cloneEditorSnapshot({
-    document: editorDocument,
-    selectedMarkerId,
-    selectedShapeId,
-  });
-}
 
 function syncHistoryControls(): void {
   if (undoButton) {
-    undoButton.disabled = !editorHistory.canUndo;
+    undoButton.disabled = !editorCore.canUndo;
   }
   if (redoButton) {
-    redoButton.disabled = !editorHistory.canRedo;
+    redoButton.disabled = !editorCore.canRedo;
   }
 }
 
-function commitEditorChange(
-  before: EditorSnapshot,
+function dispatchEditorCommand(
+  command: EditorCommand | null,
   mergeKey?: string,
-): void {
-  editorHistory.record(before, captureEditorSnapshot(), { mergeKey });
+): boolean {
+  const changed = editorCore.dispatch(command, { mergeKey });
+  if (!changed) {
+    return false;
+  }
   syncHistoryControls();
   scheduleProjectDirtyCheck();
+  return true;
 }
 
 function beginEditorTransaction(): void {
-  if (!editorTransactionBefore) {
-    editorTransactionBefore = captureEditorSnapshot();
-  }
+  editorCore.beginTransaction();
 }
 
 function commitEditorTransaction(): void {
-  if (!editorTransactionBefore) {
-    return;
+  if (editorCore.commitTransaction()) {
+    syncHistoryControls();
+    scheduleProjectDirtyCheck();
   }
-  const before = editorTransactionBefore;
-  editorTransactionBefore = null;
-  commitEditorChange(before);
 }
 
 function cancelEditorTransaction(): void {
-  editorTransactionBefore = null;
+  editorCore.cancelTransaction();
 }
 
-function restoreEditorSnapshot(snapshot: EditorSnapshot): void {
+function refreshEditorAfterHistoryChange(): void {
   if (orderDragSession) {
     cleanupOrderSession("cancel");
   }
-  replaceEditorObjects(snapshot.document.objects);
-  editorDocument.listOrderKeys = [...snapshot.document.listOrderKeys];
-  editorDocument.displayOrderKeys = [...snapshot.document.displayOrderKeys];
-  selectedMarkerId = markerObjects().some(
-    (marker) => marker.id === snapshot.selectedMarkerId,
-  )
-    ? snapshot.selectedMarkerId
-    : null;
-  selectedShapeId = shapeObjects().some(
-    (shape) => shape.id === snapshot.selectedShapeId,
-  )
-    ? snapshot.selectedShapeId
-    : null;
+  if (!markerObjects().some((marker) => marker.id === selectedMarkerId)) {
+    selectedMarkerId = null;
+  }
+  if (!shapeObjects().some((shape) => shape.id === selectedShapeId)) {
+    selectedShapeId = null;
+  }
   selectedLabelMarkerId = null;
   previewMarker = null;
   previewToolMarker = null;
@@ -643,26 +606,26 @@ function restoreEditorSnapshot(snapshot: EditorSnapshot): void {
 }
 
 function undoEditorChange(): void {
-  const snapshot = editorHistory.undo();
-  if (!snapshot) {
+  if (!editorCore.undo()) {
     return;
   }
-  restoreEditorSnapshot(snapshot);
+  refreshEditorAfterHistoryChange();
   syncHistoryControls();
+  scheduleProjectDirtyCheck();
 }
 
 function redoEditorChange(): void {
-  const snapshot = editorHistory.redo();
-  if (!snapshot) {
+  if (!editorCore.redo()) {
     return;
   }
-  restoreEditorSnapshot(snapshot);
+  refreshEditorAfterHistoryChange();
   syncHistoryControls();
+  scheduleProjectDirtyCheck();
 }
 
 function resetEditorHistory(): void {
   cancelEditorTransaction();
-  editorHistory.clear();
+  editorCore.clearHistory();
   syncHistoryControls();
 }
 
@@ -1931,14 +1894,14 @@ function addToolItem(tool: typeof activeTool): void {
     if (hasDuplicateMarker(marker)) {
       return;
     }
-    const before = captureEditorSnapshot();
-    addEditorObject(marker);
+    if (!dispatchEditorCommand(createAddObjectCommand(editorDocument, marker))) {
+      return;
+    }
     previewMarker = null;
     previewToolMarker = null;
     selectMarker(marker.id);
     renderMarkers();
     renderMarkerList();
-    commitEditorChange(before);
     return;
   }
   if (
@@ -1951,12 +1914,12 @@ function addToolItem(tool: typeof activeTool): void {
     if (hasDuplicateShape(shape)) {
       return;
     }
-    const before = captureEditorSnapshot();
-    addEditorObject(shape);
+    if (!dispatchEditorCommand(createAddObjectCommand(editorDocument, shape))) {
+      return;
+    }
     previewShape = null;
     selectShape(shape.id);
     renderMarkerList();
-    commitEditorChange(before);
     return;
   }
 }
@@ -2954,15 +2917,15 @@ function addMarkerFromCoordsValue(parsed: { lat: number; lon: number }): void {
     return;
   }
   placeMarkerLabelInsideView(marker);
-  const before = captureEditorSnapshot();
-  addEditorObject(marker);
+  if (!dispatchEditorCommand(createAddObjectCommand(editorDocument, marker))) {
+    return;
+  }
   previewMarker = null;
   if (activeStep === "3") {
     selectMarker(marker.id);
   }
   renderMarkers();
   renderMarkerList();
-  commitEditorChange(before);
   if (statusEl) {
     statusEl.textContent = `已新增座標：${marker.name}`;
   }
@@ -3311,15 +3274,15 @@ function addMarkerFromGeonames(result: GeonamesResult): void {
     kind: "label",
   };
   placeMarkerLabelInsideView(marker);
-  const before = captureEditorSnapshot();
-  addEditorObject(marker);
+  if (!dispatchEditorCommand(createAddObjectCommand(editorDocument, marker))) {
+    return;
+  }
   previewMarker = null;
   if (activeStep === "3") {
     selectMarker(marker.id);
   }
   renderMarkers();
   renderMarkerList();
-  commitEditorChange(before);
 }
 
 function getSelectedMarker(): Marker | null {
@@ -3344,6 +3307,46 @@ function getEditableMarker(): Marker | null {
     return selected;
   }
   return previewMarker;
+}
+
+function updateMarkerObject(
+  marker: Marker,
+  update: (draft: Marker) => void,
+  mergeKey?: string,
+): boolean {
+  const stored = editorDocument.objects.find(
+    (object): object is Marker => isMarker(object) && object.id === marker.id,
+  );
+  if (!stored) {
+    update(marker);
+    return true;
+  }
+  const next = cloneEditorObject(stored) as Marker;
+  update(next);
+  return dispatchEditorCommand(
+    createUpdateObjectCommand(stored, next),
+    mergeKey,
+  );
+}
+
+function updateShapeObject(
+  shape: ShapeItem,
+  update: (draft: ShapeItem) => void,
+  mergeKey?: string,
+): boolean {
+  const stored = editorDocument.objects.find(
+    (object): object is ShapeItem => isShape(object) && object.id === shape.id,
+  );
+  if (!stored) {
+    update(shape);
+    return true;
+  }
+  const next = cloneEditorObject(stored) as ShapeItem;
+  update(next);
+  return dispatchEditorCommand(
+    createUpdateObjectCommand(stored, next),
+    mergeKey,
+  );
 }
 
 function syncMarkerControls(marker: Marker | null): void {
@@ -3491,12 +3494,24 @@ function updateItemNameFromControl(): void {
   const marker = getSelectedMarker();
   const shape = getSelectedShape();
   if (marker) {
-    marker.displayName = value.length > 0 ? value : undefined;
+    updateMarkerObject(
+      marker,
+      (draft) => {
+        draft.displayName = value.length > 0 ? value : undefined;
+      },
+      `item:${marker.id}:name`,
+    );
     renderMarkerList();
     return;
   }
   if (shape) {
-    shape.displayName = value.length > 0 ? value : undefined;
+    updateShapeObject(
+      shape,
+      (draft) => {
+        draft.displayName = value.length > 0 ? value : undefined;
+      },
+      `item:${shape.id}:name`,
+    );
     renderMarkerList();
   }
 }
@@ -3882,22 +3897,16 @@ function finalizeOrderCommit(session: OrderDragSession): void {
     .filter((key) => key.length > 0);
   const currentOrder =
     mode === "list" ? editorDocument.listOrderKeys : editorDocument.displayOrderKeys;
-  const changed =
-    currentOrder.length !== nextOrder.length ||
-    currentOrder.some((key, index) => key !== nextOrder[index]);
-  if (!changed) {
+  if (
+    !dispatchEditorCommand(
+      createReorderCommand(mode, currentOrder, nextOrder),
+    )
+  ) {
     return;
-  }
-  const before = captureEditorSnapshot();
-  if (mode === "list") {
-    editorDocument.listOrderKeys = nextOrder;
-  } else {
-    editorDocument.displayOrderKeys = nextOrder;
   }
   renderOrderDialog();
   renderMarkers();
   renderMarkerList();
-  commitEditorChange(before);
 }
 
 function cleanupOrderSession(reason: "commit" | "cancel"): void {
@@ -4051,16 +4060,10 @@ function createOrderItem(
       mode === "list" ? editorDocument.listOrderKeys : editorDocument.displayOrderKeys;
     const base = current.filter((key) => key !== item.key);
     const next = edge === "top" ? [item.key, ...base] : [...base, item.key];
-    const before = captureEditorSnapshot();
-    if (mode === "list") {
-      editorDocument.listOrderKeys = next;
-    } else {
-      editorDocument.displayOrderKeys = next;
-    }
+    dispatchEditorCommand(createReorderCommand(mode, current, next));
     renderOrderDialog();
     renderMarkers();
     renderMarkerList();
-    commitEditorChange(before);
   };
   moveTop.addEventListener("click", (event) => {
     event.preventDefault();
@@ -4213,8 +4216,9 @@ function attachOrderDragGlobalEvents(): void {
 }
 
 function deleteMarker(markerId: string): void {
-  const before = captureEditorSnapshot();
-  removeEditorObject(markerId);
+  if (!dispatchEditorCommand(createRemoveObjectCommand(editorDocument, markerId))) {
+    return;
+  }
   if (selectedMarkerId === markerId) {
     selectedMarkerId = null;
     syncMarkerControls(null);
@@ -4222,7 +4226,6 @@ function deleteMarker(markerId: string): void {
   }
   renderMarkers();
   renderMarkerList();
-  commitEditorChange(before);
 }
 
 async function handleSearch(
@@ -4538,9 +4541,7 @@ async function handleLoad() {
   currentProject = loadedProject;
   currentProjectPath = result.path ?? null;
   const loadedEditor = mapProjectToEditorDocument(loadedProject);
-  replaceEditorObjects(loadedEditor.document.objects);
-  editorDocument.listOrderKeys = loadedEditor.document.listOrderKeys;
-  editorDocument.displayOrderKeys = loadedEditor.document.displayOrderKeys;
+  editorCore.replaceDocument(loadedEditor.document);
   selectedMarkerId = null;
   selectedShapeId = null;
   selectedLabelMarkerId = null;
@@ -4980,8 +4981,9 @@ async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
 }
 
 function handleClearMarkers(): void {
-  const before = captureEditorSnapshot();
-  replaceEditorObjects([]);
+  if (!dispatchEditorCommand(createClearObjectsCommand(editorDocument))) {
+    return;
+  }
   selectedMarkerId = null;
   selectedShapeId = null;
   previewMarker = null;
@@ -4993,12 +4995,12 @@ function handleClearMarkers(): void {
   syncItemNameControl();
   renderMarkers();
   renderMarkerList();
-  commitEditorChange(before);
 }
 
 function deleteShape(shapeId: string): void {
-  const before = captureEditorSnapshot();
-  removeEditorObject(shapeId);
+  if (!dispatchEditorCommand(createRemoveObjectCommand(editorDocument, shapeId))) {
+    return;
+  }
   if (selectedShapeId === shapeId) {
     selectedShapeId = null;
     syncShapeControls(null);
@@ -5006,7 +5008,6 @@ function deleteShape(shapeId: string): void {
   }
   renderMarkers();
   renderMarkerList();
-  commitEditorChange(before);
 }
 
 function openCoordEditor(marker: Marker): void {
@@ -5028,17 +5029,17 @@ function openCoordEditor(marker: Marker): void {
     radio.checked = radio.value === marker.labelMode;
   });
   coordEditSave.onclick = () => {
-    const before = captureEditorSnapshot();
-    marker.labelName = coordLabelInput.value.trim() || undefined;
     const selected = coordEditModal.querySelector<HTMLInputElement>(
       'input[name="coordLabelMode"]:checked',
     );
-    marker.labelMode = selected?.value === "name" ? "name" : "coords";
+    updateMarkerObject(marker, (draft) => {
+      draft.labelName = coordLabelInput.value.trim() || undefined;
+      draft.labelMode = selected?.value === "name" ? "name" : "coords";
+    });
     editingCoordMarker = null;
     coordEditModal.classList.remove("active");
     renderMarkers();
     renderMarkerList();
-    commitEditorChange(before);
   };
   coordEditCancel.onclick = () => {
     editingCoordMarker = null;
@@ -5049,9 +5050,7 @@ function openCoordEditor(marker: Marker): void {
 function attachMarkerControls(): void {
   const update = (property: string) => {
     const markerId = getEditableMarker()?.id ?? "none";
-    const before = captureEditorSnapshot();
-    updateMarkerFromControls();
-    commitEditorChange(before, `marker:${markerId}:${property}`);
+    updateMarkerFromControls(`marker:${markerId}:${property}`);
   };
 
   markerLabelInput?.addEventListener("input", () => update("label"));
@@ -5093,7 +5092,6 @@ function attachMarkerControls(): void {
         if (!marker || !color) {
           return;
         }
-        const before = captureEditorSnapshot();
         if (target === "dot" && markerDotColor) {
           markerDotColor.value = color;
           syncColorInputs("dot", color);
@@ -5103,7 +5101,6 @@ function attachMarkerControls(): void {
           syncColorInputs("text", color);
         }
         updateMarkerFromControls();
-        commitEditorChange(before);
       });
     });
 }
@@ -5111,9 +5108,7 @@ function attachMarkerControls(): void {
 function attachShapeControls(): void {
   const update = (property: string) => {
     const shapeId = getSelectedShape()?.id ?? "none";
-    const before = captureEditorSnapshot();
-    updateShapeFromControls();
-    commitEditorChange(before, `shape:${shapeId}:${property}`);
+    updateShapeFromControls(`shape:${shapeId}:${property}`);
   };
   shapeTextInput?.addEventListener("input", () => update("text"));
   shapeTextColor?.addEventListener("input", () => update("text-color"));
@@ -5131,7 +5126,6 @@ function attachShapeControls(): void {
         if (!color || !shape) {
           return;
         }
-        const before = captureEditorSnapshot();
         if (shape.type === "text" && shapeTextColor) {
           shapeTextColor.value = color;
         }
@@ -5150,16 +5144,12 @@ function attachShapeControls(): void {
           }
         }
         updateShapeFromControls();
-        commitEditorChange(before);
       });
     });
 }
 
 itemNameInput?.addEventListener("input", () => {
-  const selectedId = selectedMarkerId ?? selectedShapeId ?? "none";
-  const before = captureEditorSnapshot();
   updateItemNameFromControl();
-  commitEditorChange(before, `item:${selectedId}:name`);
 });
 
 function bindFirstClickSelect(
@@ -5241,86 +5231,98 @@ bindFirstClickSelect(coordLabelInput, isCoordLabelDefault);
 bindFirstClickSelect(ratioInputA, () => true);
 bindFirstClickSelect(ratioInputB, () => true);
 
-function updateMarkerFromControls(): void {
+function updateMarkerFromControls(mergeKey?: string): void {
   const marker = getEditableMarker();
   if (!marker) {
     return;
   }
-  if (dotSizeSlider) {
-    marker.style.dotSize = dotSizeSlider.value;
-  }
-  if (textSizeSlider) {
-    marker.style.textSize = textSizeSlider.value;
-  }
-  if (markerDotColor) {
-    marker.style.dotColor = markerDotColor.value;
-  }
-  if (markerTextColor) {
-    marker.style.textColor = markerTextColor.value;
-  }
-  if (markerFont) {
-    marker.style.fontFamily = markerFont.value;
-  }
-  if (
-    markerLabelInput &&
-    (marker.sourceType === "geonames" || marker.sourceType === "coords")
-  ) {
-    const value = markerLabelInput.value.trim();
-    marker.labelName = value.length > 0 ? value : undefined;
-    marker.labelMode = "name";
-  }
+  updateMarkerObject(
+    marker,
+    (draft) => {
+      if (dotSizeSlider) {
+        draft.style.dotSize = dotSizeSlider.value;
+      }
+      if (textSizeSlider) {
+        draft.style.textSize = textSizeSlider.value;
+      }
+      if (markerDotColor) {
+        draft.style.dotColor = markerDotColor.value;
+      }
+      if (markerTextColor) {
+        draft.style.textColor = markerTextColor.value;
+      }
+      if (markerFont) {
+        draft.style.fontFamily = markerFont.value;
+      }
+      if (
+        markerLabelInput &&
+        (draft.sourceType === "geonames" || draft.sourceType === "coords")
+      ) {
+        const value = markerLabelInput.value.trim();
+        draft.labelName = value.length > 0 ? value : undefined;
+        draft.labelMode = "name";
+      }
+    },
+    mergeKey,
+  );
   renderMarkers();
 }
 
-function updateShapeFromControls(): void {
+function updateShapeFromControls(mergeKey?: string): void {
   const shape = getSelectedShape();
   if (!shape) {
     return;
   }
-  if (shape.type === "text") {
-    if (shapeTextInput) {
-      shape.text = shapeTextInput.value.trim() || "文字標示";
-    }
-    if (shapeTextColor) {
-      shape.style.textColor = shapeTextColor.value;
-    }
-    if (shapeTextFont) {
-      shape.style.fontFamily = shapeTextFont.value;
-    }
-    if (shapeTextSizeSlider) {
-      shape.style.textSize = shapeTextSizeSlider.value;
-    }
-  }
-  if (shape.type === "line") {
-    if (shapeLineColor) {
-      shape.style.strokeColor = shapeLineColor.value;
-    }
-    if (shapeLineWidthSlider) {
-      shape.style.strokeWidth = shapeLineWidthSlider.value;
-    }
-  }
-  if (shape.type === "arrow") {
-    if (shapeArrowColor) {
-      shape.style.strokeColor = shapeArrowColor.value;
-    }
-    if (shapeArrowWidthSlider) {
-      shape.style.strokeWidth = shapeArrowWidthSlider.value;
-    }
-  }
-  if (shape.type === "area") {
-    if (shapeAreaFill) {
-      shape.style.fillColor = shapeAreaFill.value;
-    }
-    if (shapeAreaStroke) {
-      shape.style.strokeColor = shapeAreaStroke.value;
-    }
-    if (shapeAreaOpacitySlider) {
-      shape.style.fillOpacity = shapeAreaOpacitySlider.value;
-    }
-    if (shapeAreaStrokeWidthSlider) {
-      shape.style.strokeWidth = shapeAreaStrokeWidthSlider.value;
-    }
-  }
+  updateShapeObject(
+    shape,
+    (draft) => {
+      if (draft.type === "text") {
+        if (shapeTextInput) {
+          draft.text = shapeTextInput.value.trim() || "文字標示";
+        }
+        if (shapeTextColor) {
+          draft.style.textColor = shapeTextColor.value;
+        }
+        if (shapeTextFont) {
+          draft.style.fontFamily = shapeTextFont.value;
+        }
+        if (shapeTextSizeSlider) {
+          draft.style.textSize = shapeTextSizeSlider.value;
+        }
+      }
+      if (draft.type === "line") {
+        if (shapeLineColor) {
+          draft.style.strokeColor = shapeLineColor.value;
+        }
+        if (shapeLineWidthSlider) {
+          draft.style.strokeWidth = shapeLineWidthSlider.value;
+        }
+      }
+      if (draft.type === "arrow") {
+        if (shapeArrowColor) {
+          draft.style.strokeColor = shapeArrowColor.value;
+        }
+        if (shapeArrowWidthSlider) {
+          draft.style.strokeWidth = shapeArrowWidthSlider.value;
+        }
+      }
+      if (draft.type === "area") {
+        if (shapeAreaFill) {
+          draft.style.fillColor = shapeAreaFill.value;
+        }
+        if (shapeAreaStroke) {
+          draft.style.strokeColor = shapeAreaStroke.value;
+        }
+        if (shapeAreaOpacitySlider) {
+          draft.style.fillOpacity = shapeAreaOpacitySlider.value;
+        }
+        if (shapeAreaStrokeWidthSlider) {
+          draft.style.strokeWidth = shapeAreaStrokeWidthSlider.value;
+        }
+      }
+    },
+    mergeKey,
+  );
   renderMarkers();
 }
 
@@ -5971,45 +5973,31 @@ document.addEventListener("change", scheduleProjectDirtyCheck, true);
 document.addEventListener("pointerup", scheduleProjectDirtyCheck, true);
 dotSizeSlider = initSlider(markerDotSize, 7, () => {
   const markerId = getEditableMarker()?.id ?? "none";
-  const before = captureEditorSnapshot();
-  updateMarkerFromControls();
-  commitEditorChange(before, `marker:${markerId}:dot-size`);
+  updateMarkerFromControls(`marker:${markerId}:dot-size`);
 });
 textSizeSlider = initSlider(markerTextSize, 7, () => {
   const markerId = getEditableMarker()?.id ?? "none";
-  const before = captureEditorSnapshot();
-  updateMarkerFromControls();
-  commitEditorChange(before, `marker:${markerId}:text-size`);
+  updateMarkerFromControls(`marker:${markerId}:text-size`);
 });
 shapeTextSizeSlider = initSlider(shapeTextSize, 7, () => {
   const shapeId = getSelectedShape()?.id ?? "none";
-  const before = captureEditorSnapshot();
-  updateShapeFromControls();
-  commitEditorChange(before, `shape:${shapeId}:text-size`);
+  updateShapeFromControls(`shape:${shapeId}:text-size`);
 });
 shapeLineWidthSlider = initSlider(shapeLineWidth, 2, () => {
   const shapeId = getSelectedShape()?.id ?? "none";
-  const before = captureEditorSnapshot();
-  updateShapeFromControls();
-  commitEditorChange(before, `shape:${shapeId}:line-width`);
+  updateShapeFromControls(`shape:${shapeId}:line-width`);
 });
 shapeArrowWidthSlider = initSlider(shapeArrowWidth, 2, () => {
   const shapeId = getSelectedShape()?.id ?? "none";
-  const before = captureEditorSnapshot();
-  updateShapeFromControls();
-  commitEditorChange(before, `shape:${shapeId}:arrow-width`);
+  updateShapeFromControls(`shape:${shapeId}:arrow-width`);
 });
 shapeAreaOpacitySlider = initSlider(shapeAreaOpacity, 0.4, () => {
   const shapeId = getSelectedShape()?.id ?? "none";
-  const before = captureEditorSnapshot();
-  updateShapeFromControls();
-  commitEditorChange(before, `shape:${shapeId}:area-opacity`);
+  updateShapeFromControls(`shape:${shapeId}:area-opacity`);
 });
 shapeAreaStrokeWidthSlider = initSlider(shapeAreaStrokeWidth, 2, () => {
   const shapeId = getSelectedShape()?.id ?? "none";
-  const before = captureEditorSnapshot();
-  updateShapeFromControls();
-  commitEditorChange(before, `shape:${shapeId}:area-stroke-width`);
+  updateShapeFromControls(`shape:${shapeId}:area-stroke-width`);
 });
 syncHistoryControls();
 boot();

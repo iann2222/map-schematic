@@ -40,7 +40,7 @@
 - `npm run test:typecheck`
   - 只執行測試程式與相關原始碼的 TypeScript 型別檢查，不執行測試案例。
 
-測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj` 與資料包 manifest、manager、初始化、更新、修復及 fallback。
+測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj`、資料包 manifest、manager、初始化、更新、修復、fallback，以及 renderer Editor Core 的命令與歷史行為。
 
 ## 程式碼結構
 
@@ -71,8 +71,9 @@
   - 定義 preload bridge 與 GeoNames 查詢結果；專案契約直接引用 shared schema，避免重複定義。
 - `src/renderer/editor/*`
   - 以單一 `EditorDocument.objects` 管理點標示與形狀，並以可辨識物件型別提供安全存取。
-  - 定義不可變 document 快照及最多 300 筆的 Undo/Redo 歷史。
-  - 連續文字與滑桿修改可合併；新增、刪除、拖曳、樣式及排序均可復原與重做。
+  - `editor-core.ts` 集中套用編輯命令、交易與最多 300 筆的 Undo/Redo 歷史；UI 不再自行維護完整文件快照。
+  - `commands.ts` 定義可序列化的新增、刪除、欄位更新、排序與清空命令，套用前會檢查目前資料狀態。
+  - 命令只保存實際變更欄位；連續文字與滑桿修改可合併，拖曳期間即時預覽並在結束時記為單一命令。
 - `src/renderer/project/project-state.ts`
   - 比較目前專案與最近一次成功儲存／載入的內容，供未儲存狀態提示使用。
   - 分離目前 renderer 可編輯的 point 物件與尚未支援的幾何物件；後者不顯示，但再次儲存時會原樣保留。
