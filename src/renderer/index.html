@@ -1,5 +1,5 @@
 ﻿<!doctype html>
-<html lang="en">
+<html lang="zh-Hant" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -1536,437 +1536,875 @@
         }
       }
     </style>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="layout" id="layout">
-      <div class="panel">
-        <div>
-          <h1 class="title">地圖示意圖</h1>
-          <p class="subtitle">地圖示意製作工具</p>
+    <header class="app-header">
+      <div class="app-header-left">
+        <div class="app-brand" aria-label="Map Schematic">
+          <span class="app-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 6.5 8.5 4l7 2.5L21 4v13.5L15.5 20l-7-2.5L3 20Z"></path>
+              <path d="M8.5 4v13.5M15.5 6.5V20"></path>
+            </svg>
+          </span>
+          <span class="app-brand-name">Map Schematic</span>
         </div>
-        <p class="status" id="status">載入中…</p>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <div class="project-actions" role="toolbar" aria-label="專案操作">
+          <button
+            id="loadBtn"
+            class="ui-button ghost project-action-button"
+            type="button"
+          >
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 7.5h7l2 2h9v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path>
+              <path d="M3 10V6a2 2 0 0 1 2-2h5l2 2h4"></path>
+            </svg>
+            <span>載入專案</span>
+          </button>
+          <button
+            id="saveBtn"
+            class="ui-button ghost project-action-button"
+            type="button"
+          >
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 3h12l2 2v16H5Z"></path>
+              <path d="M8 3v6h8V3M8 21v-7h8v7"></path>
+            </svg>
+            <span>儲存專案</span>
+          </button>
+          <button
+            id="saveAsBtn"
+            class="ui-button ghost project-action-button"
+            type="button"
+          >
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 3h12l2 2v7M5 3v18h7"></path>
+              <path d="M8 3v6h8V3M8 16h8M16 13v6M13 16h6"></path>
+            </svg>
+            <span>另存新檔</span>
+          </button>
+        </div>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <div class="history-actions" role="toolbar" aria-label="編輯歷史">
+          <button
+            id="undoBtn"
+            class="ui-icon-button"
+            type="button"
+            title="復原"
+            aria-label="復原"
+            disabled
+          >
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 7-5 5 5 5"></path>
+              <path d="M4 12h9a7 7 0 0 1 7 7"></path>
+            </svg>
+          </button>
+          <button
+            id="redoBtn"
+            class="ui-icon-button"
+            type="button"
+            title="重做"
+            aria-label="重做"
+            disabled
+          >
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m15 7 5 5-5 5"></path>
+              <path d="M20 12h-9a7 7 0 0 0-7 7"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div
+        class="app-header-actions"
+        role="toolbar"
+        aria-label="專案狀態與匯出"
+      >
+        <div class="project-identity">
+          <span class="project-name" id="projectName">未命名地圖</span>
+          <span class="project-state new" id="projectState">
+            <span class="project-state-dot" aria-hidden="true"></span>
+            <span id="projectStateText">尚未儲存</span>
+          </span>
+        </div>
+        <button
+          id="topExportBtn"
+          class="ui-button primary export-button"
+          type="button"
+        >
+          <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14 5h5v5M10 14l9-9"></path>
+            <path d="M19 14v5H5V5h5"></path>
+          </svg>
+          <span>匯出</span>
+        </button>
+      </div>
+    </header>
+    <nav class="workflow-nav" aria-label="製圖步驟">
+      <div class="workspace-status workflow-datapack-status">
+        <svg
+          class="workspace-status-icon"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path d="m5 12 4 4L19 6"></path>
+        </svg>
+        <span class="status" id="status">載入中…</span>
+      </div>
+      <button class="workflow-step active" type="button" data-step-jump="0">
+        <span class="workflow-step-index">0</span>
+        <span class="workflow-step-copy">
+          <span class="workflow-step-name">定位</span>
+          <span class="workflow-step-detail">尋找目標區域</span>
+        </span>
+      </button>
+      <span class="workflow-connector" aria-hidden="true"></span>
+      <button class="workflow-step" type="button" data-step-jump="1">
+        <span class="workflow-step-index">1</span>
+        <span class="workflow-step-copy">
+          <span class="workflow-step-name">範圍</span>
+          <span class="workflow-step-detail">裁切與比例</span>
+        </span>
+      </button>
+      <span class="workflow-connector" aria-hidden="true"></span>
+      <button class="workflow-step" type="button" data-step-jump="2">
+        <span class="workflow-step-index">2</span>
+        <span class="workflow-step-copy">
+          <span class="workflow-step-name">底圖</span>
+          <span class="workflow-step-detail">樣式與地形</span>
+        </span>
+      </button>
+      <span class="workflow-connector" aria-hidden="true"></span>
+      <button class="workflow-step" type="button" data-step-jump="3">
+        <span class="workflow-step-index">3</span>
+        <span class="workflow-step-copy">
+          <span class="workflow-step-name">標示</span>
+          <span class="workflow-step-detail">內容與繪製</span>
+        </span>
+      </button>
+      <button
+        id="preferencesBtn"
+        class="ui-icon-button workflow-preferences"
+        type="button"
+        title="偏好設定"
+        aria-label="偏好設定"
+      >
+        <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path
+            d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.16.37.37.71.64 1 .3.3.69.48 1.1.5h.1v4h-.1a1.7 1.7 0 0 0-1.74.5Z"
+          ></path>
+        </svg>
+      </button>
+    </nav>
+    <div class="layout" id="layout">
+      <aside class="panel workflow-panel">
         <div class="step-header">
           <div class="step-progress" id="stepProgress">步驟 0 / 3</div>
           <div class="step-title" id="stepTitle">大致定位</div>
           <div class="step-subtitle" id="stepSubtitle"></div>
         </div>
         <div class="step-panel active" data-step-panel="0">
-          <div class="hint">
-            請先大致定位，確定要包含的區域，可透過地名搜尋幫助判斷。
+          <div class="sidebar-section-heading">
+            <span class="sidebar-section-title">搜尋定位</span>
+            <span class="sidebar-section-meta">官方離線資料</span>
           </div>
-          <div class="field inline-actions">
-            <button id="loadBtn0" class="secondary">載入專案</button>
-          </div>
-          <div class="field search-field">
-            <input
-              id="search0"
-              type="text"
-              placeholder="地名（例如：台北 / Taipei）"
-            />
+          <div
+            class="segmented-control"
+            role="tablist"
+            aria-label="定位輸入方式"
+            data-search-switch="step0"
+          >
             <button
-              class="icon-btn icon-clear"
-              data-clear="search0"
-              aria-label="清除"
+              class="segmented-option active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              data-search-mode="place"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <line x1="7" y1="7" x2="17" y2="17"></line>
-                <line x1="17" y1="7" x2="7" y2="17"></line>
-              </svg>
+              地名
             </button>
-            <span class="search-divider"></span>
             <button
-              id="searchBtn0"
-              class="icon-btn icon-search"
-              aria-label="搜尋"
+              class="segmented-option"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              data-search-mode="coords"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="11" cy="11" r="6.5"></circle>
-                <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
-              </svg>
+              座標
             </button>
           </div>
-          <div class="field search-field">
-            <input
-              id="coord0"
-              type="text"
-              placeholder="經緯度（例如：25.034, 121.564）"
-            />
-            <button
-              class="icon-btn icon-clear"
-              data-clear="coord0"
-              aria-label="清除"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <line x1="7" y1="7" x2="17" y2="17"></line>
-                <line x1="17" y1="7" x2="7" y2="17"></line>
-              </svg>
-            </button>
-            <span class="search-divider"></span>
-            <button
-              id="coordBtn0"
-              class="icon-btn icon-search"
-              aria-label="搜尋"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="11" cy="11" r="6.5"></circle>
-                <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
-              </svg>
-            </button>
+          <div class="search-mode-panel active" data-search-panel="step0:place">
+            <div class="field search-field">
+              <input
+                id="search0"
+                type="text"
+                placeholder="輸入地名，例如台北或 Taipei"
+              />
+              <button
+                class="icon-btn icon-clear"
+                data-clear="search0"
+                aria-label="清除"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <line x1="7" y1="7" x2="17" y2="17"></line>
+                  <line x1="17" y1="7" x2="7" y2="17"></line>
+                </svg>
+              </button>
+              <span class="search-divider"></span>
+              <button
+                id="searchBtn0"
+                class="icon-btn icon-search"
+                aria-label="搜尋地名"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5"></circle>
+                  <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="search-mode-panel" data-search-panel="step0:coords">
+            <div class="field search-field">
+              <input
+                id="coord0"
+                type="text"
+                placeholder="輸入緯度、經度，例如 25.034, 121.564"
+              />
+              <button
+                class="icon-btn icon-clear"
+                data-clear="coord0"
+                aria-label="清除"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <line x1="7" y1="7" x2="17" y2="17"></line>
+                  <line x1="17" y1="7" x2="7" y2="17"></line>
+                </svg>
+              </button>
+              <span class="search-divider"></span>
+              <button
+                id="coordBtn0"
+                class="icon-btn icon-search"
+                aria-label="前往座標"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5"></circle>
+                  <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+                </svg>
+              </button>
+            </div>
           </div>
           <ul class="results" id="results0"></ul>
         </div>
         <div class="step-panel" data-step-panel="1">
-          <div class="hint">框選比例：</div>
-          <div class="option-row option-grid">
-            <button class="secondary ratio-button" id="ratioOriginal">
-              預設
+          <div class="sidebar-section-heading">
+            <span class="sidebar-section-title">畫布比例</span>
+            <button
+              class="ui-icon-button compact"
+              type="button"
+              id="ratioSwap"
+              title="長寬比互換"
+              aria-label="長寬比互換"
+            >
+              <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 7h11l-3-3M17 17H6l3 3"></path>
+              </svg>
             </button>
-            <button class="secondary ratio-button" id="ratioFree">自由</button>
-            <button class="secondary ratio-button" id="ratioSquare">1:1</button>
-            <button class="secondary ratio-button" id="ratio34">3:4</button>
-            <button class="secondary ratio-button" id="ratio43">4:3</button>
-            <button class="secondary ratio-button" id="ratio169">16:9</button>
-            <button class="secondary ratio-button" id="ratio916">9:16</button>
-            <button class="secondary ratio-button" id="ratioA4">A4</button>
           </div>
-          <div class="option-row option-grid ratio-custom-row">
-            <button class="secondary ratio-button" id="ratioCustom">
-              自訂
+          <div class="ratio-preset-grid">
+            <button class="ratio-preset" id="ratioOriginal">
+              <span class="ratio-shape original" aria-hidden="true"></span>
+              <span>目前比例</span>
             </button>
-            <input id="ratioInputA" class="ratio-input" type="number" min="1" />
-            <span class="hint">:</span>
-            <input id="ratioInputB" class="ratio-input" type="number" min="1" />
+            <button class="ratio-preset" id="ratioFree">
+              <span class="ratio-shape free" aria-hidden="true"></span>
+              <span>自由</span>
+            </button>
+            <button class="ratio-preset" id="ratio43">
+              <span class="ratio-shape landscape" aria-hidden="true"></span>
+              <span>4:3</span>
+            </button>
+            <button class="ratio-preset" id="ratio34">
+              <span class="ratio-shape portrait" aria-hidden="true"></span>
+              <span>3:4</span>
+            </button>
+            <button class="ratio-preset" id="ratio169">
+              <span class="ratio-shape wide" aria-hidden="true"></span>
+              <span>16:9</span>
+            </button>
+            <button class="ratio-preset" id="ratio916">
+              <span class="ratio-shape tall" aria-hidden="true"></span>
+              <span>9:16</span>
+            </button>
+            <button class="ratio-preset" id="ratioA4">
+              <span class="ratio-shape a4" aria-hidden="true"></span>
+              <span>A4</span>
+            </button>
+            <button class="ratio-preset" id="ratioSquare">
+              <span class="ratio-shape square" aria-hidden="true"></span>
+              <span>1:1</span>
+            </button>
           </div>
-          <div class="hint">下一步：選擇是否要地形與底圖樣式。</div>
+          <div class="custom-ratio">
+            <button class="custom-ratio-label" id="ratioCustom">
+              <span class="ratio-shape custom" aria-hidden="true"></span>
+              <span>自訂</span>
+            </button>
+            <div class="custom-ratio-fields">
+              <input
+                id="ratioInputA"
+                class="ratio-input"
+                type="number"
+                min="1"
+                aria-label="自訂比例寬度"
+              />
+              <span class="ratio-separator">:</span>
+              <input
+                id="ratioInputB"
+                class="ratio-input"
+                type="number"
+                min="1"
+                aria-label="自訂比例高度"
+              />
+            </div>
+          </div>
+          <div class="workflow-note">在地圖上拖曳裁切框調整範圍。</div>
         </div>
         <div class="step-panel" data-step-panel="2">
-          <div class="hint">底圖視覺風格：</div>
-          <div class="option-row option-grid">
-            <button class="secondary ratio-button" id="styleOriginal">
-              預設
+          <div class="sidebar-section-heading">
+            <span class="sidebar-section-title">底圖風格</span>
+          </div>
+          <div class="map-style-list">
+            <button class="map-style-option" id="styleOriginal">
+              <span class="map-style-preview original" aria-hidden="true"></span>
+              <span class="map-style-copy">
+                <span class="map-style-name">原始</span>
+                <span class="map-style-meta">資料預設色彩</span>
+              </span>
             </button>
-            <button class="secondary ratio-button" id="styleDefault">
-              淺色
+            <button class="map-style-option" id="styleDefault">
+              <span class="map-style-preview light" aria-hidden="true"></span>
+              <span class="map-style-copy">
+                <span class="map-style-name">淺色</span>
+                <span class="map-style-meta">清晰簡報風格</span>
+              </span>
             </button>
-            <button class="secondary ratio-button" id="styleDark">深色</button>
-            <button class="secondary ratio-button" id="styleSoft">柔和</button>
-            <button class="secondary ratio-button" id="styleOutline">
-              輪廓
+            <button class="map-style-option" id="styleDark">
+              <span class="map-style-preview dark" aria-hidden="true"></span>
+              <span class="map-style-copy">
+                <span class="map-style-name">深色</span>
+                <span class="map-style-meta">高對比展示</span>
+              </span>
             </button>
-            <button class="secondary ratio-button" id="styleMinimal">
-              極簡
+            <button class="map-style-option" id="styleSoft">
+              <span class="map-style-preview soft" aria-hidden="true"></span>
+              <span class="map-style-copy">
+                <span class="map-style-name">柔和</span>
+                <span class="map-style-meta">低彩度背景</span>
+              </span>
+            </button>
+            <button class="map-style-option" id="styleOutline">
+              <span class="map-style-preview outline" aria-hidden="true"></span>
+              <span class="map-style-copy">
+                <span class="map-style-name">輪廓</span>
+                <span class="map-style-meta">聚焦邊界線條</span>
+              </span>
+            </button>
+            <button class="map-style-option" id="styleMinimal">
+              <span class="map-style-preview minimal" aria-hidden="true"></span>
+              <span class="map-style-copy">
+                <span class="map-style-name">極簡</span>
+                <span class="map-style-meta">減少視覺干擾</span>
+              </span>
             </button>
           </div>
-          <div class="hint">地形陰影：</div>
-          <div class="option-row option-grid">
-            <button class="secondary active" data-relief="off">關閉</button>
-            <button class="secondary" data-relief="source-over">覆蓋</button>
-            <button class="secondary" data-relief="multiply">加深</button>
-            <button class="secondary" data-relief="screen">濾色</button>
-            <button class="secondary" data-relief="overlay">疊加</button>
-            <button class="secondary" data-relief="soft-light">柔光</button>
-            <button class="secondary" data-relief="hard-light">強光</button>
+          <div class="settings-divider"></div>
+          <div class="relief-settings-group">
+            <div class="setting-row relief-toggle-row">
+              <span class="setting-copy">
+                <span class="setting-label">地形陰影</span>
+                <span class="setting-description">顯示資料包中的地形明暗</span>
+              </span>
+              <label class="switch-control">
+                <input id="reliefToggle" type="checkbox" />
+                <span class="switch-track" aria-hidden="true"></span>
+              </label>
+            </div>
+            <div
+              class="form-field relief-mode-field disabled"
+              id="reliefModeField"
+            >
+              <span class="form-label">陰影混合方式</span>
+              <div class="custom-select" id="reliefBlendDropdown">
+                <button
+                  class="custom-select-trigger"
+                  id="reliefBlendTrigger"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-controls="reliefBlendMenu"
+                  aria-expanded="false"
+                  disabled
+                >
+                  <span id="reliefBlendValue">疊加</span>
+                  <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m8 10 4 4 4-4"></path>
+                  </svg>
+                </button>
+                <div
+                  class="custom-select-menu"
+                  id="reliefBlendMenu"
+                  role="listbox"
+                  aria-label="陰影混合方式"
+                  hidden
+                >
+                  <button type="button" role="option" data-blend-value="source-over">
+                    <span>覆蓋</span>
+                    <span class="custom-select-description">直接顯示陰影明暗</span>
+                  </button>
+                  <button type="button" role="option" data-blend-value="multiply">
+                    <span>加深</span>
+                    <span class="custom-select-description">加強地形暗部</span>
+                  </button>
+                  <button type="button" role="option" data-blend-value="screen">
+                    <span>濾色</span>
+                    <span class="custom-select-description">提亮地形亮部</span>
+                  </button>
+                  <button type="button" role="option" data-blend-value="overlay">
+                    <span>疊加</span>
+                    <span class="custom-select-description">平衡明暗對比</span>
+                  </button>
+                  <button type="button" role="option" data-blend-value="soft-light">
+                    <span>柔光</span>
+                    <span class="custom-select-description">呈現較柔和的起伏</span>
+                  </button>
+                  <button type="button" role="option" data-blend-value="hard-light">
+                    <span>強光</span>
+                    <span class="custom-select-description">強化地形對比</span>
+                  </button>
+                </div>
+              </div>
+              <select class="native-select-state" id="reliefBlendSelect" disabled aria-hidden="true" tabindex="-1">
+                <option value="source-over">覆蓋</option>
+                <option value="multiply">加深</option>
+                <option value="screen">濾色</option>
+                <option value="overlay">疊加</option>
+                <option value="soft-light">柔光</option>
+                <option value="hard-light">強光</option>
+              </select>
+            </div>
           </div>
-          <div class="hint">下一步：加入地名標示或文字。</div>
+          <div class="legacy-relief-controls" aria-hidden="true">
+            <button data-relief="off">關閉</button>
+            <button data-relief="source-over">覆蓋</button>
+            <button data-relief="multiply">加深</button>
+            <button data-relief="screen">濾色</button>
+            <button data-relief="overlay">疊加</button>
+            <button data-relief="soft-light">柔光</button>
+            <button data-relief="hard-light">強光</button>
+          </div>
         </div>
         <div class="step-panel tool-panel" data-step-panel="3">
-          <div class="editor-history-actions" role="toolbar" aria-label="編輯歷史">
+          <div class="editor-workspace-tabs" role="tablist" aria-label="標示工作區">
             <button
-              id="undoBtn"
-              class="icon-btn"
+              class="editor-workspace-tab active"
               type="button"
-              title="復原"
-              aria-label="復原"
-              disabled
+              role="tab"
+              aria-selected="true"
+              data-editor-tab="search"
             >
-              ↶
+              地標
             </button>
             <button
-              id="redoBtn"
-              class="icon-btn"
+              class="editor-workspace-tab"
               type="button"
-              title="重做"
-              aria-label="重做"
-              disabled
+              role="tab"
+              aria-selected="false"
+              data-editor-tab="tools"
             >
-              ↷
+              圖形
+            </button>
+            <button
+              class="editor-workspace-tab"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              data-editor-tab="layers"
+            >
+              項目
             </button>
           </div>
-          <div class="panel card compact">
-            <div class="section-title card-title">地名搜尋</div>
-            <div class="field row search-field">
-              <input
-                id="search3"
-                type="text"
-                placeholder="地名（如：台北 / Taipei）"
-              />
+          <section
+            class="editor-tab-view active"
+            role="tabpanel"
+            data-editor-tab-panel="search"
+          >
+            <div class="sidebar-section-heading">
+              <span class="sidebar-section-title">加入地標</span>
+              <span class="sidebar-section-meta">搜尋地名或輸入座標</span>
+            </div>
+            <div
+              class="segmented-control"
+              role="tablist"
+              aria-label="標示搜尋方式"
+              data-search-switch="step3"
+            >
               <button
-                class="icon-btn icon-clear"
-                data-clear="search3"
-                aria-label="清除"
+                class="segmented-option active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                data-search-mode="place"
               >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <line x1="7" y1="7" x2="17" y2="17"></line>
-                  <line x1="17" y1="7" x2="7" y2="17"></line>
-                </svg>
+                地名
               </button>
-              <span class="search-divider"></span>
               <button
-                id="searchBtn3"
-                class="icon-btn icon-search"
-                aria-label="地名搜尋"
+                class="segmented-option"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                data-search-mode="coords"
               >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="11" cy="11" r="6.5"></circle>
-                  <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
-                </svg>
+                座標
               </button>
             </div>
-            <div class="section-title card-title">座標搜尋</div>
-            <div class="field row search-field">
-              <input
-                id="coord3"
-                type="text"
-                placeholder="經緯度（例如：25.034, 121.564）"
-              />
-              <button
-                class="icon-btn icon-clear"
-                data-clear="coord3"
-                aria-label="清除"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <line x1="7" y1="7" x2="17" y2="17"></line>
-                  <line x1="17" y1="7" x2="7" y2="17"></line>
-                </svg>
-              </button>
-              <span class="search-divider"></span>
-              <button
-                id="coordBtn3"
-                class="icon-btn icon-search"
-                aria-label="座標搜尋"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="11" cy="11" r="6.5"></circle>
-                  <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
-                </svg>
-              </button>
+            <div class="search-mode-panel active" data-search-panel="step3:place">
+              <div class="field row search-field">
+                <input
+                  id="search3"
+                  type="text"
+                  placeholder="輸入地名，例如台北或 Taipei"
+                />
+                <button
+                  class="icon-btn icon-clear"
+                  data-clear="search3"
+                  aria-label="清除"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <line x1="7" y1="7" x2="17" y2="17"></line>
+                    <line x1="17" y1="7" x2="7" y2="17"></line>
+                  </svg>
+                </button>
+                <span class="search-divider"></span>
+                <button
+                  id="searchBtn3"
+                  class="icon-btn icon-search"
+                  aria-label="搜尋地名"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6.5"></circle>
+                    <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="search-mode-panel" data-search-panel="step3:coords">
+              <div class="field row search-field">
+                <input
+                  id="coord3"
+                  type="text"
+                  placeholder="輸入緯度、經度"
+                />
+                <button
+                  class="icon-btn icon-clear"
+                  data-clear="coord3"
+                  aria-label="清除"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <line x1="7" y1="7" x2="17" y2="17"></line>
+                    <line x1="17" y1="7" x2="7" y2="17"></line>
+                  </svg>
+                </button>
+                <span class="search-divider"></span>
+                <button
+                  id="coordBtn3"
+                  class="icon-btn icon-search"
+                  aria-label="新增座標標示"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6.5"></circle>
+                    <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+                  </svg>
+                </button>
+              </div>
             </div>
             <div id="results3Block" class="search-results-block">
-              <div class="section-title card-title">搜尋結果</div>
+              <div class="sidebar-section-heading results-heading">
+                <span class="sidebar-section-title">搜尋結果</span>
+              </div>
               <ul class="results compact plain" id="results3"></ul>
             </div>
-          </div>
-          <div class="panel card compact">
-            <div class="section-title card-title">新增標示</div>
+          </section>
+          <section
+            class="editor-tab-view"
+            role="tabpanel"
+            data-editor-tab-panel="tools"
+          >
+            <div class="sidebar-section-heading">
+              <span class="sidebar-section-title">加入圖形</span>
+                <span class="sidebar-section-meta">新增後圖形位於地圖中心</span>
+            </div>
             <div class="tool-list">
               <div class="tool-item" data-tool="marker">
                 <button class="tool-btn tool-select" data-tool="marker">
-                  <span class="tool-icon">●</span>
-                  點標示
+                  <span class="tool-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="4"></circle>
+                      <path d="M12 2v4M12 18v4M2 12h4M18 12h4"></path>
+                    </svg>
+                  </span>
+                  <span>點標示</span>
                 </button>
-                <button class="icon-btn tool-add" data-add-tool="marker">
-                  +
+                <button
+                  class="icon-btn tool-add"
+                  data-add-tool="marker"
+                  title="置於畫布中央"
+                  aria-label="將點標示置於畫布中央"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14"></path>
+                  </svg>
                 </button>
               </div>
               <div class="tool-item" data-tool="line">
                 <button class="tool-btn tool-select" data-tool="line">
-                  <span class="tool-icon">／</span>
-                  線段
+                  <span class="tool-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="m5 18 14-12"></path>
+                      <circle cx="5" cy="18" r="1.5"></circle>
+                      <circle cx="19" cy="6" r="1.5"></circle>
+                    </svg>
+                  </span>
+                  <span>線段</span>
                 </button>
-                <button class="icon-btn tool-add" data-add-tool="line">
-                  +
+                <button
+                  class="icon-btn tool-add"
+                  data-add-tool="line"
+                  title="置於畫布中央"
+                  aria-label="將線段置於畫布中央"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14"></path>
+                  </svg>
                 </button>
               </div>
               <div class="tool-item" data-tool="area">
                 <button class="tool-btn tool-select" data-tool="area">
-                  <span class="tool-icon">▢</span>
-                  區域
+                  <span class="tool-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M5 6.5 16 4l3 5-2 10H7L4 13Z"></path>
+                    </svg>
+                  </span>
+                  <span>區域</span>
                 </button>
-                <button class="icon-btn tool-add" data-add-tool="area">
-                  +
+                <button
+                  class="icon-btn tool-add"
+                  data-add-tool="area"
+                  title="置於畫布中央"
+                  aria-label="將區域置於畫布中央"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14"></path>
+                  </svg>
                 </button>
               </div>
               <div class="tool-item" data-tool="text">
                 <button class="tool-btn tool-select" data-tool="text">
-                  <span class="tool-icon">T</span>
-                  文字
+                  <span class="tool-icon text-tool-icon" aria-hidden="true">T</span>
+                  <span>文字</span>
                 </button>
-                <button class="icon-btn tool-add" data-add-tool="text">
-                  +
+                <button
+                  class="icon-btn tool-add"
+                  data-add-tool="text"
+                  title="置於畫布中央"
+                  aria-label="將文字置於畫布中央"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14"></path>
+                  </svg>
                 </button>
               </div>
               <div class="tool-item" data-tool="arrow">
                 <button class="tool-btn tool-select" data-tool="arrow">
-                  <span class="tool-icon">➜</span>
-                  箭頭
+                  <span class="tool-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M4 12h15M14 7l5 5-5 5"></path>
+                    </svg>
+                  </span>
+                  <span>箭頭</span>
                 </button>
-                <button class="icon-btn tool-add" data-add-tool="arrow">
-                  +
+                <button
+                  class="icon-btn tool-add"
+                  data-add-tool="arrow"
+                  title="置於畫布中央"
+                  aria-label="將箭頭置於畫布中央"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14"></path>
+                  </svg>
                 </button>
               </div>
             </div>
-          </div>
+          </section>
+          <section
+            class="editor-tab-view layers-view"
+            role="tabpanel"
+            data-editor-tab-panel="layers"
+          >
+            <div class="sidebar-section-heading">
+              <span class="sidebar-section-title">地圖項目</span>
+              <button
+                id="listOrderSettingsBtn"
+                class="ui-icon-button compact"
+                type="button"
+                title="項目排序"
+                aria-label="項目排序"
+              >
+                <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 6h16M4 12h16M4 18h16"></path>
+                  <path d="m7 3-3 3 3 3M17 15l3 3-3 3"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="marker-list" id="markerList"></div>
+            <div class="layers-empty" aria-live="polite">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m5 8 7-4 7 4-7 4Z"></path>
+                <path d="m5 12 7 4 7-4M5 16l7 4 7-4"></path>
+              </svg>
+              <span>尚無項目</span>
+            </div>
+            <div class="layers-footer">
+              <button
+                id="clearMarkers"
+                class="ui-button danger-ghost"
+                type="button"
+                disabled
+              >
+                <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"></path>
+                  <path d="M10 11v5M14 11v5"></path>
+                </svg>
+                <span>清除全部</span>
+              </button>
+            </div>
+          </section>
         </div>
-      </div>
+      </aside>
       <div class="map-wrap">
         <div class="map-toolbar">
-          <button id="toolZoomIn">放大</button>
-          <button id="toolZoomOut">縮小</button>
-          <button id="toolReset">重設</button>
+          <button
+            id="toolZoomIn"
+            class="ui-icon-button"
+            type="button"
+            title="放大"
+            aria-label="放大"
+          >
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m16 16 5 5M8 11h6M11 8v6"></path>
+            </svg>
+          </button>
+          <button
+            id="toolZoomOut"
+            class="ui-icon-button"
+            type="button"
+            title="縮小"
+            aria-label="縮小"
+          >
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m16 16 5 5M8 11h6"></path>
+            </svg>
+          </button>
+          <button
+            id="toolReset"
+            class="ui-icon-button"
+            type="button"
+            title="符合畫布"
+            aria-label="符合畫布"
+          >
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"></path>
+            </svg>
+          </button>
         </div>
-        <div class="map-stage">
-          <canvas id="basemap" width="1200" height="800"></canvas>
-          <svg
-            id="map"
-            viewBox="0 0 1200 800"
-            preserveAspectRatio="xMidYMid meet"
-          ></svg>
-          <div class="crop-overlay hidden" id="cropOverlay">
-            <div class="crop-mask" id="cropMaskTop"></div>
-            <div class="crop-mask" id="cropMaskLeft"></div>
-            <div class="crop-mask" id="cropMaskRight"></div>
-            <div class="crop-mask" id="cropMaskBottom"></div>
+        <div class="map-card">
+          <div class="map-stage">
+            <canvas id="basemap" width="1200" height="800"></canvas>
+            <svg
+              id="map"
+              viewBox="0 0 1200 800"
+              preserveAspectRatio="xMidYMid meet"
+            ></svg>
+            <div class="crop-overlay hidden" id="cropOverlay">
+              <div class="crop-mask" id="cropMaskTop"></div>
+              <div class="crop-mask" id="cropMaskLeft"></div>
+              <div class="crop-mask" id="cropMaskRight"></div>
+              <div class="crop-mask" id="cropMaskBottom"></div>
+            </div>
+            <div class="crop-frame hidden" id="cropFrame">
+              <div class="crop-handle nw" data-handle="nw"></div>
+              <div class="crop-handle ne" data-handle="ne"></div>
+              <div class="crop-handle sw" data-handle="sw"></div>
+              <div class="crop-handle se" data-handle="se"></div>
+              <div class="crop-handle n" data-handle="n"></div>
+              <div class="crop-handle s" data-handle="s"></div>
+              <div class="crop-handle w" data-handle="w"></div>
+              <div class="crop-handle e" data-handle="e"></div>
+            </div>
+            <div class="map-zoom-indicator" id="zoomIndicator">100%</div>
           </div>
-          <div class="crop-frame hidden" id="cropFrame">
-            <div class="crop-handle nw" data-handle="nw"></div>
-            <div class="crop-handle ne" data-handle="ne"></div>
-            <div class="crop-handle sw" data-handle="sw"></div>
-            <div class="crop-handle se" data-handle="se"></div>
-            <div class="crop-handle n" data-handle="n"></div>
-            <div class="crop-handle s" data-handle="s"></div>
-            <div class="crop-handle w" data-handle="w"></div>
-            <div class="crop-handle e" data-handle="e"></div>
-          </div>
-          <div class="map-zoom-indicator" id="zoomIndicator">100%</div>
-        </div>
-        <div class="map-footer">
-          <button id="prevStep" class="secondary">返回</button>
-          <button id="nextStep">下一步</button>
-        </div>
-        <details class="map-list-panel" data-step-panel="3" open>
-          <summary class="map-list-header">
-            <span class="map-list-title">
-              <span>標示清單</span>
-              <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M6 9l6 6 6-6"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                ></path>
-              </svg>
-            </span>
-            <button
-              id="listOrderSettingsBtn"
-              class="map-list-settings"
-              type="button"
-              aria-label="排序設定"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58c.18-.14.23-.4.12-.61l-1.92-3.32c-.11-.22-.37-.3-.59-.22l-2.39.96c-.5-.38-1.05-.69-1.65-.92l-.36-2.54A.5.5 0 0 0 13.88 2h-3.76a.5.5 0 0 0-.49.42l-.36 2.54c-.6.23-1.15.54-1.65.92l-2.39-.96a.5.5 0 0 0-.59.22L2.72 8.46c-.12.21-.07.47.12.61l2.03 1.58c-.05.31-.08.64-.08.97 0 .33.03.65.08.97l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.11.22.37.3.59.22l2.39-.96c.5.38 1.05.69 1.65.92l.36 2.54c.03.24.25.42.49.42h3.76c.24 0 .46-.18.49-.42l.36-2.54c.6-.23 1.15-.54 1.65-.92l2.39.96c.22.08.48 0 .59-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"
-                ></path>
-              </svg>
-            </button>
-          </summary>
-          <div class="marker-list" id="markerList"></div>
-          <button id="clearMarkers" class="secondary">清除全部</button>
-        </details>
-      </div>
-      <div class="panel right-panel">
-        <div class="step-panel" data-step-panel="3">
-          <div class="section-title">屬性</div>
-          <div class="option-row" id="itemNameRow" style="display: none">
-            <label class="ratio-label">名稱</label>
-            <input id="itemNameInput" type="text" placeholder="輸入名稱" />
-          </div>
-          <div class="hint" id="settingsEmpty">尚未選取標示。</div>
-          <div id="pointSettings" class="settings-stack">
-            <div class="option-row">
-              <label class="ratio-label">點大小</label>
-              <div
-                class="slider"
-                id="markerDotSize"
-                data-min="2"
-                data-max="16"
-                data-step="1"
-                data-marks="9"
-                data-default-index="3"
+          <div class="map-footer">
+            <div class="workflow-actions">
+              <button
+                id="prevStep"
+                class="ui-button step-button previous"
+                type="button"
               >
-                <div class="slider-track">
-                  <div class="slider-fill"></div>
-                  <div class="slider-thumb" tabindex="0"></div>
-                </div>
-                <div class="slider-marks"></div>
-              </div>
+                <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m15 18-6-6 6-6"></path>
+                </svg>
+                <span>返回</span>
+              </button>
+              <button
+                id="nextStep"
+                class="ui-button primary step-button next"
+                type="button"
+              >
+                <span>下一步</span>
+                <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 18 6-6-6-6"></path>
+                </svg>
+              </button>
             </div>
-            <div class="option-row color-row">
-              <div class="color-head">
-                <label class="ratio-label">點顏色</label>
-                <input id="markerDotColor" type="color" value="#f97316" />
-              </div>
-              <div class="color-palette" id="dotPalette">
-                <button
-                  class="color-swatch"
-                  data-color="#ff7a59"
-                  data-color-target="dot"
-                  style="background: #ff7a59"
-                ></button>
-                <button
-                  class="color-swatch"
-                  data-color="#fde68a"
-                  data-color-target="dot"
-                  style="background: #fde68a"
-                ></button>
-                <button
-                  class="color-swatch"
-                  data-color="#f59e0b"
-                  data-color-target="dot"
-                  style="background: #f59e0b"
-                ></button>
-                <button
-                  class="color-swatch"
-                  data-color="#22c55e"
-                  data-color-target="dot"
-                  style="background: #22c55e"
-                ></button>
-                <button
-                  class="color-swatch"
-                  data-color="#38bdf8"
-                  data-color-target="dot"
-                  style="background: #38bdf8"
-                ></button>
-                <button
-                  class="color-swatch"
-                  data-color="#a78bfa"
-                  data-color-target="dot"
-                  style="background: #a78bfa"
-                ></button>
-                <button
-                  class="color-swatch"
-                  data-color="#f43f5e"
-                  data-color-target="dot"
-                  style="background: #f43f5e"
-                ></button>
-                <button
-                  class="color-swatch"
-                  data-color="#f97316"
-                  data-color-target="dot"
-                  style="background: #f97316"
-                ></button>
-              </div>
+          </div>
+        </div>
+      </div>
+      <aside class="panel right-panel inspector-panel">
+        <div class="step-panel" data-step-panel="3">
+          <div class="inspector-header">
+            <div>
+              <div class="inspector-eyebrow">所選項目</div>
+              <div class="inspector-title">屬性</div>
             </div>
-            <div id="pointTextControls" class="settings-stack">
-              <div class="option-row">
-                <label class="ratio-label">標示文字</label>
-                <input
-                  id="markerLabelInput"
-                  type="text"
-                  placeholder="輸入標示文字"
-                />
-              </div>
+            <svg class="inspector-header-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 4h6v6H4ZM14 4h6v6h-6ZM4 14h6v6H4ZM14 14h6v6h-6Z"></path>
+            </svg>
+          </div>
+          <div class="option-row" id="itemNameRow" style="display: none">
+            <label class="ratio-label">項目名稱</label>
+            <input id="itemNameInput" type="text" placeholder="輸入項目名稱" />
+          </div>
+          <div class="inspector-empty" id="settingsEmpty">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 4h14v16H5Z"></path>
+              <path d="M8 8h8M8 12h5"></path>
+            </svg>
+            <span>在地圖或項目清單中選取項目</span>
+          </div>
+          <div id="pointSettings" class="settings-stack">
+            <div class="settings-stack inspector-subgroup" id="pointVisualControls">
               <div class="option-row">
                 <label class="ratio-label">&#32147;&#32239;&#24230;</label>
                 <input
@@ -1974,6 +2412,88 @@
                   type="text"
                   readonly
                   aria-readonly="true"
+                />
+              </div>
+              <div class="option-row">
+                <label class="ratio-label">點大小</label>
+                <div
+                  class="slider"
+                  id="markerDotSize"
+                  data-min="2"
+                  data-max="16"
+                  data-step="1"
+                  data-marks="9"
+                  data-default-index="3"
+                >
+                  <div class="slider-track">
+                    <div class="slider-fill"></div>
+                    <div class="slider-thumb" tabindex="0"></div>
+                  </div>
+                  <div class="slider-marks"></div>
+                </div>
+              </div>
+              <div class="option-row color-row">
+                <div class="color-head">
+                  <label class="ratio-label">點顏色</label>
+                  <input id="markerDotColor" type="color" value="#f97316" />
+                </div>
+                <div class="color-palette" id="dotPalette">
+                  <button
+                    class="color-swatch"
+                    data-color="#ff7a59"
+                    data-color-target="dot"
+                    style="background: #ff7a59"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#fde68a"
+                    data-color-target="dot"
+                    style="background: #fde68a"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#f59e0b"
+                    data-color-target="dot"
+                    style="background: #f59e0b"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#22c55e"
+                    data-color-target="dot"
+                    style="background: #22c55e"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#38bdf8"
+                    data-color-target="dot"
+                    style="background: #38bdf8"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#a78bfa"
+                    data-color-target="dot"
+                    style="background: #a78bfa"
+                  ></button>
+                  <button
+                    class="color-swatch"
+                    data-color="#f43f5e"
+                    data-color-target="dot"
+                    style="background: #f43f5e"
+                  ></button>
+                </div>
+              </div>
+            </div>
+            <div id="pointTextControls" class="settings-stack inspector-subgroup">
+              <div
+                class="option-row"
+                id="markerDisplayTextRow"
+                style="display: none"
+              >
+                <label class="ratio-label">顯示文字</label>
+                <input
+                  id="markerLabelInput"
+                  type="text"
+                  placeholder="輸入顯示文字"
                 />
               </div>
               <div class="option-row">
@@ -2083,12 +2603,6 @@
                     data-color-target="text"
                     style="background: #f43f5e"
                   ></button>
-                  <button
-                    class="color-swatch"
-                    data-color="#f97316"
-                    data-color-target="text"
-                    style="background: #f97316"
-                  ></button>
                 </div>
               </div>
             </div>
@@ -2182,13 +2696,13 @@
                 ></button>
                 <button
                   class="color-swatch"
-                  data-shape-color="#3b82f6"
-                  style="background: #3b82f6"
+                  data-shape-color="#38bdf8"
+                  style="background: #38bdf8"
                 ></button>
                 <button
                   class="color-swatch"
-                  data-shape-color="#facc15"
-                  style="background: #facc15"
+                  data-shape-color="#fde68a"
+                  style="background: #fde68a"
                 ></button>
                 <button
                   class="color-swatch"
@@ -2245,13 +2759,13 @@
                 ></button>
                 <button
                   class="color-swatch"
-                  data-shape-color="#3b82f6"
-                  style="background: #3b82f6"
+                  data-shape-color="#38bdf8"
+                  style="background: #38bdf8"
                 ></button>
                 <button
                   class="color-swatch"
-                  data-shape-color="#facc15"
-                  style="background: #facc15"
+                  data-shape-color="#fde68a"
+                  style="background: #fde68a"
                 ></button>
                 <button
                   class="color-swatch"
@@ -2308,13 +2822,13 @@
                 ></button>
                 <button
                   class="color-swatch"
-                  data-shape-color="#3b82f6"
-                  style="background: #3b82f6"
+                  data-shape-color="#38bdf8"
+                  style="background: #38bdf8"
                 ></button>
                 <button
                   class="color-swatch"
-                  data-shape-color="#facc15"
-                  style="background: #facc15"
+                  data-shape-color="#fde68a"
+                  style="background: #fde68a"
                 ></button>
                 <button
                   class="color-swatch"
@@ -2353,13 +2867,13 @@
                 ></button>
                 <button
                   class="color-swatch"
-                  data-shape-color="#3b82f6"
-                  style="background: #3b82f6"
+                  data-shape-color="#38bdf8"
+                  style="background: #38bdf8"
                 ></button>
                 <button
                   class="color-swatch"
-                  data-shape-color="#facc15"
-                  style="background: #facc15"
+                  data-shape-color="#fde68a"
+                  style="background: #fde68a"
                 ></button>
                 <button
                   class="color-swatch"
@@ -2414,13 +2928,13 @@
                 ></button>
                 <button
                   class="color-swatch"
-                  data-shape-color="#3b82f6"
-                  style="background: #3b82f6"
+                  data-shape-color="#38bdf8"
+                  style="background: #38bdf8"
                 ></button>
                 <button
                   class="color-swatch"
-                  data-shape-color="#facc15"
-                  style="background: #facc15"
+                  data-shape-color="#fde68a"
+                  style="background: #fde68a"
                 ></button>
                 <button
                   class="color-swatch"
@@ -2454,11 +2968,150 @@
             </div>
           </div>
         </div>
+      </aside>
+    </div>
+    <div class="modal-backdrop" id="preferencesModal">
+      <div
+        class="modal preferences-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="preferencesTitle"
+      >
+        <button
+          id="preferencesClose"
+          class="modal-close"
+          type="button"
+          aria-label="關閉偏好設定"
+        >
+          ×
+        </button>
+        <div class="modal-header">
+          <div>
+            <div class="modal-eyebrow">應用程式</div>
+            <div class="modal-title" id="preferencesTitle">偏好設定</div>
+          </div>
+        </div>
+        <section class="preferences-section" aria-labelledby="appearanceTitle">
+          <div class="preferences-section-heading">
+            <div class="preferences-section-title" id="appearanceTitle">外觀</div>
+            <div class="preferences-section-description">
+              選擇應用程式介面的顯示方式。
+            </div>
+          </div>
+          <div
+            class="theme-preference-list"
+            role="radiogroup"
+            aria-label="介面主題"
+          >
+            <button
+              class="theme-preference-option active"
+              type="button"
+              role="radio"
+              aria-checked="true"
+              data-theme-preference="dark"
+            >
+              <span class="theme-preference-icon dark" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M20 15.5A8.5 8.5 0 1 1 8.5 4 7 7 0 0 0 20 15.5Z"></path>
+                </svg>
+              </span>
+              <span class="theme-preference-copy">
+                <span class="theme-preference-name">深色</span>
+                <span class="theme-preference-description">降低暗處環境的畫面亮度</span>
+              </span>
+              <span class="theme-preference-check" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="m5 12 4 4L19 6"></path>
+                </svg>
+              </span>
+            </button>
+            <button
+              class="theme-preference-option"
+              type="button"
+              role="radio"
+              aria-checked="false"
+              data-theme-preference="light"
+            >
+              <span class="theme-preference-icon light" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="4"></circle>
+                  <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+                </svg>
+              </span>
+              <span class="theme-preference-copy">
+                <span class="theme-preference-name">淺色</span>
+                <span class="theme-preference-description">適合明亮環境與高對比閱讀</span>
+              </span>
+              <span class="theme-preference-check" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="m5 12 4 4L19 6"></path>
+                </svg>
+              </span>
+            </button>
+            <button
+              class="theme-preference-option"
+              type="button"
+              role="radio"
+              aria-checked="false"
+              data-theme-preference="system"
+            >
+              <span class="theme-preference-icon system" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <rect x="3" y="4" width="18" height="13" rx="2"></rect>
+                  <path d="M8 21h8M12 17v4"></path>
+                </svg>
+              </span>
+              <span class="theme-preference-copy">
+                <span class="theme-preference-name">跟隨系統</span>
+                <span class="theme-preference-description">依作業系統外觀自動切換</span>
+              </span>
+              <span class="theme-preference-check" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="m5 12 4 4L19 6"></path>
+                </svg>
+              </span>
+            </button>
+          </div>
+        </section>
+        <div class="modal-actions">
+          <button id="preferencesDone" class="ui-button primary" type="button">
+            完成
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="appDialogModal">
+      <div
+        class="modal app-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="appDialogTitle"
+        aria-describedby="appDialogMessage"
+      >
+        <div class="app-dialog-heading">
+          <span class="app-dialog-icon" id="appDialogIcon" aria-hidden="true">!</span>
+          <div>
+            <div class="modal-eyebrow" id="appDialogEyebrow">請確認</div>
+            <div class="modal-title" id="appDialogTitle">確認操作</div>
+          </div>
+        </div>
+        <div class="app-dialog-copy">
+          <p class="app-dialog-message" id="appDialogMessage"></p>
+          <p class="app-dialog-detail" id="appDialogDetail"></p>
+        </div>
+        <div class="modal-actions app-dialog-actions" id="appDialogActions"></div>
       </div>
     </div>
     <div class="modal-backdrop" id="coordEditModal">
-      <div class="modal">
-        <div class="modal-title">編輯座標標示</div>
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="coordEditTitle"
+      >
+        <div class="modal-header">
+          <div class="modal-title" id="coordEditTitle">編輯座標標示</div>
+        </div>
         <input
           id="coordLabelInput"
           type="text"
@@ -2475,31 +3128,43 @@
           >
         </div>
         <div class="modal-actions">
-          <button id="coordEditCancel" class="secondary">取消</button>
-          <button id="coordEditSave">儲存</button>
+          <button id="coordEditCancel" class="ui-button ghost">取消</button>
+          <button id="coordEditSave" class="ui-button primary">儲存</button>
         </div>
       </div>
     </div>
     <div class="modal-backdrop" id="listOrderModal">
-      <div class="modal order-modal">
-        <div class="modal-title">標示排序設定</div>
+      <div
+        class="modal order-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="orderDialogTitle"
+      >
+        <div class="modal-header">
+          <div class="modal-title" id="orderDialogTitle">項目排序</div>
+        </div>
         <div class="order-grid">
           <div class="order-column">
-            <div class="order-title">位置上下次序（清單顯示）</div>
+            <div class="order-title">清單顯示順序</div>
             <ul class="order-list" id="listOrderList"></ul>
           </div>
           <div class="order-column">
-            <div class="order-title">顯示優先順序（覆蓋層級）</div>
+            <div class="order-title">地圖前後順序</div>
             <ul class="order-list" id="displayOrderList"></ul>
           </div>
         </div>
         <div class="modal-actions">
-          <button id="listOrderClose" class="secondary">關閉</button>
+          <button id="listOrderClose" class="ui-button primary">完成</button>
         </div>
       </div>
     </div>
     <div class="modal-backdrop" id="completeModal">
-      <div class="modal complete-modal">
+      <div
+        class="modal complete-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="exportDialogTitle"
+      >
         <button
           id="completeClose"
           class="modal-close"
@@ -2508,30 +3173,56 @@
         >
           ×
         </button>
-        <div class="modal-title">完成編輯</div>
-        <div class="complete-note">
-          可立即儲存專案、匯出圖檔，或返回繼續編輯。
+        <div class="modal-header">
+          <div>
+            <div class="modal-eyebrow">輸出</div>
+            <div class="modal-title" id="exportDialogTitle">匯出地圖</div>
+          </div>
         </div>
-        <div class="complete-actions">
-          <button id="completeSave" class="secondary">儲存專案</button>
-          <button id="completeSaveAs" class="secondary">另存新檔</button>
-          <button id="completeExportPng" class="secondary">匯出 PNG</button>
-          <button id="completeExportSvg" class="secondary">匯出 SVG</button>
-          <button id="completeExportPdf" class="secondary">匯出 PDF</button>
-          <button id="completeContinue" class="full">返回繼續編輯</button>
+        <div class="export-format-list">
+          <button id="completeExportPng" class="export-format-option">
+            <span class="export-format-icon">PNG</span>
+            <span class="export-format-copy">
+              <span class="export-format-name">PNG 圖片</span>
+              <span class="export-format-meta">高解析點陣輸出</span>
+            </span>
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 18 6-6-6-6"></path>
+            </svg>
+          </button>
+          <button id="completeExportSvg" class="export-format-option">
+            <span class="export-format-icon">SVG</span>
+            <span class="export-format-copy">
+              <span class="export-format-name">SVG 向量檔</span>
+              <span class="export-format-meta">適合後續排版與縮放</span>
+            </span>
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 18 6-6-6-6"></path>
+            </svg>
+          </button>
+          <button id="completeExportPdf" class="export-format-option">
+            <span class="export-format-icon">PDF</span>
+            <span class="export-format-copy">
+              <span class="export-format-name">PDF 文件</span>
+              <span class="export-format-meta">適合列印與分享</span>
+            </span>
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 18 6-6-6-6"></path>
+            </svg>
+          </button>
         </div>
-        <div
-          id="completeSaveFeedback"
-          class="complete-feedback"
-          aria-live="polite"
-        >
-          <span class="complete-feedback-icon" aria-hidden="true"></span>
-          <span id="completeSaveFeedbackText"></span>
+        <div class="modal-actions">
+          <button id="completeContinue" class="ui-button ghost">取消</button>
         </div>
       </div>
     </div>
     <div class="modal-backdrop" id="exportFrameModal">
-      <div class="modal frame-modal">
+      <div
+        class="modal frame-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="frameDialogTitle"
+      >
         <button
           id="exportFrameClose"
           class="modal-close"
@@ -2540,7 +3231,12 @@
         >
           ×
         </button>
-        <div class="modal-title">選擇輸出外框</div>
+        <div class="modal-header">
+          <div>
+            <div class="modal-eyebrow">輸出樣式</div>
+            <div class="modal-title" id="frameDialogTitle">選擇外框</div>
+          </div>
+        </div>
         <div class="frame-options">
           <button class="frame-option active" type="button" data-export-frame="none">
             <span class="frame-preview none" aria-hidden="true"></span>
@@ -2572,10 +3268,14 @@
           </button>
         </div>
         <div class="modal-actions">
-          <button id="exportFrameCancel" class="secondary">取消</button>
-          <button id="exportFrameApply">匯出</button>
+          <button id="exportFrameCancel" class="ui-button ghost">取消</button>
+          <button id="exportFrameApply" class="ui-button primary">匯出</button>
         </div>
       </div>
+    </div>
+    <div class="app-toast" id="appToast" role="status" aria-live="polite">
+      <span class="app-toast-dot" aria-hidden="true"></span>
+      <span id="appToastText"></span>
     </div>
     <script type="module" src="./index.js"></script>
   </body>

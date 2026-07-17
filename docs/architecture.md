@@ -61,6 +61,8 @@
 
 - `src/renderer/index.html`
   - Step 0 至 Step 3 介面、搜尋與標示面板、匯出外框 dialog。
+- `src/renderer/styles.css`
+  - 定義應用程式視覺系統、工作流程版面、Step 3 編輯工作區、屬性面板、對話框及窄視窗配置。
 - `src/renderer/index.ts`
   - 組合 renderer 模組、管理工作流程狀態並綁定畫面事件。
   - 管理範圍裁切、比例、底圖風格與地形陰影。

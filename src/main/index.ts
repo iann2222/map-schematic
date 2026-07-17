@@ -53,8 +53,34 @@ type WindowCloseState = {
   promptOpen: boolean;
 };
 
+type AppDialogButton = {
+  label: string;
+  value: number;
+  variant?: "primary" | "ghost" | "danger" | "dangerGhost";
+};
+
+type AppDialogOptions = {
+  eyebrow?: string;
+  title: string;
+  message: string;
+  detail?: string;
+  tone?: "info" | "warning" | "danger";
+  buttons: AppDialogButton[];
+  defaultValue: number;
+  cancelValue: number;
+};
+
+type PendingRendererDialog = {
+  webContentsId: number;
+  allowedValues: Set<number>;
+  cancelValue: number;
+  resolve: (response: number) => void;
+};
+
 let projectSaveQueue: Promise<void> = Promise.resolve();
 const windowCloseStates = new WeakMap<BrowserWindow, WindowCloseState>();
+const pendingRendererDialogs = new Map<string, PendingRendererDialog>();
+let rendererDialogSequence = 0;
 
 function enqueueProjectSave(operation: () => Promise<void>): Promise<void> {
   const queued = projectSaveQueue.then(operation, operation);
@@ -76,6 +102,35 @@ function closeWindowWithoutPrompt(win: BrowserWindow): void {
   }
 }
 
+function requestRendererDialog(
+  win: BrowserWindow,
+  options: AppDialogOptions
+): Promise<number> {
+  if (win.isDestroyed() || win.webContents.isDestroyed()) {
+    return Promise.resolve(options.cancelValue);
+  }
+  const id = `dialog-${Date.now()}-${rendererDialogSequence++}`;
+  return new Promise((resolve) => {
+    pendingRendererDialogs.set(id, {
+      webContentsId: win.webContents.id,
+      allowedValues: new Set(options.buttons.map((button) => button.value)),
+      cancelValue: options.cancelValue,
+      resolve
+    });
+    win.webContents.send("app-dialog:request", { id, ...options });
+  });
+}
+
+function resolvePendingRendererDialogs(webContentsId: number): void {
+  for (const [id, pending] of pendingRendererDialogs) {
+    if (pending.webContentsId !== webContentsId) {
+      continue;
+    }
+    pendingRendererDialogs.delete(id);
+    pending.resolve(pending.cancelValue);
+  }
+}
+
 function attachUnsavedChangesGuard(win: BrowserWindow): void {
   const state: WindowCloseState = {
     dirty: false,
@@ -93,24 +148,27 @@ function attachUnsavedChangesGuard(win: BrowserWindow): void {
       return;
     }
     state.promptOpen = true;
-    void dialog
-      .showMessageBox(win, {
-        type: "warning",
-        title: "尚未儲存變更",
-        message: "目前專案還有尚未儲存的變更。",
-        detail: "關閉前要先儲存專案嗎？",
-        buttons: ["儲存並關閉", "不儲存", "取消"],
-        defaultId: 0,
-        cancelId: 2,
-        noLink: true
-      })
-      .then((result) => {
+    void requestRendererDialog(win, {
+      eyebrow: "未儲存變更",
+      title: "尚未儲存變更",
+      message: "目前專案還有尚未儲存的變更。",
+      detail: "關閉前要先儲存專案嗎？",
+      tone: "warning",
+      buttons: [
+        { label: "取消", value: 2, variant: "ghost" },
+        { label: "不儲存", value: 1, variant: "dangerGhost" },
+        { label: "儲存並關閉", value: 0, variant: "primary" }
+      ],
+      defaultValue: 0,
+      cancelValue: 2
+    })
+      .then((response) => {
         if (win.isDestroyed()) {
           return;
         }
-        if (result.response === 0) {
+        if (response === 0) {
           win.webContents.send("menu:action", "project:saveBeforeClose");
-        } else if (result.response === 1) {
+        } else if (response === 1) {
           closeWindowWithoutPrompt(win);
         }
       })
@@ -126,7 +184,9 @@ function createMainWindow() {
 
   const win = new BrowserWindow({
     width: 1200,
-    height: 800,
+    height: 860,
+    minWidth: 960,
+    minHeight: 640,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -135,6 +195,19 @@ function createMainWindow() {
   });
 
   attachUnsavedChangesGuard(win);
+  const webContentsId = win.webContents.id;
+  win.webContents.on(
+    "did-start-navigation",
+    (_event, _url, _isInPlace, isMainFrame) => {
+      if (isMainFrame) {
+        resolvePendingRendererDialogs(webContentsId);
+      }
+    }
+  );
+  win.webContents.on("render-process-gone", () => {
+    resolvePendingRendererDialogs(webContentsId);
+  });
+  win.on("closed", () => resolvePendingRendererDialogs(webContentsId));
 
   win.loadFile(htmlPath);
 
@@ -147,8 +220,8 @@ async function confirmDatapackDownload(
   release: DataPackRelease
 ): Promise<boolean> {
   const isUpdate = reason === "update";
-  const options = {
-    type: "warning" as const,
+  const options: AppDialogOptions = {
+    eyebrow: isUpdate ? "資料更新" : "資料修復",
     title: isUpdate ? "官方資料包可更新" : "資料包需要修復",
     message: isUpdate
       ? `已設定新版官方資料包 ${release.id} ${release.version}。`
@@ -156,16 +229,25 @@ async function confirmDatapackDownload(
     detail: isUpdate
       ? "是否連線至官方 GitHub Releases 下載並安裝？取消後會繼續使用目前有效的本機資料包。"
       : "是否連線至官方 GitHub Releases，重新下載並安裝資料包？取消後將維持離線，地圖資料暫時無法使用。",
-    buttons: [isUpdate ? "下載並更新" : "重新下載", "取消"],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true
+    tone: "warning",
+    buttons: [
+      { label: "取消", value: 1, variant: "ghost" },
+      {
+        label: isUpdate ? "下載並更新" : "重新下載",
+        value: 0,
+        variant: "primary"
+      }
+    ],
+    defaultValue: 0,
+    cancelValue: 1
   };
-  const parent = BrowserWindow.getFocusedWindow();
-  const result = parent
-    ? await dialog.showMessageBox(parent, options)
-    : await dialog.showMessageBox(options);
-  return result.response === 0;
+  const parent =
+    BrowserWindow.getFocusedWindow() ??
+    BrowserWindow.getAllWindows().find((win) => !win.isDestroyed());
+  if (!parent) {
+    return false;
+  }
+  return (await requestRendererDialog(parent, options)) === 0;
 }
 
 async function getReadyDatapack(): Promise<ReadyDataPack> {
@@ -267,8 +349,8 @@ function buildAppMenu(): Menu {
             }
             const display = screen.getDisplayNearestPoint(win.getBounds());
             const x = Math.round(display.bounds.x + (display.bounds.width - 1200) / 2);
-            const y = Math.round(display.bounds.y + (display.bounds.height - 800) / 2);
-            win.setBounds({ x, y, width: 1200, height: 800 });
+            const y = Math.round(display.bounds.y + (display.bounds.height - 860) / 2);
+            win.setBounds({ x, y, width: 1200, height: 860 });
           }
         },
         { role: "close", label: "關閉" }
@@ -276,7 +358,16 @@ function buildAppMenu(): Menu {
     },
     {
       label: "說明",
-      submenu: [{ role: "about", label: "關於" }]
+      submenu: [
+        {
+          label: "關於",
+          click: () =>
+            BrowserWindow.getFocusedWindow()?.webContents.send(
+              "menu:action",
+              "app:about"
+            )
+        }
+      ]
     }
   ]);
 }
@@ -294,6 +385,29 @@ function defaultProjectPath(): string {
 app.whenReady().then(() => {
   process.env.MAP_SCHEMATIC_ROOT ??= app.isPackaged ? app.getPath("userData") : process.cwd();
   Menu.setApplicationMenu(buildAppMenu());
+
+  ipcMain.on("app-dialog:response", (event, payload: unknown) => {
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      !("id" in payload) ||
+      !("response" in payload) ||
+      typeof payload.id !== "string" ||
+      typeof payload.response !== "number"
+    ) {
+      return;
+    }
+    const pending = pendingRendererDialogs.get(payload.id);
+    if (!pending || pending.webContentsId !== event.sender.id) {
+      return;
+    }
+    pendingRendererDialogs.delete(payload.id);
+    pending.resolve(
+      pending.allowedValues.has(payload.response)
+        ? payload.response
+        : pending.cancelValue
+    );
+  });
 
   ipcMain.handle("datapack:get", async () => loadDatapack());
   ipcMain.on("project:dirty-state", (event, dirty: unknown) => {
@@ -373,7 +487,7 @@ app.whenReady().then(() => {
       return { ok: false, errors: [String(err)] };
     }
   });
-  ipcMain.handle("project:load", async (): Promise<LoadResult> => {
+  ipcMain.handle("project:load", async (event): Promise<LoadResult> => {
     try {
       const root = projectFilesRoot();
       await fs.mkdir(root, { recursive: true });
@@ -418,21 +532,23 @@ app.whenReady().then(() => {
         };
       }
 
-      const options = {
-        type: "warning" as const,
+      const options: AppDialogOptions = {
+        eyebrow: "備份恢復",
         title: "專案檔需要恢復",
         message: "選取的專案檔已損壞或格式無效，但找到上一份有效備份。",
         detail: `是否使用備份恢復 ${path.basename(filePath)}？恢復後會覆蓋目前損壞的專案檔。`,
-        buttons: ["從備份恢復", "取消"],
-        defaultId: 0,
-        cancelId: 1,
-        noLink: true
+        tone: "warning",
+        buttons: [
+          { label: "取消", value: 1, variant: "ghost" },
+          { label: "從備份恢復", value: 0, variant: "primary" }
+        ],
+        defaultValue: 0,
+        cancelValue: 1
       };
-      const parent = BrowserWindow.getFocusedWindow();
-      const confirmation = parent
-        ? await dialog.showMessageBox(parent, options)
-        : await dialog.showMessageBox(options);
-      if (confirmation.response !== 0) {
+      const parent =
+        BrowserWindow.fromWebContents(event.sender) ??
+        BrowserWindow.getFocusedWindow();
+      if (!parent || (await requestRendererDialog(parent, options)) !== 0) {
         return { ok: false, path: filePath, canceled: true };
       }
 
@@ -525,19 +641,6 @@ app.whenReady().then(() => {
     copyright: ""
   };
   app.setAboutPanelOptions(aboutBase);
-  loadDatapack()
-    .then((datapack) => {
-      const id = datapack?.id ?? "unknown";
-      const version = datapack?.version ?? "unknown";
-      app.setAboutPanelOptions({
-        ...aboutBase,
-        version: "",
-        credits: `資料包：${id} ${version}\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief`
-      });
-    })
-    .catch(() => {
-      app.setAboutPanelOptions(aboutBase);
-    });
 });
 
 app.whenReady().then(() => {

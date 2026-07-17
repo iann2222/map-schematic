@@ -38,6 +38,22 @@ type GeonamesResult = {
   population: number | null;
 };
 
+type AppDialogRequest = {
+  id: string;
+  eyebrow?: string;
+  title: string;
+  message: string;
+  detail?: string;
+  tone?: "info" | "warning" | "danger";
+  buttons: Array<{
+    label: string;
+    value: number;
+    variant?: "primary" | "ghost" | "danger" | "dangerGhost";
+  }>;
+  defaultValue: number;
+  cancelValue: number;
+};
+
 contextBridge.exposeInMainWorld("mapSchematic", {
   ping: () => "pong",
   getDatapack: (): Promise<DatapackInfo> => ipcRenderer.invoke("datapack:get"),
@@ -62,5 +78,16 @@ contextBridge.exposeInMainWorld("mapSchematic", {
     const listener = (_event: Electron.IpcRendererEvent, action: string) => handler(action);
     ipcRenderer.on("menu:action", listener);
     return () => ipcRenderer.removeListener("menu:action", listener);
+  },
+  onAppDialogRequest: (handler: (request: AppDialogRequest) => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      request: AppDialogRequest
+    ) => handler(request);
+    ipcRenderer.on("app-dialog:request", listener);
+    return () => ipcRenderer.removeListener("app-dialog:request", listener);
+  },
+  respondToAppDialog: (id: string, response: number) => {
+    ipcRenderer.send("app-dialog:response", { id, response });
   }
 });

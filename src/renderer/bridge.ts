@@ -14,6 +14,24 @@ export type GeonamesResult = {
   population: number | null;
 };
 
+export type AppDialogButton = {
+  label: string;
+  value: number;
+  variant?: "primary" | "ghost" | "danger" | "dangerGhost";
+};
+
+export type AppDialogRequest = {
+  id: string;
+  eyebrow?: string;
+  title: string;
+  message: string;
+  detail?: string;
+  tone?: "info" | "warning" | "danger";
+  buttons: AppDialogButton[];
+  defaultValue: number;
+  cancelValue: number;
+};
+
 declare global {
   interface Window {
     mapSchematic?: {
@@ -72,6 +90,10 @@ declare global {
       setProjectDirty?: (dirty: boolean) => void;
       closeAfterSave?: () => Promise<boolean>;
       onMenuAction?: (handler: (action: string) => void) => () => void;
+      onAppDialogRequest?: (
+        handler: (request: AppDialogRequest) => void
+      ) => () => void;
+      respondToAppDialog?: (id: string, response: number) => void;
     };
   }
 }

@@ -1,6 +1,11 @@
 ﻿export {};
 
-import type { GeonamesResult, MapProject } from "./bridge.js";
+import type {
+  AppDialogButton,
+  AppDialogRequest,
+  GeonamesResult,
+  MapProject
+} from "./bridge.js";
 import {
   createAddObjectCommand,
   createClearObjectsCommand,
@@ -74,9 +79,83 @@ type ShapeDrag = {
   startLat: number;
 };
 type ExportFrameStyle = "none" | "thin" | "mat" | "dark";
+type ThemePreference = "dark" | "light" | "system";
+type AppDialogOptions = Omit<AppDialogRequest, "id">;
+type QueuedAppDialog = {
+  options: AppDialogOptions;
+  resolve: (response: number) => void;
+};
 
 const statusEl = document.getElementById("status");
+const workspaceStatusIcon = document.querySelector<SVGElement>(
+  ".workspace-status-icon",
+);
 const layoutEl = document.getElementById("layout");
+const projectNameEl = document.getElementById("projectName");
+const projectStateEl = document.getElementById("projectState");
+const projectStateTextEl = document.getElementById("projectStateText");
+const workflowStepButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-step-jump]"),
+);
+const editorWorkspaceTabs = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-editor-tab]"),
+);
+const editorTabPanels = Array.from(
+  document.querySelectorAll<HTMLElement>("[data-editor-tab-panel]"),
+);
+const topExportButton = document.getElementById(
+  "topExportBtn",
+) as HTMLButtonElement | null;
+const preferencesButton = document.getElementById(
+  "preferencesBtn",
+) as HTMLButtonElement | null;
+const preferencesModal = document.getElementById(
+  "preferencesModal",
+) as HTMLDivElement | null;
+const preferencesClose = document.getElementById(
+  "preferencesClose",
+) as HTMLButtonElement | null;
+const preferencesDone = document.getElementById(
+  "preferencesDone",
+) as HTMLButtonElement | null;
+const themePreferenceButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-theme-preference]"),
+);
+const reliefToggle = document.getElementById(
+  "reliefToggle",
+) as HTMLInputElement | null;
+const reliefBlendSelect = document.getElementById(
+  "reliefBlendSelect",
+) as HTMLSelectElement | null;
+const reliefBlendDropdown = document.getElementById("reliefBlendDropdown");
+const reliefBlendTrigger = document.getElementById(
+  "reliefBlendTrigger",
+) as HTMLButtonElement | null;
+const reliefBlendMenu = document.getElementById(
+  "reliefBlendMenu",
+) as HTMLDivElement | null;
+const reliefBlendValue = document.getElementById("reliefBlendValue");
+const reliefBlendOptions = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-blend-value]"),
+);
+const reliefModeField = document.getElementById("reliefModeField");
+const ratioSwapButton = document.getElementById(
+  "ratioSwap",
+) as HTMLButtonElement | null;
+const appToast = document.getElementById("appToast");
+const appToastText = document.getElementById("appToastText");
+const appDialogModal = document.getElementById(
+  "appDialogModal",
+) as HTMLDivElement | null;
+const appDialogElement = appDialogModal?.querySelector(
+  ".app-dialog",
+) as HTMLDivElement | null;
+const appDialogIcon = document.getElementById("appDialogIcon");
+const appDialogEyebrow = document.getElementById("appDialogEyebrow");
+const appDialogTitle = document.getElementById("appDialogTitle");
+const appDialogMessage = document.getElementById("appDialogMessage");
+const appDialogDetail = document.getElementById("appDialogDetail");
+const appDialogActions = document.getElementById("appDialogActions");
 const svg = document.getElementById("map") as SVGSVGElement | null;
 const canvas = document.getElementById("basemap") as HTMLCanvasElement | null;
 const searchInput0 = document.getElementById(
@@ -118,20 +197,8 @@ const saveButton = document.getElementById(
 const loadButton = document.getElementById(
   "loadBtn",
 ) as HTMLButtonElement | null;
-const loadButton0 = document.getElementById(
-  "loadBtn0",
-) as HTMLButtonElement | null;
 const saveAsButton = document.getElementById(
   "saveAsBtn",
-) as HTMLButtonElement | null;
-const exportPngButton = document.getElementById(
-  "exportPngBtn",
-) as HTMLButtonElement | null;
-const exportSvgButton = document.getElementById(
-  "exportSvgBtn",
-) as HTMLButtonElement | null;
-const exportPdfButton = document.getElementById(
-  "exportPdfBtn",
 ) as HTMLButtonElement | null;
 const clearMarkersButton = document.getElementById(
   "clearMarkers",
@@ -226,12 +293,6 @@ const listOrderClose = document.getElementById(
 const completeModal = document.getElementById(
   "completeModal",
 ) as HTMLDivElement | null;
-const completeSave = document.getElementById(
-  "completeSave",
-) as HTMLButtonElement | null;
-const completeSaveAs = document.getElementById(
-  "completeSaveAs",
-) as HTMLButtonElement | null;
 const completeExportPng = document.getElementById(
   "completeExportPng",
 ) as HTMLButtonElement | null;
@@ -247,12 +308,6 @@ const completeContinue = document.getElementById(
 const completeClose = document.getElementById(
   "completeClose",
 ) as HTMLButtonElement | null;
-const completeSaveFeedback = document.getElementById(
-  "completeSaveFeedback",
-) as HTMLDivElement | null;
-const completeSaveFeedbackText = document.getElementById(
-  "completeSaveFeedbackText",
-) as HTMLSpanElement | null;
 const exportFrameModal = document.getElementById(
   "exportFrameModal",
 ) as HTMLDivElement | null;
@@ -282,6 +337,9 @@ const coordEditSave = document.getElementById(
 ) as HTMLButtonElement | null;
 const settingsEmpty = document.getElementById("settingsEmpty");
 const itemNameRow = document.getElementById("itemNameRow");
+const markerDisplayTextRow = document.getElementById(
+  "markerDisplayTextRow",
+);
 const itemNameInput = document.getElementById(
   "itemNameInput",
 ) as HTMLInputElement | null;
@@ -298,7 +356,14 @@ let shapeLineWidthSlider: SliderControl | null = null;
 let shapeArrowWidthSlider: SliderControl | null = null;
 let shapeAreaOpacitySlider: SliderControl | null = null;
 let shapeAreaStrokeWidthSlider: SliderControl | null = null;
-let completeFeedbackTimer: number | null = null;
+let appToastTimer: number | null = null;
+const appDialogQueue: QueuedAppDialog[] = [];
+let activeAppDialog: QueuedAppDialog | null = null;
+let appDialogDefaultValue = 0;
+let appDialogCancelValue = 0;
+let appDialogPreviousFocus: HTMLElement | null = null;
+let preferencesPreviousFocus: HTMLElement | null = null;
+let currentThemePreference: ThemePreference = "dark";
 let selectedExportFrame: ExportFrameStyle = "none";
 let exportFrameResolver: ((value: ExportFrameStyle | null) => void) | null = null;
 let exportInProgress = false;
@@ -491,6 +556,7 @@ type OrderDragSession = {
 };
 
 let orderDragSession: OrderDragSession | null = null;
+const orderRowAnimations = new WeakMap<HTMLLIElement, Animation>();
 let selectedShapeId: string | null = null;
 let activeTool: "marker" | "line" | "area" | "text" | "arrow" = "marker";
 let hasActiveToolSelection = false;
@@ -923,15 +989,16 @@ function setActiveStep(stepId: string): void {
     restoreStepOneCropSnapshot();
   }
   activeStep = stepId;
+  if (stepId !== "2") {
+    setReliefBlendDropdownOpen(false);
+  }
   stepPanels.forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.stepPanel === stepId);
   });
   if (layoutEl) {
     layoutEl.classList.toggle("step-3", stepId === "3");
   }
-  if (layoutEl) {
-    layoutEl.classList.toggle("step-3", stepId === "3");
-  }
+  syncWorkflowNavigation(stepId);
   if (stepProgress) {
     stepProgress.textContent = `步驟 ${stepId} / 3`;
   }
@@ -946,8 +1013,10 @@ function setActiveStep(stepId: string): void {
   }
   if (stepSubtitle) {
     const subtitles: Record<string, string> = {
+      "0": "搜尋地名或座標，先將地圖移至預計製作的區域。",
       "1": "使用右鍵拖曳框選範圍，確定示意圖的視窗。",
       "2": "決定底圖樣式結果。",
+      "3": "搜尋或新增標示與圖形，並調整項目內容與樣式。",
     };
     stepSubtitle.textContent = subtitles[stepId] ?? "";
   }
@@ -1009,7 +1078,15 @@ function setActiveStep(stepId: string): void {
   }
   if (nextStepButton) {
     const nextLabel = stepId === "3" ? "完成" : "下一步";
-    nextStepButton.textContent = nextLabel;
+    const label = nextStepButton.querySelector("span");
+    if (label) {
+      label.textContent = nextLabel;
+    } else {
+      nextStepButton.textContent = nextLabel;
+    }
+  }
+  if (prevStepButton) {
+    prevStepButton.toggleAttribute("disabled", stepId === "0");
   }
 }
 
@@ -1018,6 +1095,9 @@ function setActiveRatioButton(targetId?: string): void {
   ratioButtons.forEach((button) => {
     button.classList.toggle("active", button.id === targetId);
   });
+  if (ratioSwapButton) {
+    ratioSwapButton.disabled = targetId === "ratioFree";
+  }
 }
 
 function setActiveStyleButton(targetId: string): void {
@@ -1033,11 +1113,59 @@ function setReliefMode(enabled: boolean, blend?: string): void {
   if (enabled && blend) {
     hillshadeBlend = blend as GlobalCompositeOperation;
   }
+  if (reliefToggle) {
+    reliefToggle.checked = enabled;
+  }
+  if (reliefBlendSelect) {
+    reliefBlendSelect.disabled = !enabled;
+    reliefBlendSelect.value = hillshadeBlend;
+  }
+  if (reliefBlendTrigger) {
+    reliefBlendTrigger.disabled = !enabled;
+  }
+  const selectedBlendOption = reliefBlendOptions.find(
+    (button) => button.dataset.blendValue === hillshadeBlend,
+  );
+  if (reliefBlendValue && selectedBlendOption) {
+    reliefBlendValue.textContent =
+      selectedBlendOption.querySelector("span")?.textContent ?? "疊加";
+  }
+  reliefBlendOptions.forEach((button) => {
+    button.setAttribute(
+      "aria-selected",
+      String(button.dataset.blendValue === hillshadeBlend),
+    );
+  });
+  if (!enabled) {
+    setReliefBlendDropdownOpen(false);
+  }
+  reliefModeField?.classList.toggle("disabled", !enabled);
   const target = enabled ? hillshadeBlend : "off";
   reliefBlendButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.relief === target);
   });
   requestBasemapDraw();
+}
+
+function setReliefBlendDropdownOpen(open: boolean): void {
+  if (!reliefBlendDropdown || !reliefBlendTrigger || !reliefBlendMenu) {
+    return;
+  }
+  const shouldOpen = open && !reliefBlendTrigger.disabled;
+  reliefBlendDropdown.classList.toggle("open", shouldOpen);
+  reliefBlendTrigger.setAttribute("aria-expanded", String(shouldOpen));
+  reliefBlendMenu.hidden = !shouldOpen;
+}
+
+function focusReliefBlendOption(direction: 1 | -1): void {
+  if (reliefBlendOptions.length === 0) {
+    return;
+  }
+  const selectedIndex = reliefBlendOptions.findIndex(
+    (button) => button.dataset.blendValue === hillshadeBlend,
+  );
+  const fallbackIndex = direction > 0 ? 0 : reliefBlendOptions.length - 1;
+  reliefBlendOptions[selectedIndex >= 0 ? selectedIndex : fallbackIndex]?.focus();
 }
 
 function applyCanvasRatio(ratio: number, targetId?: string): void {
@@ -1066,25 +1194,23 @@ function updateCropFrame(): void {
     clampCropBox(cropBox);
   }
   lastStageRect = rect;
-  const stageWidth = Math.max(1, rect.width);
-  const stageHeight = Math.max(1, rect.height);
-  const bottomPadding = 16;
-  const availableHeight = Math.max(1, stageHeight - bottomPadding);
+  const stageWidth = Math.max(1, mapStage.clientWidth);
+  const stageHeight = Math.max(1, mapStage.clientHeight);
   if (!cropBox) {
     if (ratioMode === "free") {
-      cropBox = { left: 0, top: 0, width: stageWidth, height: availableHeight };
+      cropBox = { left: 0, top: 0, width: stageWidth, height: stageHeight };
     } else {
       let frameWidth = stageWidth;
       let frameHeight = frameWidth / cropRatio;
-      if (frameHeight > availableHeight) {
-        frameHeight = availableHeight;
+      if (frameHeight > stageHeight) {
+        frameHeight = stageHeight;
         frameWidth = frameHeight * cropRatio;
       }
       const inset = 12;
       frameWidth = Math.max(1, frameWidth - inset * 2);
       frameHeight = Math.max(1, frameHeight - inset * 2);
       const left = (stageWidth - frameWidth) / 2;
-      const top = (availableHeight - frameHeight) / 2;
+      const top = (stageHeight - frameHeight) / 2;
       cropBox = { left, top, width: frameWidth, height: frameHeight };
     }
   } else if (ratioMode === "free") {
@@ -1094,7 +1220,7 @@ function updateCropFrame(): void {
     );
     cropBox.top = Math.min(
       Math.max(0, cropBox.top),
-      availableHeight - cropBox.height,
+      stageHeight - cropBox.height,
     );
   }
   if (cropBox) {
@@ -1104,7 +1230,7 @@ function updateCropFrame(): void {
     );
     cropBox.top = Math.min(
       Math.max(0, cropBox.top),
-      availableHeight - cropBox.height,
+      stageHeight - cropBox.height,
     );
   }
   cropFrame.style.left = `${cropBox.left}px`;
@@ -1158,6 +1284,7 @@ function syncStageSize(): void {
   );
   view.tx = MAP_WIDTH / 2 - centerX * view.scale;
   view.ty = MAP_HEIGHT / 2 - centerY * view.scale;
+  clampVertical();
   applyViewTransform();
   updateWrapTransforms(true);
   updateCropFrame();
@@ -1367,15 +1494,12 @@ function clampCropBox(box: {
   if (!mapStage) {
     return;
   }
-  const rect = mapStage.getBoundingClientRect();
-  const stageWidth = Math.max(1, rect.width);
-  const stageHeight = Math.max(1, rect.height);
-  const bottomPadding = 16;
-  const availableHeight = Math.max(1, stageHeight - bottomPadding);
+  const stageWidth = Math.max(1, mapStage.clientWidth);
+  const stageHeight = Math.max(1, mapStage.clientHeight);
   box.width = Math.max(40, Math.min(box.width, stageWidth));
-  box.height = Math.max(40, Math.min(box.height, availableHeight));
+  box.height = Math.max(40, Math.min(box.height, stageHeight));
   box.left = Math.min(Math.max(0, box.left), stageWidth - box.width);
-  box.top = Math.min(Math.max(0, box.top), availableHeight - box.height);
+  box.top = Math.min(Math.max(0, box.top), stageHeight - box.height);
 }
 
 function attachCropInteractions(): void {
@@ -1525,7 +1649,386 @@ function positionZoomIndicator(): void {
   return;
 }
 
+function syncWorkflowNavigation(stepId: string): void {
+  const activeIndex = Number(stepId);
+  workflowStepButtons.forEach((button) => {
+    const buttonStep = button.dataset.stepJump ?? "0";
+    const buttonIndex = Number(buttonStep);
+    const active = buttonStep === stepId;
+    button.classList.toggle("active", active);
+    button.classList.toggle(
+      "completed",
+      Number.isFinite(activeIndex) && buttonIndex < activeIndex,
+    );
+    button.setAttribute("aria-current", active ? "step" : "false");
+  });
+}
+
+function setEditorWorkspaceTab(tabId: string): void {
+  editorWorkspaceTabs.forEach((button) => {
+    const active = button.dataset.editorTab === tabId;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+  editorTabPanels.forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.editorTabPanel === tabId);
+  });
+}
+
+function hookTabArrowNavigation(
+  buttons: HTMLButtonElement[],
+  activate: (button: HTMLButtonElement) => void,
+): void {
+  buttons.forEach((button, index) => {
+    button.addEventListener("keydown", (event) => {
+      let targetIndex: number | null = null;
+      if (event.key === "ArrowLeft") {
+        targetIndex = (index - 1 + buttons.length) % buttons.length;
+      } else if (event.key === "ArrowRight") {
+        targetIndex = (index + 1) % buttons.length;
+      } else if (event.key === "Home") {
+        targetIndex = 0;
+      } else if (event.key === "End") {
+        targetIndex = buttons.length - 1;
+      }
+      if (targetIndex == null) {
+        return;
+      }
+      event.preventDefault();
+      const target = buttons[targetIndex];
+      target.focus();
+      activate(target);
+    });
+  });
+}
+
+function hookSearchModeSwitches(): void {
+  document
+    .querySelectorAll<HTMLElement>("[data-search-switch]")
+    .forEach((container) => {
+      const group = container.dataset.searchSwitch;
+      if (!group) {
+        return;
+      }
+      const buttons = Array.from(
+        container.querySelectorAll<HTMLButtonElement>("[data-search-mode]"),
+      );
+      const activate = (mode: string) => {
+        buttons.forEach((button) => {
+          const active = button.dataset.searchMode === mode;
+          button.classList.toggle("active", active);
+          button.setAttribute("aria-selected", String(active));
+          button.tabIndex = active ? 0 : -1;
+        });
+        document
+          .querySelectorAll<HTMLElement>(`[data-search-panel^="${group}:"]`)
+          .forEach((panel) => {
+            panel.classList.toggle(
+              "active",
+              panel.dataset.searchPanel === `${group}:${mode}`,
+            );
+          });
+      };
+      buttons.forEach((button) => {
+        button.addEventListener("click", () => {
+          activate(button.dataset.searchMode ?? "place");
+        });
+      });
+      hookTabArrowNavigation(buttons, (button) => {
+        activate(button.dataset.searchMode ?? "place");
+      });
+      activate(
+        buttons.find((button) => button.classList.contains("active"))?.dataset
+          .searchMode ?? "place",
+      );
+    });
+}
+
+function projectDisplayName(): string {
+  if (!currentProjectPath) {
+    return "未命名地圖";
+  }
+  const parts = currentProjectPath.split(/[\\/]/);
+  return parts[parts.length - 1] || "未命名地圖";
+}
+
+function syncProjectHeader(): void {
+  const hasProjectPath = Boolean(currentProjectPath);
+  if (projectNameEl) {
+    projectNameEl.textContent = projectDisplayName();
+    projectNameEl.setAttribute("title", currentProjectPath ?? "未命名地圖");
+  }
+  projectStateEl?.classList.toggle("dirty", projectDirty);
+  projectStateEl?.classList.toggle("new", !hasProjectPath && !projectDirty);
+  if (projectStateTextEl) {
+    projectStateTextEl.textContent =
+      projectDirty || !hasProjectPath ? "尚未儲存" : "已儲存";
+  }
+}
+
+function showAppToast(
+  message: string,
+  state: "loading" | "success" | "error" = "success",
+  autoHideMs = 2200,
+): void {
+  if (!appToast || !appToastText) {
+    return;
+  }
+  if (appToastTimer !== null) {
+    window.clearTimeout(appToastTimer);
+    appToastTimer = null;
+  }
+  appToastText.textContent = message;
+  appToast.classList.remove("loading", "success", "error");
+  appToast.classList.add("show", state);
+  if (autoHideMs > 0) {
+    appToastTimer = window.setTimeout(() => {
+      appToast.classList.remove("show");
+      appToastTimer = null;
+    }, autoHideMs);
+  }
+}
+
+const THEME_STORAGE_KEY = "map-schematic.theme";
+const systemDarkTheme = window.matchMedia("(prefers-color-scheme: dark)");
+
+function isThemePreference(value: string | null): value is ThemePreference {
+  return value === "dark" || value === "light" || value === "system";
+}
+
+function applyThemePreference(preference: ThemePreference): void {
+  currentThemePreference = preference;
+  const resolved =
+    preference === "system"
+      ? systemDarkTheme.matches
+        ? "dark"
+        : "light"
+      : preference;
+  document.documentElement.dataset.theme = resolved;
+  themePreferenceButtons.forEach((button) => {
+    const active = button.dataset.themePreference === preference;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-checked", String(active));
+  });
+}
+
+function initializeTheme(): void {
+  let preference: ThemePreference = "dark";
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (isThemePreference(stored)) {
+      preference = stored;
+    }
+  } catch {
+    // The default dark theme remains available if local storage is unavailable.
+  }
+  applyThemePreference(preference);
+  themePreferenceButtons.forEach((button, index) => {
+    button.addEventListener("click", () => {
+      const preferenceValue = button.dataset.themePreference ?? null;
+      const nextPreference = isThemePreference(preferenceValue)
+        ? preferenceValue
+        : "dark";
+      applyThemePreference(nextPreference);
+      try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, nextPreference);
+      } catch {
+        // Theme switching still works for the current session.
+      }
+    });
+    button.addEventListener("keydown", (event) => {
+      let nextIndex: number | null = null;
+      if (event.key === "ArrowUp") {
+        nextIndex =
+          (index - 1 + themePreferenceButtons.length) %
+          themePreferenceButtons.length;
+      } else if (event.key === "ArrowDown") {
+        nextIndex = (index + 1) % themePreferenceButtons.length;
+      }
+      if (nextIndex === null) {
+        return;
+      }
+      event.preventDefault();
+      themePreferenceButtons[nextIndex]?.focus();
+      themePreferenceButtons[nextIndex]?.click();
+    });
+  });
+  systemDarkTheme.addEventListener("change", () => {
+    if (currentThemePreference === "system") {
+      applyThemePreference("system");
+    }
+  });
+}
+
+function openPreferencesDialog(): void {
+  if (!preferencesModal) {
+    return;
+  }
+  preferencesPreviousFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  preferencesModal.classList.add("active");
+  window.requestAnimationFrame(() => {
+    themePreferenceButtons
+      .find((button) => button.classList.contains("active"))
+      ?.focus();
+  });
+}
+
+function closePreferencesDialog(): void {
+  if (!preferencesModal?.classList.contains("active")) {
+    return;
+  }
+  preferencesModal.classList.remove("active");
+  const previousFocus = preferencesPreviousFocus;
+  preferencesPreviousFocus = null;
+  if (previousFocus?.isConnected) {
+    previousFocus.focus();
+  }
+}
+
+function presentNextAppDialog(): void {
+  if (
+    activeAppDialog ||
+    appDialogQueue.length === 0 ||
+    !appDialogModal ||
+    !appDialogElement ||
+    !appDialogActions ||
+    !appDialogTitle ||
+    !appDialogMessage
+  ) {
+    return;
+  }
+  activeAppDialog = appDialogQueue.shift() ?? null;
+  if (!activeAppDialog) {
+    return;
+  }
+  const { options } = activeAppDialog;
+  appDialogDefaultValue = options.defaultValue;
+  appDialogCancelValue = options.cancelValue;
+  appDialogPreviousFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  const tone = options.tone ?? "info";
+  appDialogElement.dataset.tone = tone;
+  if (appDialogIcon) {
+    appDialogIcon.textContent = tone === "info" ? "i" : "!";
+  }
+  if (appDialogEyebrow) {
+    appDialogEyebrow.textContent =
+      options.eyebrow ??
+      (tone === "danger"
+        ? "發生錯誤"
+        : tone === "warning"
+          ? "請確認"
+          : "提示");
+  }
+  appDialogTitle.textContent = options.title;
+  appDialogMessage.textContent = options.message;
+  if (appDialogDetail) {
+    appDialogDetail.textContent = options.detail ?? "";
+  }
+  appDialogActions.replaceChildren();
+  appDialogActions.classList.toggle(
+    "decision-actions",
+    options.buttons.some((button) => button.variant === "dangerGhost"),
+  );
+  let defaultButton: HTMLButtonElement | null = null;
+  options.buttons.forEach((dialogButton: AppDialogButton) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = dialogButton.label;
+    const variant = dialogButton.variant ?? "ghost";
+    button.className =
+      variant === "primary"
+        ? "ui-button primary"
+        : variant === "danger"
+          ? "ui-button danger-solid"
+          : variant === "dangerGhost"
+            ? "ui-button danger-ghost"
+          : "ui-button ghost";
+    button.addEventListener("click", () => {
+      closeAppDialog(dialogButton.value);
+    });
+    appDialogActions.appendChild(button);
+    if (dialogButton.value === options.defaultValue) {
+      defaultButton = button;
+    }
+  });
+  appDialogModal.classList.add("active");
+  window.requestAnimationFrame(() => {
+    (defaultButton ?? appDialogActions.querySelector("button"))?.focus();
+  });
+}
+
+function closeAppDialog(response: number): void {
+  if (!activeAppDialog || !appDialogModal) {
+    return;
+  }
+  const current = activeAppDialog;
+  activeAppDialog = null;
+  appDialogModal.classList.remove("active");
+  appDialogActions?.replaceChildren();
+  current.resolve(response);
+  const previousFocus = appDialogPreviousFocus;
+  appDialogPreviousFocus = null;
+  if (appDialogQueue.length > 0) {
+    window.requestAnimationFrame(presentNextAppDialog);
+  } else if (previousFocus?.isConnected) {
+    previousFocus.focus();
+  }
+}
+
+function showAppDialog(options: AppDialogOptions): Promise<number> {
+  if (!appDialogModal || !appDialogElement || !appDialogActions) {
+    return Promise.resolve(options.cancelValue);
+  }
+  return new Promise((resolve) => {
+    appDialogQueue.push({ options, resolve });
+    presentNextAppDialog();
+  });
+}
+
+async function showAppNotice(options: {
+  eyebrow?: string;
+  title: string;
+  message: string;
+  detail?: string;
+  tone?: "info" | "warning" | "danger";
+}): Promise<void> {
+  await showAppDialog({
+    ...options,
+    buttons: [{ label: "知道了", value: 0, variant: "primary" }],
+    defaultValue: 0,
+    cancelValue: 0,
+  });
+}
+
 function hookSteps(): void {
+  workflowStepButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const step = button.dataset.stepJump;
+      if (step) {
+        setActiveStep(step);
+      }
+    });
+  });
+  editorWorkspaceTabs.forEach((button) => {
+    button.addEventListener("click", () => {
+      setEditorWorkspaceTab(button.dataset.editorTab ?? "search");
+    });
+  });
+  hookTabArrowNavigation(editorWorkspaceTabs, (button) => {
+    setEditorWorkspaceTab(button.dataset.editorTab ?? "search");
+  });
+  setEditorWorkspaceTab(
+    editorWorkspaceTabs.find((button) => button.classList.contains("active"))
+      ?.dataset.editorTab ?? "search",
+  );
+  hookSearchModeSwitches();
   nextStepButton?.addEventListener("click", () => {
     if (activeStep === "3") {
       openCompleteDialog();
@@ -1576,6 +2079,32 @@ function hookSteps(): void {
     setActiveRatioButton("ratioCustom");
     handleRatioInput();
   });
+  ratioSwapButton?.addEventListener("click", () => {
+    if (activeRatioId === "ratioFree") {
+      return;
+    }
+    if (activeRatioId === "ratioCustom") {
+      if (!ratioInputA || !ratioInputB) {
+        return;
+      }
+      const previousA = ratioInputA.value;
+      ratioInputA.value = ratioInputB.value;
+      ratioInputB.value = previousA;
+      handleRatioInput();
+      return;
+    }
+    const swappedPresetIds: Record<string, string> = {
+      ratio43: "ratio34",
+      ratio34: "ratio43",
+      ratio169: "ratio916",
+      ratio916: "ratio169",
+    };
+    const nextRatio = cropRatio > 0 ? 1 / cropRatio : 1 / originalRatio;
+    const nextPresetId = activeRatioId
+      ? (swappedPresetIds[activeRatioId] ?? activeRatioId)
+      : undefined;
+    applyCanvasRatio(nextRatio, nextPresetId);
+  });
   ratioInputA?.addEventListener("input", handleRatioInput);
   ratioInputB?.addEventListener("input", handleRatioInput);
   ratioInputA?.addEventListener("focus", () =>
@@ -1610,6 +2139,81 @@ function hookSteps(): void {
       }
       setReliefMode(true, value);
     });
+  });
+  reliefToggle?.addEventListener("change", () => {
+    setReliefMode(
+      reliefToggle.checked,
+      reliefBlendSelect?.value ?? hillshadeBlend,
+    );
+  });
+  reliefBlendSelect?.addEventListener("change", () => {
+    setReliefMode(
+      reliefToggle?.checked ?? hillshadeEnabled,
+      reliefBlendSelect.value,
+    );
+  });
+  reliefBlendTrigger?.addEventListener("click", () => {
+    const open = reliefBlendTrigger.getAttribute("aria-expanded") !== "true";
+    setReliefBlendDropdownOpen(open);
+  });
+  reliefBlendTrigger?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setReliefBlendDropdownOpen(false);
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+      return;
+    }
+    event.preventDefault();
+    setReliefBlendDropdownOpen(true);
+    focusReliefBlendOption(event.key === "ArrowDown" ? 1 : -1);
+  });
+  reliefBlendOptions.forEach((button, index) => {
+    button.addEventListener("click", () => {
+      const value = button.dataset.blendValue;
+      if (!value) {
+        return;
+      }
+      if (reliefBlendSelect) {
+        reliefBlendSelect.value = value;
+      }
+      setReliefMode(reliefToggle?.checked ?? hillshadeEnabled, value);
+      setReliefBlendDropdownOpen(false);
+      reliefBlendTrigger?.focus();
+    });
+    button.addEventListener("keydown", (event) => {
+      let nextIndex: number | null = null;
+      if (event.key === "ArrowDown") {
+        nextIndex = (index + 1) % reliefBlendOptions.length;
+      } else if (event.key === "ArrowUp") {
+        nextIndex =
+          (index - 1 + reliefBlendOptions.length) % reliefBlendOptions.length;
+      } else if (event.key === "Home") {
+        nextIndex = 0;
+      } else if (event.key === "End") {
+        nextIndex = reliefBlendOptions.length - 1;
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        setReliefBlendDropdownOpen(false);
+        reliefBlendTrigger?.focus();
+        return;
+      }
+      if (nextIndex === null) {
+        return;
+      }
+      event.preventDefault();
+      reliefBlendOptions[nextIndex]?.focus();
+    });
+  });
+  document.addEventListener("click", (event) => {
+    if (
+      reliefBlendDropdown &&
+      event.target instanceof Node &&
+      !reliefBlendDropdown.contains(event.target)
+    ) {
+      setReliefBlendDropdownOpen(false);
+    }
   });
   document
     .querySelectorAll<HTMLButtonElement>(".tool-select")
@@ -1798,6 +2402,10 @@ function clampVertical(): void {
   }
   const height = svg.viewBox.baseVal.height || 800;
   const scaledHeight = height * view.scale;
+  if (scaledHeight <= height) {
+    view.ty = (height - scaledHeight) / 2;
+    return;
+  }
   const minTy = height - scaledHeight;
   const maxTy = 0;
   view.ty = Math.min(maxTy, Math.max(minTy, view.ty));
@@ -3392,7 +4000,9 @@ function syncMarkerControls(marker: Marker | null): void {
     markerLabelInput.value =
       marker.sourceType === "geonames"
         ? (marker.labelName ?? marker.name)
-        : (marker.labelName ?? "");
+        : marker.sourceType === "coords"
+          ? (marker.labelName ?? marker.displayName ?? marker.name)
+          : "";
   }
   if (markerCoordsInput) {
     markerCoordsInput.disabled = false;
@@ -3455,6 +4065,7 @@ function syncShapeControls(shape: ShapeItem | null): void {
       setSliderValue(shapeAreaStrokeWidthSlider, shape.style.strokeWidth, true);
     }
   }
+  syncShapeColorPalettes();
   syncItemNameControl();
 }
 
@@ -3470,7 +4081,7 @@ function syncItemNameControl(): void {
     itemNameInput.disabled = true;
     return;
   }
-  itemNameRow.style.display = "flex";
+  itemNameRow.style.display = "grid";
   itemNameInput.disabled = false;
   if (marker) {
     itemNameInput.value = marker.displayName ?? markerListName(marker);
@@ -3532,8 +4143,13 @@ function updateSettingsVisibility(
   }
   const hasMarker = Boolean(marker);
   const hasShape = Boolean(shape);
-  settingsEmpty.style.display = hasMarker || hasShape ? "none" : "block";
-  pointSettings.style.display = hasMarker ? "block" : "none";
+  settingsEmpty.style.display = hasMarker || hasShape ? "none" : "flex";
+  if (markerDisplayTextRow) {
+    const canEditDisplayText =
+      marker?.sourceType === "geonames" || marker?.sourceType === "coords";
+    markerDisplayTextRow.style.display = canEditDisplayText ? "grid" : "none";
+  }
+  pointSettings.style.display = hasMarker ? "flex" : "none";
   textSettings.style.display = shape?.type === "text" ? "block" : "none";
   lineSettings.style.display = shape?.type === "line" ? "block" : "none";
   arrowSettings.style.display = shape?.type === "arrow" ? "block" : "none";
@@ -3545,6 +4161,11 @@ function updateSettingsVisibility(
 }
 
 function syncColorInputs(target: "dot" | "text", color: string): void {
+  document
+    .querySelectorAll<HTMLButtonElement>(
+      `.color-swatch[data-color-target="${target}"]`,
+    )
+    .forEach((swatch) => syncColorSwatch(swatch, color));
   if (target === "dot") {
     if (markerDotHex) {
       markerDotHex.value = color;
@@ -3559,6 +4180,49 @@ function syncColorInputs(target: "dot" | "text", color: string): void {
   }
   if (textColorChip) {
     textColorChip.style.background = color;
+  }
+}
+
+function syncColorSwatch(swatch: HTMLButtonElement, color: string): void {
+  const swatchColor = swatch.dataset.color ?? swatch.dataset.shapeColor ?? "";
+  const active = swatchColor.toLowerCase() === color.toLowerCase();
+  swatch.classList.toggle("active", active);
+  swatch.setAttribute("aria-pressed", String(active));
+  swatch.setAttribute(
+    "aria-label",
+    active ? `目前顏色 ${swatchColor}` : `選擇顏色 ${swatchColor}`,
+  );
+  swatch.title = swatchColor;
+}
+
+function syncWorkspaceStatusIcon(): void {
+  const statusText = statusEl?.textContent ?? "";
+  const datapackReady =
+    statusText.includes("資料包") && statusText.includes("已就緒");
+  workspaceStatusIcon?.classList.toggle("ready", datapackReady);
+}
+
+function syncPaletteSelection(paletteId: string, color: string): void {
+  document
+    .querySelectorAll<HTMLButtonElement>(`#${paletteId} .color-swatch`)
+    .forEach((swatch) => syncColorSwatch(swatch, color));
+}
+
+function syncShapeColorPalettes(): void {
+  if (shapeTextColor) {
+    syncPaletteSelection("shapeTextPalette", shapeTextColor.value);
+  }
+  if (shapeLineColor) {
+    syncPaletteSelection("shapeLinePalette", shapeLineColor.value);
+  }
+  if (shapeArrowColor) {
+    syncPaletteSelection("shapeArrowPalette", shapeArrowColor.value);
+  }
+  if (shapeAreaFill) {
+    syncPaletteSelection("shapeAreaFillPalette", shapeAreaFill.value);
+  }
+  if (shapeAreaStroke) {
+    syncPaletteSelection("shapeAreaStrokePalette", shapeAreaStroke.value);
   }
 }
 
@@ -3593,6 +4257,7 @@ function selectMarker(markerId: string | null): void {
   syncMarkerControls(getSelectedMarker());
   syncItemNameControl();
   updateMarkerStyles();
+  renderMarkerList();
   if (markerId) {
     activeTool = "marker";
     hasActiveToolSelection = true;
@@ -3616,6 +4281,7 @@ function selectShape(shapeId: string | null): void {
   syncShapeControls(shape);
   syncItemNameControl();
   renderMarkers();
+  renderMarkerList();
   if (shape) {
     activeTool = shape.type;
     hasActiveToolSelection = true;
@@ -3653,6 +4319,10 @@ function isStepThreeBlankTarget(target: EventTarget | null): boolean {
       ".settings-stack",
       ".tool-list",
       ".marker-list",
+      ".editor-tab-view",
+      ".layers-view",
+      ".inspector-header",
+      ".inspector-empty",
       ".map-list-panel",
       ".map-wrap",
       ".map-stage",
@@ -3669,9 +4339,36 @@ function handleStepThreeBlankMouseDown(event: MouseEvent): void {
   ) {
     return;
   }
+  if (
+    event.target instanceof Element &&
+    event.target.closest(".inspector-panel")
+  ) {
+    return;
+  }
   if (isStepThreeBlankTarget(event.target)) {
     clearStepThreeSelection();
   }
+}
+
+function createLayerDeleteButton(
+  label: string,
+  onDelete: () => void,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.className = "marker-delete-button";
+  button.type = "button";
+  button.title = "刪除";
+  button.setAttribute("aria-label", `刪除 ${label}`);
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"></path>
+    </svg>
+  `;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onDelete();
+  });
+  return button;
 }
 
 function renderMarkerList(): void {
@@ -3687,6 +4384,7 @@ function renderMarkerList(): void {
     const row = document.createElement("div");
     row.className = "marker-item";
     const title = document.createElement("span");
+    title.className = "marker-item-title";
     const actions = document.createElement("div");
     actions.className = "marker-actions";
 
@@ -3696,12 +4394,10 @@ function renderMarkerList(): void {
       if (!marker) {
         return;
       }
+      row.classList.toggle("selected", marker.id === selectedMarkerId);
+      row.dataset.kind = "marker";
       title.textContent = uniqueNames.get(overlayKey) ?? markerListName(marker);
-      const btn = document.createElement("button");
-      btn.className = "secondary";
-      btn.textContent = "清除";
-      btn.addEventListener("click", (event) => {
-        event.stopPropagation();
+      const btn = createLayerDeleteButton(title.textContent, () => {
         deleteMarker(marker.id);
       });
       actions.appendChild(btn);
@@ -3712,12 +4408,10 @@ function renderMarkerList(): void {
       if (!shape) {
         return;
       }
+      row.classList.toggle("selected", shape.id === selectedShapeId);
+      row.dataset.kind = shape.type;
       title.textContent = uniqueNames.get(overlayKey) ?? "標示";
-      const btn = document.createElement("button");
-      btn.className = "secondary";
-      btn.textContent = "清除";
-      btn.addEventListener("click", (event) => {
-        event.stopPropagation();
+      const btn = createLayerDeleteButton(title.textContent, () => {
         deleteShape(shape.id);
       });
       actions.appendChild(btn);
@@ -3730,9 +4424,12 @@ function renderMarkerList(): void {
     row.appendChild(actions);
     markerList.appendChild(row);
   });
+  if (clearMarkersButton) {
+    clearMarkersButton.disabled = markerList.childElementCount === 0;
+  }
 }
 
-const DRAG_START_THRESHOLD = 6;
+const DRAG_START_THRESHOLD = 4;
 
 function isReducedMotion(): boolean {
   return (
@@ -3740,30 +4437,42 @@ function isReducedMotion(): boolean {
   );
 }
 
-function measurePositions(container: HTMLUListElement): Map<string, DOMRect> {
-  const map = new Map<string, DOMRect>();
-  container.querySelectorAll<HTMLLIElement>("li.order-item").forEach((row) => {
+function measureOrderRows(
+  session: OrderDragSession,
+  clientY: number,
+): { positions: Map<string, DOMRect>; refNode: Node | null } {
+  const positions = new Map<string, DOMRect>();
+  let refNode: Node | null = null;
+  session.cachedRows.forEach((row) => {
+    if (!row.isConnected) {
+      return;
+    }
     const key = row.dataset.key;
     if (!key) {
       return;
     }
-    map.set(key, row.getBoundingClientRect());
+    const rect = row.getBoundingClientRect();
+    positions.set(key, rect);
+    if (refNode === null && clientY < rect.top + rect.height / 2) {
+      refNode = row;
+    }
   });
-  return map;
+  return { positions, refNode };
 }
 
 function animateRowsWithFLIP(
   container: HTMLUListElement,
   before: Map<string, DOMRect>,
-  duration = 180,
+  duration = 115,
 ): void {
-  if (isReducedMotion()) {
-    return;
-  }
   const rows = Array.from(
     container.querySelectorAll<HTMLLIElement>("li.order-item"),
   );
   rows.forEach((row) => {
+    orderRowAnimations.get(row)?.cancel();
+    if (isReducedMotion()) {
+      return;
+    }
     const key = row.dataset.key;
     if (!key) {
       return;
@@ -3777,15 +4486,42 @@ function animateRowsWithFLIP(
     if (Math.abs(deltaY) < 0.5) {
       return;
     }
-    row.classList.add("order-item--animating");
-    row.style.transform = `translate3d(0, ${deltaY}px, 0)`;
-    requestAnimationFrame(() => {
-      row.style.transform = "translate3d(0, 0, 0)";
-    });
-    window.setTimeout(() => {
-      row.classList.remove("order-item--animating");
-      row.style.transform = "";
-    }, duration + 40);
+    const animation = row.animate(
+      [
+        { transform: `translate3d(0, ${deltaY}px, 0)` },
+        { transform: "translate3d(0, 0, 0)" },
+      ],
+      {
+        duration,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      },
+    );
+    orderRowAnimations.set(row, animation);
+    const clearAnimation = () => {
+      if (orderRowAnimations.get(row) === animation) {
+        orderRowAnimations.delete(row);
+      }
+    };
+    animation.addEventListener("finish", clearAnimation, { once: true });
+    animation.addEventListener("cancel", clearAnimation, { once: true });
+  });
+}
+
+function latestPointerPosition(event: PointerEvent): {
+  clientX: number;
+  clientY: number;
+} {
+  const samples = event.getCoalescedEvents?.() ?? [];
+  const latest = samples[samples.length - 1] ?? event;
+  return {
+    clientX: latest.clientX,
+    clientY: latest.clientY,
+  };
+}
+
+function cancelOrderRowAnimations(container: HTMLUListElement): void {
+  container.querySelectorAll<HTMLLIElement>("li.order-item").forEach((row) => {
+    orderRowAnimations.get(row)?.cancel();
   });
 }
 
@@ -3815,22 +4551,7 @@ function updateGhostTransform(
   }
   const x = clientX - session.offsetX;
   const y = clientY - session.offsetY;
-  session.ghost.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${isReducedMotion() ? "1" : "1.03"})`;
-}
-
-function computeInsertReference(
-  session: OrderDragSession,
-  clientY: number,
-): { refNode: Node | null } {
-  const rows = session.cachedRows.filter((row) => row !== session.sourceItem);
-  for (const row of rows) {
-    const rect = row.getBoundingClientRect();
-    const mid = rect.top + rect.height / 2;
-    if (clientY < mid) {
-      return { refNode: row };
-    }
-  }
-  return { refNode: null };
+  session.ghost.style.transform = `translate3d(${x}px, ${y}px, 0)`;
 }
 
 function movePlaceholderWithFLIP(
@@ -3841,8 +4562,7 @@ function movePlaceholderWithFLIP(
     return;
   }
   const { container, placeholder } = session;
-  const before = measurePositions(container);
-  const { refNode } = computeInsertReference(session, clientY);
+  const { positions, refNode } = measureOrderRows(session, clientY);
   const currentNext = placeholder.nextSibling;
   if (refNode === null) {
     if (currentNext === null) {
@@ -3854,7 +4574,7 @@ function movePlaceholderWithFLIP(
   } else {
     container.insertBefore(placeholder, refNode);
   }
-  animateRowsWithFLIP(container, before, 180);
+  animateRowsWithFLIP(container, positions);
   session.orderChanged = true;
 }
 
@@ -3866,9 +4586,13 @@ function runDragMoveFrame(session: OrderDragSession): void {
   movePlaceholderWithFLIP(session, session.queuedClientY);
 }
 
-function startDragging(session: OrderDragSession): void {
+function startDragging(
+  session: OrderDragSession,
+  clientX: number,
+  clientY: number,
+): void {
   session.phase = "dragging";
-  const { sourceItem, container, startClientX, startClientY } = session;
+  const { sourceItem, container } = session;
   const sourceRect = sourceItem.getBoundingClientRect();
   sourceItem.classList.add("order-item--drag-source");
   const placeholder = document.createElement("li");
@@ -3885,7 +4609,7 @@ function startDragging(session: OrderDragSession): void {
   session.cachedRows = Array.from(
     container.querySelectorAll<HTMLLIElement>("li.order-item"),
   );
-  updateGhostTransform(session, startClientX, startClientY);
+  updateGhostTransform(session, clientX, clientY);
 }
 
 function finalizeOrderCommit(session: OrderDragSession): void {
@@ -3921,14 +4645,15 @@ function cleanupOrderSession(reason: "commit" | "cancel"): void {
     cancelAnimationFrame(session.rafId);
     session.rafId = null;
   }
+  cancelOrderRowAnimations(session.container);
   if (session.ghost) {
     if (isReducedMotion()) {
       session.ghost.remove();
     } else {
       session.ghost.style.transition =
-        "transform 120ms ease-out, opacity 120ms ease-out";
+        "transform 100ms ease-out, opacity 100ms ease-out";
       session.ghost.style.opacity = "0";
-      window.setTimeout(() => session.ghost?.remove(), 130);
+      window.setTimeout(() => session.ghost?.remove(), 110);
     }
   }
   if (session.placeholder && session.placeholder.parentElement) {
@@ -3946,19 +4671,20 @@ function onOrderPointerMove(event: PointerEvent): void {
   if (!session || event.pointerId !== session.pointerId) {
     return;
   }
+  const pointer = latestPointerPosition(event);
   if (session.phase === "pending") {
-    const dx = event.clientX - session.startClientX;
-    const dy = event.clientY - session.startClientY;
+    const dx = pointer.clientX - session.startClientX;
+    const dy = pointer.clientY - session.startClientY;
     if (Math.hypot(dx, dy) >= DRAG_START_THRESHOLD) {
-      startDragging(session);
-      scheduleDragMove(session, event.clientX, event.clientY);
+      startDragging(session, pointer.clientX, pointer.clientY);
+      scheduleDragMove(session, pointer.clientX, pointer.clientY);
     }
     return;
   }
   if (session.phase !== "dragging") {
     return;
   }
-  scheduleDragMove(session, event.clientX, event.clientY);
+  scheduleDragMove(session, pointer.clientX, pointer.clientY);
 }
 
 function onOrderPointerUp(event: PointerEvent): void {
@@ -4119,6 +4845,11 @@ function openOrderDialog(): void {
   }
   renderOrderDialog();
   listOrderModal.classList.add("active");
+  window.requestAnimationFrame(() => {
+    listOrderModal
+      .querySelector<HTMLElement>("button, [tabindex]")
+      ?.focus();
+  });
 }
 
 function closeOrderDialog(): void {
@@ -4128,11 +4859,13 @@ function closeOrderDialog(): void {
 
 function openCompleteDialog(): void {
   completeModal?.classList.add("active");
+  window.requestAnimationFrame(() => {
+    completeExportPng?.focus();
+  });
 }
 
 function closeCompleteDialog(): void {
   completeModal?.classList.remove("active");
-  clearCompleteFeedback();
 }
 
 function syncExportFrameOptions(): void {
@@ -4160,43 +4893,14 @@ function chooseExportFrame(): Promise<ExportFrameStyle | null> {
   }
   syncExportFrameOptions();
   exportFrameModal.classList.add("active");
+  window.requestAnimationFrame(() => {
+    exportFrameModal
+      .querySelector<HTMLElement>(".frame-option.active")
+      ?.focus();
+  });
   return new Promise((resolve) => {
     exportFrameResolver = resolve;
   });
-}
-
-function clearCompleteFeedback(): void {
-  if (completeFeedbackTimer != null) {
-    window.clearTimeout(completeFeedbackTimer);
-    completeFeedbackTimer = null;
-  }
-  if (!completeSaveFeedback || !completeSaveFeedbackText) {
-    return;
-  }
-  completeSaveFeedback.classList.remove("show", "loading", "success", "error");
-  completeSaveFeedbackText.textContent = "";
-}
-
-function setCompleteFeedback(
-  state: "loading" | "success" | "error",
-  message: string,
-  autoHideMs = 0,
-): void {
-  if (!completeSaveFeedback || !completeSaveFeedbackText) {
-    return;
-  }
-  if (completeFeedbackTimer != null) {
-    window.clearTimeout(completeFeedbackTimer);
-    completeFeedbackTimer = null;
-  }
-  completeSaveFeedback.classList.remove("loading", "success", "error");
-  completeSaveFeedback.classList.add("show", state);
-  completeSaveFeedbackText.textContent = message;
-  if (autoHideMs > 0) {
-    completeFeedbackTimer = window.setTimeout(() => {
-      clearCompleteFeedback();
-    }, autoHideMs);
-  }
 }
 
 function attachOrderDragGlobalEvents(): void {
@@ -4352,12 +5056,14 @@ function buildProject(): MapProject | null {
 
 function setProjectDirtyState(dirty: boolean): void {
   if (projectDirty === dirty && reportedProjectDirty === dirty) {
+    syncProjectHeader();
     return;
   }
   projectDirty = dirty;
   reportedProjectDirty = dirty;
   document.title = dirty ? "* 地圖示意圖" : "地圖示意圖";
   window.mapSchematic?.setProjectDirty?.(dirty);
+  syncProjectHeader();
 }
 
 function syncProjectDirtyState(): void {
@@ -4421,6 +5127,7 @@ async function handleSave(saveAs = false): Promise<{
   }
   if (result?.path) {
     currentProjectPath = result.path;
+    syncProjectHeader();
   }
   if (result.ok) {
     currentProject = project;
@@ -4491,7 +5198,7 @@ function projectDatapackMismatchMessage(project: MapProject): string | null {
   if (messages.length === 0) {
     return null;
   }
-  return `${messages.join("\n")}\n\n若繼續載入，地名或底圖可能與原專案版本不同。`;
+  return messages.join("\n");
 }
 
 async function handleLoad() {
@@ -4499,14 +5206,26 @@ async function handleLoad() {
     return;
   }
   syncProjectDirtyState();
-  if (
-    projectDirty &&
-    !window.confirm("目前專案有尚未儲存的變更。繼續載入其他專案將放棄這些變更，仍要繼續嗎？")
-  ) {
-    if (statusEl) {
-      statusEl.textContent = "已取消載入，未儲存的變更仍保留。";
+  if (projectDirty) {
+    const response = await showAppDialog({
+      eyebrow: "未儲存變更",
+      title: "載入其他專案？",
+      message: "目前專案有尚未儲存的變更。",
+      detail: "繼續載入會放棄這些變更，且無法復原。",
+      tone: "warning",
+      buttons: [
+        { label: "取消", value: 0, variant: "ghost" },
+        { label: "放棄並載入", value: 1, variant: "danger" },
+      ],
+      defaultValue: 0,
+      cancelValue: 0,
+    });
+    if (response !== 1) {
+      if (statusEl) {
+        statusEl.textContent = "已取消載入，未儲存的變更仍保留。";
+      }
+      return;
     }
-    return;
   }
   const result = await window.mapSchematic.loadProject();
   if (!result.ok || !result.project) {
@@ -4520,7 +5239,13 @@ async function handleLoad() {
   const loadedProject = result.project;
   const validationMessage = projectValidationMessage(result.validation);
   if (validationMessage) {
-    window.alert(validationMessage);
+    await showAppNotice({
+      eyebrow: "載入失敗",
+      title: "專案格式無效",
+      message: "專案檔格式驗證失敗，已停止載入。",
+      detail: validationMessage,
+      tone: "danger",
+    });
     if (statusEl) {
       statusEl.textContent = "專案檔格式驗證失敗，已停止載入。";
     }
@@ -4528,10 +5253,20 @@ async function handleLoad() {
   }
   const mismatchMessage = projectDatapackMismatchMessage(loadedProject);
   if (mismatchMessage) {
-    const shouldContinue = window.confirm(
-      `${mismatchMessage}\n\n仍要用目前本機資料包載入此專案嗎？`,
-    );
-    if (!shouldContinue) {
+    const response = await showAppDialog({
+      eyebrow: "資料版本不同",
+      title: "使用本機資料包載入？",
+      message: mismatchMessage,
+      detail: "繼續後仍可編輯，但地名或底圖可能與原專案版本不同。",
+      tone: "warning",
+      buttons: [
+        { label: "取消", value: 0, variant: "ghost" },
+        { label: "仍要載入", value: 1, variant: "primary" },
+      ],
+      defaultValue: 0,
+      cancelValue: 0,
+    });
+    if (response !== 1) {
       if (statusEl) {
         statusEl.textContent = "已取消載入：專案資料包版本與本機不一致。";
       }
@@ -4540,6 +5275,7 @@ async function handleLoad() {
   }
   currentProject = loadedProject;
   currentProjectPath = result.path ?? null;
+  syncProjectHeader();
   const loadedEditor = mapProjectToEditorDocument(loadedProject);
   editorCore.replaceDocument(loadedEditor.document);
   selectedMarkerId = null;
@@ -4613,9 +5349,13 @@ async function handleLoad() {
   setProjectBaseline();
   const preservedCount = preservedProjectObjects.length;
   if (preservedCount > 0) {
-    window.alert(
-      `此專案有 ${preservedCount} 個物件使用目前編輯器尚未支援的幾何格式。這些物件不會顯示或提供編輯，但再次儲存時會原樣保留。`,
-    );
+    await showAppNotice({
+      eyebrow: "相容性提示",
+      title: "部分物件暫時無法編輯",
+      message: `此專案有 ${preservedCount} 個物件使用目前編輯器尚未支援的幾何格式。`,
+      detail: "這些物件不會顯示或提供編輯，但再次儲存時會原樣保留。",
+      tone: "warning",
+    });
   }
   if (statusEl) {
     const preservedNotice =
@@ -4924,6 +5664,7 @@ async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
     return;
   }
   exportInProgress = true;
+  showAppToast("正在準備匯出…", "loading", 0);
   try {
     const exportFrame =
       format === "png" || format === "pdf" ? await chooseExportFrame() : "none";
@@ -4931,6 +5672,7 @@ async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
       if (statusEl) {
         statusEl.textContent = "已取消匯出。";
       }
+      appToast?.classList.remove("show");
       return;
     }
     let data: string;
@@ -4971,10 +5713,18 @@ async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
           : `匯出失敗：${result.error ?? "未知錯誤"}`;
       }
     }
+    if (result.canceled) {
+      appToast?.classList.remove("show");
+    } else if (result.ok) {
+      showAppToast("地圖已匯出", "success");
+    } else {
+      showAppToast("匯出失敗", "error", 2800);
+    }
   } catch (error) {
     if (statusEl) {
       statusEl.textContent = `匯出失敗：${String(error)}`;
     }
+    showAppToast("匯出失敗", "error", 2800);
   } finally {
     exportInProgress = false;
   }
@@ -5022,6 +5772,10 @@ function openCoordEditor(marker: Marker): void {
   editingCoordMarker = marker;
   coordEditModal.classList.add("active");
   coordLabelInput.value = marker.labelName ?? "";
+  window.requestAnimationFrame(() => {
+    coordLabelInput.focus();
+    coordLabelInput.select();
+  });
   const radios = coordEditModal.querySelectorAll<HTMLInputElement>(
     'input[name="coordLabelMode"]',
   );
@@ -5111,12 +5865,27 @@ function attachShapeControls(): void {
     updateShapeFromControls(`shape:${shapeId}:${property}`);
   };
   shapeTextInput?.addEventListener("input", () => update("text"));
-  shapeTextColor?.addEventListener("input", () => update("text-color"));
+  shapeTextColor?.addEventListener("input", () => {
+    syncShapeColorPalettes();
+    update("text-color");
+  });
   shapeTextFont?.addEventListener("change", () => update("font"));
-  shapeLineColor?.addEventListener("input", () => update("line-color"));
-  shapeArrowColor?.addEventListener("input", () => update("arrow-color"));
-  shapeAreaFill?.addEventListener("input", () => update("area-fill"));
-  shapeAreaStroke?.addEventListener("input", () => update("area-stroke"));
+  shapeLineColor?.addEventListener("input", () => {
+    syncShapeColorPalettes();
+    update("line-color");
+  });
+  shapeArrowColor?.addEventListener("input", () => {
+    syncShapeColorPalettes();
+    update("arrow-color");
+  });
+  shapeAreaFill?.addEventListener("input", () => {
+    syncShapeColorPalettes();
+    update("area-fill");
+  });
+  shapeAreaStroke?.addEventListener("input", () => {
+    syncShapeColorPalettes();
+    update("area-stroke");
+  });
   document
     .querySelectorAll<HTMLButtonElement>("[data-shape-color]")
     .forEach((button) => {
@@ -5126,24 +5895,47 @@ function attachShapeControls(): void {
         if (!color || !shape) {
           return;
         }
-        if (shape.type === "text" && shapeTextColor) {
+        const paletteId = button.closest<HTMLElement>(".color-palette")?.id;
+        let property: string | null = null;
+        if (
+          shape.type === "text" &&
+          paletteId === "shapeTextPalette" &&
+          shapeTextColor
+        ) {
           shapeTextColor.value = color;
+          property = "text-color";
         }
-        if (shape.type === "line" && shapeLineColor) {
+        if (
+          shape.type === "line" &&
+          paletteId === "shapeLinePalette" &&
+          shapeLineColor
+        ) {
           shapeLineColor.value = color;
+          property = "line-color";
         }
-        if (shape.type === "arrow" && shapeArrowColor) {
+        if (
+          shape.type === "arrow" &&
+          paletteId === "shapeArrowPalette" &&
+          shapeArrowColor
+        ) {
           shapeArrowColor.value = color;
+          property = "arrow-color";
         }
         if (shape.type === "area") {
-          if (shapeAreaFill) {
+          if (paletteId === "shapeAreaFillPalette" && shapeAreaFill) {
             shapeAreaFill.value = color;
+            property = "area-fill";
           }
-          if (shapeAreaStroke) {
+          if (paletteId === "shapeAreaStrokePalette" && shapeAreaStroke) {
             shapeAreaStroke.value = color;
+            property = "area-stroke";
           }
         }
-        updateShapeFromControls();
+        if (!property) {
+          return;
+        }
+        syncShapeColorPalettes();
+        update(property);
       });
     });
 }
@@ -5185,26 +5977,6 @@ function bindFirstClickSelect(
   });
 }
 
-function isItemNameDefault(): boolean {
-  const marker = getSelectedMarker();
-  if (marker) {
-    return !marker.displayName || marker.displayName.trim().length === 0;
-  }
-  const shape = getSelectedShape();
-  if (shape) {
-    return !shape.displayName || shape.displayName.trim().length === 0;
-  }
-  return false;
-}
-
-function isMarkerLabelDefault(): boolean {
-  const marker = getEditableMarker();
-  if (!marker || marker.sourceType !== "geonames") {
-    return false;
-  }
-  return !marker.labelName || marker.labelName.trim().length === 0;
-}
-
 function isShapeTextDefault(): boolean {
   const shape = getSelectedShape();
   if (!shape || shape.type !== "text") {
@@ -5224,8 +5996,8 @@ function isCoordLabelDefault(): boolean {
   );
 }
 
-bindFirstClickSelect(itemNameInput, isItemNameDefault);
-bindFirstClickSelect(markerLabelInput, isMarkerLabelDefault);
+bindFirstClickSelect(itemNameInput, () => true);
+bindFirstClickSelect(markerLabelInput, () => true);
 bindFirstClickSelect(shapeTextInput, isShapeTextDefault);
 bindFirstClickSelect(coordLabelInput, isCoordLabelDefault);
 bindFirstClickSelect(ratioInputA, () => true);
@@ -5661,6 +6433,7 @@ async function boot() {
   if (!statusEl) {
     return;
   }
+  syncProjectHeader();
   const ping = window.mapSchematic?.ping?.() ?? "no-bridge";
   statusEl.textContent = `橋接：${ping}。載入資料包中...`;
   try {
@@ -5688,6 +6461,7 @@ async function boot() {
     }
     await renderBasemap();
     renderMarkers();
+    renderMarkerList();
     setActiveStyleButton("styleOriginal");
     applyViewTransform();
     updateWrapTransforms(true);
@@ -5700,7 +6474,7 @@ async function boot() {
       currentPackId = datapack.id;
       currentPackVersion = datapack.version;
       setProjectBaseline();
-      statusEl.textContent = `載入資料包 ${datapack.id} ${datapack.version}使用`;
+      statusEl.textContent = `資料包 ${datapack.id} ${datapack.version} 已就緒`;
     } else {
       statusEl.textContent = "資料包不可用。";
     }
@@ -5815,14 +6589,61 @@ document
       syncVisibility();
     });
   });
-saveButton?.addEventListener("click", () => handleSave(false));
-saveAsButton?.addEventListener("click", () => handleSave(true));
+saveButton?.addEventListener("click", async () => {
+  showAppToast("正在儲存專案…", "loading", 0);
+  const result = await handleSave(false);
+  if (!result || result.canceled) {
+    appToast?.classList.remove("show");
+    return;
+  }
+  showAppToast(
+    result.ok ? "專案已儲存" : "專案儲存失敗",
+    result.ok ? "success" : "error",
+  );
+});
+saveAsButton?.addEventListener("click", async () => {
+  showAppToast("正在另存專案…", "loading", 0);
+  const result = await handleSave(true);
+  if (!result || result.canceled) {
+    appToast?.classList.remove("show");
+    return;
+  }
+  showAppToast(
+    result.ok ? "專案已另存" : "專案另存失敗",
+    result.ok ? "success" : "error",
+  );
+});
 loadButton?.addEventListener("click", handleLoad);
-loadButton0?.addEventListener("click", handleLoad);
-exportPngButton?.addEventListener("click", () => handleExport("png"));
-exportSvgButton?.addEventListener("click", () => handleExport("svg"));
-exportPdfButton?.addEventListener("click", () => handleExport("pdf"));
-clearMarkersButton?.addEventListener("click", handleClearMarkers);
+topExportButton?.addEventListener("click", openCompleteDialog);
+preferencesButton?.addEventListener("click", openPreferencesDialog);
+preferencesClose?.addEventListener("click", closePreferencesDialog);
+preferencesDone?.addEventListener("click", closePreferencesDialog);
+preferencesModal?.addEventListener("click", (event) => {
+  if (event.target === preferencesModal) {
+    closePreferencesDialog();
+  }
+});
+clearMarkersButton?.addEventListener("click", async () => {
+  if (editorDocument.objects.length === 0) {
+    return;
+  }
+  const response = await showAppDialog({
+    eyebrow: "清除項目",
+    title: "清除全部地圖項目？",
+    message: `將移除目前的 ${editorDocument.objects.length} 個地圖項目。`,
+    detail: "此操作可以使用復原功能還原。",
+    tone: "warning",
+    buttons: [
+      { label: "取消", value: 0, variant: "ghost" },
+      { label: "清除全部", value: 1, variant: "danger" },
+    ],
+    defaultValue: 0,
+    cancelValue: 0,
+  });
+  if (response === 1) {
+    handleClearMarkers();
+  }
+});
 undoButton?.addEventListener("click", undoEditorChange);
 redoButton?.addEventListener("click", redoEditorChange);
 listOrderSettingsBtn?.addEventListener("mousedown", (event) => {
@@ -5840,6 +6661,16 @@ listOrderClose?.addEventListener("click", () => {
 listOrderModal?.addEventListener("click", (event) => {
   if (event.target === listOrderModal) {
     closeOrderDialog();
+  }
+});
+appDialogModal?.addEventListener("click", (event) => {
+  if (event.target === appDialogModal) {
+    closeAppDialog(appDialogCancelValue);
+  }
+});
+coordEditModal?.addEventListener("click", (event) => {
+  if (event.target === coordEditModal) {
+    coordEditCancel?.click();
   }
 });
 completeModal?.addEventListener("click", (event) => {
@@ -5873,44 +6704,73 @@ completeContinue?.addEventListener("click", () => {
 completeClose?.addEventListener("click", () => {
   closeCompleteDialog();
 });
-completeSave?.addEventListener("click", async () => {
-  setCompleteFeedback("loading", "儲存中…");
-  const result = await handleSave(false);
-  if (!result || result.canceled) {
-    clearCompleteFeedback();
-    return;
-  }
-  if (result.ok) {
-    setCompleteFeedback("success", "已儲存", 1800);
-  } else {
-    setCompleteFeedback("error", "儲存失敗", 2200);
-  }
-});
-completeSaveAs?.addEventListener("click", async () => {
-  setCompleteFeedback("loading", "另存中…");
-  const result = await handleSave(true);
-  if (!result || result.canceled) {
-    clearCompleteFeedback();
-    return;
-  }
-  if (result.ok) {
-    setCompleteFeedback("success", "已另存新檔", 1800);
-  } else {
-    setCompleteFeedback("error", "另存失敗", 2200);
-  }
-});
 completeExportPng?.addEventListener("click", () => {
+  closeCompleteDialog();
   handleExport("png");
 });
 completeExportSvg?.addEventListener("click", () => {
+  closeCompleteDialog();
   handleExport("svg");
 });
 completeExportPdf?.addEventListener("click", () => {
+  closeCompleteDialog();
   handleExport("pdf");
 });
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
+  const target = event.target;
+  const isTextEditing =
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable);
+  if (appDialogModal?.classList.contains("active")) {
+    const buttons = Array.from(
+      appDialogActions?.querySelectorAll<HTMLButtonElement>("button") ?? [],
+    );
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeAppDialog(appDialogCancelValue);
+      return;
+    }
+    if (event.key === "Enter") {
+      if (
+        target instanceof HTMLButtonElement &&
+        appDialogActions?.contains(target)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      closeAppDialog(appDialogDefaultValue);
+      return;
+    }
+    if (event.key === "Tab" && buttons.length > 0) {
+      event.preventDefault();
+      const activeIndex = buttons.indexOf(
+        document.activeElement as HTMLButtonElement,
+      );
+      const direction = event.shiftKey ? -1 : 1;
+      const nextIndex =
+        activeIndex < 0
+          ? event.shiftKey
+            ? buttons.length - 1
+            : 0
+          : (activeIndex + direction + buttons.length) % buttons.length;
+      buttons[nextIndex]?.focus();
+    }
+    return;
+  }
+  if (preferencesModal?.classList.contains("active")) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePreferencesDialog();
+    }
+    return;
+  }
   if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+    if (isTextEditing) {
+      return;
+    }
     if (key === "z" && !event.shiftKey) {
       event.preventDefault();
       undoEditorChange();
@@ -5922,8 +6782,40 @@ window.addEventListener("keydown", (event) => {
       return;
     }
   }
-  if (event.key === "Escape" && completeModal?.classList.contains("active")) {
-    closeCompleteDialog();
+  if (event.key === "Escape") {
+    if (exportFrameModal?.classList.contains("active")) {
+      closeExportFrameDialog(null);
+      return;
+    }
+    if (completeModal?.classList.contains("active")) {
+      closeCompleteDialog();
+      return;
+    }
+    if (listOrderModal?.classList.contains("active")) {
+      closeOrderDialog();
+      return;
+    }
+    if (coordEditModal?.classList.contains("active")) {
+      coordEditCancel?.click();
+      return;
+    }
+    if (activeStep === "3" && !isTextEditing) {
+      clearStepThreeSelection();
+    }
+  }
+  if (
+    event.key === "Delete" &&
+    activeStep === "3" &&
+    !isTextEditing &&
+    !completeModal?.classList.contains("active")
+  ) {
+    if (selectedMarkerId) {
+      deleteMarker(selectedMarkerId);
+      return;
+    }
+    if (selectedShapeId) {
+      deleteShape(selectedShapeId);
+    }
   }
 });
 
@@ -5947,6 +6839,15 @@ window.mapSchematic?.onMenuAction?.((action) => {
     case "project:saveBeforeClose":
       void handleSaveBeforeClose();
       break;
+    case "app:about":
+      void showAppNotice({
+        eyebrow: "關於",
+        title: "Map Schematic",
+        message: "離線地圖示意圖製作工具",
+        detail: `資料包：${currentPackId || "尚未載入"} ${currentPackVersion}\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief`,
+        tone: "info",
+      });
+      break;
     case "export:png":
       handleExport("png");
       break;
@@ -5961,6 +6862,14 @@ window.mapSchematic?.onMenuAction?.((action) => {
   }
 });
 
+window.mapSchematic?.onAppDialogRequest?.((request) => {
+  const { id, ...options } = request;
+  void showAppDialog(options).then((response) => {
+    window.mapSchematic?.respondToAppDialog?.(id, response);
+  });
+});
+
+initializeTheme();
 hookToolbar();
 hookSteps();
 attachOrderDragGlobalEvents();
@@ -6000,6 +6909,14 @@ shapeAreaStrokeWidthSlider = initSlider(shapeAreaStrokeWidth, 2, () => {
   updateShapeFromControls(`shape:${shapeId}:area-stroke-width`);
 });
 syncHistoryControls();
+if (statusEl) {
+  new MutationObserver(syncWorkspaceStatusIcon).observe(statusEl, {
+    childList: true,
+    characterData: true,
+    subtree: true,
+  });
+}
+syncWorkspaceStatusIcon();
 boot();
 
 window.addEventListener("resize", () => {
