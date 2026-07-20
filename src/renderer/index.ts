@@ -1,47 +1,65 @@
 ﻿export {};
 
-import type {
-  AppDialogButton,
-  AppDialogRequest,
-  GeonamesResult,
-  MapProject
-} from "./bridge.js";
+import type { GeonamesResult, MapProject } from "./bridge.js";
 import {
   createAddObjectCommand,
   createClearObjectsCommand,
   createRemoveObjectCommand,
   createReorderCommand,
-  createUpdateObjectCommand
+  createUpdateObjectCommand,
 } from "./editor/commands.js";
 import type { EditorCommand } from "./editor/commands.js";
 import { EditorCore } from "./editor/editor-core.js";
 import { cloneEditorObject } from "./editor/document.js";
-import type {
-  EditorDocument,
-  Marker,
-  MarkerStyle,
-  ShapeItem,
-  ShapeStyle
-} from "./editor/types.js";
+import type { EditorDocument, Marker, ShapeItem } from "./editor/types.js";
 import { isMarker, isShape } from "./editor/types.js";
 import {
   EARTH_RADIUS,
   WORLD_BBOX,
   geometryToPath,
   project,
-  unproject
+  unproject,
 } from "./map/geometry.js";
+import {
+  buildHillshadeTexture,
+  ensureBasemapContainer,
+  ensureMapRoot,
+  ensureMarkersContainer,
+  ensureShapesContainer,
+  ensureWrapGroup,
+  layerStyleFor,
+  loadHillshadeTexture,
+} from "./map/rendering-utils.js";
+import {
+  applyExportFrame,
+  type ExportFrameStyle,
+} from "./export/export-frame.js";
+import {
+  projectDatapackMismatchMessage,
+  projectValidationMessage,
+} from "./project/project-messages.js";
+import {
+  defaultMarkerStyle,
+  defaultShapeStyle,
+  labelOffsetScale,
+  labelZoomScale,
+  shapeStrokeScale,
+} from "./overlay/overlay-presentation.js";
+import { renderObjectList } from "./overlay/object-list.js";
+import { createOverlayRenderer } from "./overlay/overlay-renderer.js";
+import { updateMarkerStyles as updateOverlayMarkerStyles } from "./overlay/marker-style-updater.js";
 import { projectFingerprint } from "./project/project-state.js";
 import {
   editorDocumentToV02Objects,
-  mapProjectToEditorDocument
+  mapProjectToEditorDocument,
 } from "./project/v02-adapter.js";
-import {
-  initSlider,
-  setSliderValue,
-  updateSliderUI
-} from "./ui/slider.js";
+import { initSlider, setSliderValue, updateSliderUI } from "./ui/slider.js";
 import type { SliderControl } from "./ui/slider.js";
+import {
+  createAppDialogService,
+  type AppDialogOptions,
+} from "./ui/app-dialog.js";
+import { initializeThemePreferences } from "./ui/theme-preferences.js";
 
 type BBox = {
   minLon: number;
@@ -78,14 +96,6 @@ type ShapeDrag = {
   startLon: number;
   startLat: number;
 };
-type ExportFrameStyle = "none" | "thin" | "mat" | "dark";
-type ThemePreference = "dark" | "light" | "system";
-type AppDialogOptions = Omit<AppDialogRequest, "id">;
-type QueuedAppDialog = {
-  options: AppDialogOptions;
-  resolve: (response: number) => void;
-};
-
 const statusEl = document.getElementById("status");
 const workspaceStatusIcon = document.querySelector<SVGElement>(
   ".workspace-status-icon",
@@ -156,6 +166,25 @@ const appDialogTitle = document.getElementById("appDialogTitle");
 const appDialogMessage = document.getElementById("appDialogMessage");
 const appDialogDetail = document.getElementById("appDialogDetail");
 const appDialogActions = document.getElementById("appDialogActions");
+const appDialog = createAppDialogService({
+  modal: appDialogModal,
+  dialog: appDialogElement,
+  icon: appDialogIcon,
+  eyebrow: appDialogEyebrow,
+  title: appDialogTitle,
+  message: appDialogMessage,
+  detail: appDialogDetail,
+  actions: appDialogActions,
+});
+const showAppDialog = (options: AppDialogOptions): Promise<number> =>
+  appDialog.show(options);
+const showAppNotice = (options: {
+  eyebrow?: string;
+  title: string;
+  message: string;
+  detail?: string;
+  tone?: "info" | "warning" | "danger";
+}): Promise<void> => appDialog.notice(options);
 const svg = document.getElementById("map") as SVGSVGElement | null;
 const canvas = document.getElementById("basemap") as HTMLCanvasElement | null;
 const searchInput0 = document.getElementById(
@@ -337,9 +366,7 @@ const coordEditSave = document.getElementById(
 ) as HTMLButtonElement | null;
 const settingsEmpty = document.getElementById("settingsEmpty");
 const itemNameRow = document.getElementById("itemNameRow");
-const markerDisplayTextRow = document.getElementById(
-  "markerDisplayTextRow",
-);
+const markerDisplayTextRow = document.getElementById("markerDisplayTextRow");
 const itemNameInput = document.getElementById(
   "itemNameInput",
 ) as HTMLInputElement | null;
@@ -357,15 +384,10 @@ let shapeArrowWidthSlider: SliderControl | null = null;
 let shapeAreaOpacitySlider: SliderControl | null = null;
 let shapeAreaStrokeWidthSlider: SliderControl | null = null;
 let appToastTimer: number | null = null;
-const appDialogQueue: QueuedAppDialog[] = [];
-let activeAppDialog: QueuedAppDialog | null = null;
-let appDialogDefaultValue = 0;
-let appDialogCancelValue = 0;
-let appDialogPreviousFocus: HTMLElement | null = null;
 let preferencesPreviousFocus: HTMLElement | null = null;
-let currentThemePreference: ThemePreference = "dark";
 let selectedExportFrame: ExportFrameStyle = "none";
-let exportFrameResolver: ((value: ExportFrameStyle | null) => void) | null = null;
+let exportFrameResolver: ((value: ExportFrameStyle | null) => void) | null =
+  null;
 let exportInProgress = false;
 const toolZoomIn = document.getElementById(
   "toolZoomIn",
@@ -376,8 +398,12 @@ const toolZoomOut = document.getElementById(
 const toolReset = document.getElementById(
   "toolReset",
 ) as HTMLButtonElement | null;
-const undoButton = document.getElementById("undoBtn") as HTMLButtonElement | null;
-const redoButton = document.getElementById("redoBtn") as HTMLButtonElement | null;
+const undoButton = document.getElementById(
+  "undoBtn",
+) as HTMLButtonElement | null;
+const redoButton = document.getElementById(
+  "redoBtn",
+) as HTMLButtonElement | null;
 const zoomIndicator = document.getElementById("zoomIndicator");
 const stepPanels = Array.from(
   document.querySelectorAll<HTMLElement>(".step-panel"),
@@ -506,14 +532,12 @@ type CropDrag = {
 
 let cropBox: CropBox | null = null;
 let cropDrag: CropDrag | null = null;
-let stepOneCropSnapshot:
-  | {
-      cropBox: CropBox | null;
-      cropBBox: CropBBox | null;
-      view: { scale: number; tx: number; ty: number };
-      lastStageRect: { width: number; height: number } | null;
-    }
-  | null = null;
+let stepOneCropSnapshot: {
+  cropBox: CropBox | null;
+  cropBBox: CropBBox | null;
+  view: { scale: number; tx: number; ty: number };
+  lastStageRect: { width: number; height: number } | null;
+} | null = null;
 
 const editorCore = new EditorCore(
   { objects: [], listOrderKeys: [], displayOrderKeys: [] },
@@ -695,233 +719,6 @@ function resetEditorHistory(): void {
   syncHistoryControls();
 }
 
-type LayerStyle = { fill?: string; stroke?: string; strokeWidth?: number };
-
-function shapeStrokeScale(width: number, height: number): number {
-  const minDim = Math.max(24, Math.min(width, height));
-  return Math.max(0.42, Math.min(1, minDim / 120));
-}
-
-function labelZoomScale(scale: number): number {
-  const normalized = Math.max(1, scale);
-  if (normalized <= 2) {
-    return Math.max(1.52, Math.min(3.4, 3.4 - (normalized - 1) * 1.88));
-  }
-  return Math.max(0.18, 1.52 / Math.pow(normalized / 2, 0.64));
-}
-
-function labelOffsetScale(scale: number): number {
-  const normalized = Math.max(1, scale);
-  if (normalized <= 2) {
-    return 1;
-  }
-  return Math.max(0.38, 1 / Math.pow(normalized / 2, 0.3));
-}
-
-function applyDraggingLabelOutline(label: SVGTextElement, textSize: number): void {
-  const px = Math.max(0.25, Math.min(0.5, textSize / 26));
-  label.setAttribute("paint-order", "stroke fill");
-  label.setAttribute("stroke", "rgba(56, 189, 248, 0.9)");
-  label.setAttribute("stroke-width", px.toFixed(2));
-  label.setAttribute("stroke-dasharray", `${Math.max(1, px * 2).toFixed(2)} ${Math.max(1.5, px * 2.6).toFixed(2)}`);
-  label.setAttribute("stroke-linecap", "round");
-  label.setAttribute("stroke-linejoin", "round");
-}
-
-function clearDraggingLabelOutline(label: SVGTextElement): void {
-  label.removeAttribute("paint-order");
-  label.removeAttribute("stroke");
-  label.removeAttribute("stroke-width");
-  label.removeAttribute("stroke-dasharray");
-  label.removeAttribute("stroke-linecap");
-  label.removeAttribute("stroke-linejoin");
-}
-
-function layerStyleFor(layerId: string): LayerStyle {
-  const presets: Record<string, Record<string, LayerStyle>> = {
-    styleOriginal: {
-      ocean: { fill: "#0f1c3f" },
-      land: { fill: "#1f2937" },
-      lakes: { fill: "#142247" },
-      rivers: { stroke: "#3b82f6", strokeWidth: 0.6 },
-      coastline: { stroke: "#cbd5f5", strokeWidth: 0.6 },
-    },
-    styleDefault: {
-      ocean: { fill: "#dbeafe" },
-      land: { fill: "#f1f5f9" },
-      lakes: { fill: "#bfdbfe" },
-      rivers: { stroke: "#60a5fa", strokeWidth: 0.6 },
-      coastline: { stroke: "#94a3b8", strokeWidth: 0.6 },
-      borders: { stroke: "#cbd5f5", strokeWidth: 0.4 },
-    },
-    styleMinimal: {
-      ocean: { fill: "#eef2f7" },
-      land: { fill: "#f1f5f9" },
-      lakes: { fill: "#e2e8f0" },
-      rivers: { stroke: "none", strokeWidth: 0 },
-      coastline: { stroke: "#aebccd", strokeWidth: 0.75 },
-      borders: { stroke: "none", strokeWidth: 0 },
-    },
-    styleDark: {
-      ocean: { fill: "#0b1020" },
-      land: { fill: "#1f2a44" },
-      lakes: { fill: "#101a33" },
-      rivers: { stroke: "#3b82f6", strokeWidth: 0.6 },
-      coastline: { stroke: "#cbd5f5", strokeWidth: 0.6 },
-      borders: { stroke: "#64748b", strokeWidth: 0.4 },
-    },
-    styleOutline: {
-      ocean: { fill: "none" },
-      land: { fill: "none" },
-      lakes: { fill: "none" },
-      rivers: { stroke: "none", strokeWidth: 0 },
-      coastline: { stroke: "#e2e8f0", strokeWidth: 0.85 },
-      borders: { stroke: "#94a3b8", strokeWidth: 0.55 },
-    },
-    styleSoft: {
-      ocean: { fill: "#e8f0fb" },
-      land: { fill: "#faf6e8" },
-      lakes: { fill: "#d8e7fb" },
-      rivers: { stroke: "#8fb7e8", strokeWidth: 0.5 },
-      coastline: { stroke: "#c3cee3", strokeWidth: 0.48 },
-      borders: { stroke: "#d8dee8", strokeWidth: 0.28 },
-    },
-  };
-  const styles = presets[activeStyleId] ?? presets.styleOriginal;
-  return styles[layerId] ?? { stroke: "#64748b", strokeWidth: 0.4 };
-}
-
-function buildHillshadeTexture(image: HTMLImageElement): HTMLCanvasElement {
-  const canvasEl = document.createElement("canvas");
-  canvasEl.width = MAP_WIDTH;
-  canvasEl.height = MAP_HEIGHT;
-  const ctx = canvasEl.getContext("2d");
-  if (!ctx) {
-    return canvasEl;
-  }
-  const imgW = image.naturalWidth || image.width;
-  const imgH = image.naturalHeight || image.height;
-  for (let y = 0; y < MAP_HEIGHT; y += 1) {
-    const [, lat] = unproject(0, y, MAP_WIDTH, MAP_HEIGHT);
-    const clampedLat = Math.max(-85, Math.min(85, lat));
-    const srcY = ((90 - clampedLat) / 180) * imgH;
-    ctx.drawImage(image, 0, srcY, imgW, 1, 0, y, MAP_WIDTH, 1);
-  }
-  return canvasEl;
-}
-
-async function loadHillshadeTexture(
-  path: string,
-  projection: string | null,
-): Promise<HTMLCanvasElement | null> {
-  try {
-    if (projection === "EPSG:3857" && "createImageBitmap" in window) {
-      const response = await fetch(path);
-      const blob = await response.blob();
-      const bitmap = await createImageBitmap(blob, {
-        resizeWidth: MAP_WIDTH,
-        resizeHeight: MAP_HEIGHT,
-        resizeQuality: "high",
-      });
-      const canvasEl = document.createElement("canvas");
-      canvasEl.width = MAP_WIDTH;
-      canvasEl.height = MAP_HEIGHT;
-      const ctx = canvasEl.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(bitmap, 0, 0, MAP_WIDTH, MAP_HEIGHT);
-      }
-      if ("close" in bitmap) {
-        try {
-          bitmap.close();
-        } catch {
-          // ignore
-        }
-      }
-      return canvasEl;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function ensureLayer(parent: SVGElement, id: string): SVGGElement {
-  let group = parent.querySelector(
-    `g[data-layer="${id}"]`,
-  ) as SVGGElement | null;
-  if (!group) {
-    group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    group.setAttribute("data-layer", id);
-    parent.appendChild(group);
-  }
-  return group;
-}
-
-function ensureMapRoot(svgEl: SVGSVGElement): SVGGElement {
-  let root = svgEl.querySelector(
-    'g[data-layer="map-root"]',
-  ) as SVGGElement | null;
-  if (!root) {
-    root = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    root.setAttribute("data-layer", "map-root");
-    svgEl.appendChild(root);
-  }
-  return root;
-}
-
-function ensureBasemapContainer(root: SVGGElement): SVGGElement {
-  let container = root.querySelector(
-    'g[data-layer="basemap-wrap"]',
-  ) as SVGGElement | null;
-  if (!container) {
-    container = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    container.setAttribute("data-layer", "basemap-wrap");
-    root.appendChild(container);
-  }
-  return container;
-}
-
-function ensureMarkersContainer(root: SVGGElement): SVGGElement {
-  let container = root.querySelector(
-    'g[data-layer="markers-wrap"]',
-  ) as SVGGElement | null;
-  if (!container) {
-    container = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    container.setAttribute("data-layer", "markers-wrap");
-    root.appendChild(container);
-  }
-  return container;
-}
-
-function ensureShapesContainer(root: SVGGElement): SVGGElement {
-  let container = root.querySelector(
-    'g[data-layer="shapes-wrap"]',
-  ) as SVGGElement | null;
-  if (!container) {
-    container = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    container.setAttribute("data-layer", "shapes-wrap");
-    root.appendChild(container);
-  }
-  return container;
-}
-
-function ensureWrapGroup(
-  container: SVGGElement,
-  id: string,
-  offsetX: number,
-): SVGGElement {
-  let group = container.querySelector(
-    `g[data-wrap=\"${id}\"]`,
-  ) as SVGGElement | null;
-  if (!group) {
-    group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    group.setAttribute("data-wrap", id);
-    container.appendChild(group);
-  }
-  group.setAttribute("transform", `translate(${offsetX} 0)`);
-  return group;
-}
-
 function applyViewTransform(): void {
   if (!svg) {
     return;
@@ -1016,7 +813,7 @@ function setActiveStep(stepId: string): void {
       "0": "搜尋地名或座標，先將地圖移至預計製作的區域。",
       "1": "使用右鍵拖曳框選範圍，確定示意圖的視窗。",
       "2": "決定底圖樣式結果。",
-      "3": "搜尋或新增標示與圖形，並調整項目內容與樣式。",
+      "3": "搜尋或新增標示與圖形，並調整項目屬性。",
     };
     stepSubtitle.textContent = subtitles[stepId] ?? "";
   }
@@ -1165,7 +962,9 @@ function focusReliefBlendOption(direction: 1 | -1): void {
     (button) => button.dataset.blendValue === hillshadeBlend,
   );
   const fallbackIndex = direction > 0 ? 0 : reliefBlendOptions.length - 1;
-  reliefBlendOptions[selectedIndex >= 0 ? selectedIndex : fallbackIndex]?.focus();
+  reliefBlendOptions[
+    selectedIndex >= 0 ? selectedIndex : fallbackIndex
+  ]?.focus();
 }
 
 function applyCanvasRatio(ratio: number, targetId?: string): void {
@@ -1241,7 +1040,10 @@ function updateCropFrame(): void {
   const stroke = Math.max(0.9, Math.min(1.35, minDim / 260));
   const handleSize = Math.max(6, Math.min(8, minDim / 70));
   cropFrame.style.setProperty("--crop-stroke", `${stroke.toFixed(2)}px`);
-  cropFrame.style.setProperty("--crop-handle-size", `${handleSize.toFixed(2)}px`);
+  cropFrame.style.setProperty(
+    "--crop-handle-size",
+    `${handleSize.toFixed(2)}px`,
+  );
   updateCropBBox();
   positionZoomIndicator();
   requestBasemapDraw();
@@ -1790,77 +1592,6 @@ function showAppToast(
   }
 }
 
-const THEME_STORAGE_KEY = "map-schematic.theme";
-const systemDarkTheme = window.matchMedia("(prefers-color-scheme: dark)");
-
-function isThemePreference(value: string | null): value is ThemePreference {
-  return value === "dark" || value === "light" || value === "system";
-}
-
-function applyThemePreference(preference: ThemePreference): void {
-  currentThemePreference = preference;
-  const resolved =
-    preference === "system"
-      ? systemDarkTheme.matches
-        ? "dark"
-        : "light"
-      : preference;
-  document.documentElement.dataset.theme = resolved;
-  themePreferenceButtons.forEach((button) => {
-    const active = button.dataset.themePreference === preference;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-checked", String(active));
-  });
-}
-
-function initializeTheme(): void {
-  let preference: ThemePreference = "dark";
-  try {
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (isThemePreference(stored)) {
-      preference = stored;
-    }
-  } catch {
-    // The default dark theme remains available if local storage is unavailable.
-  }
-  applyThemePreference(preference);
-  themePreferenceButtons.forEach((button, index) => {
-    button.addEventListener("click", () => {
-      const preferenceValue = button.dataset.themePreference ?? null;
-      const nextPreference = isThemePreference(preferenceValue)
-        ? preferenceValue
-        : "dark";
-      applyThemePreference(nextPreference);
-      try {
-        window.localStorage.setItem(THEME_STORAGE_KEY, nextPreference);
-      } catch {
-        // Theme switching still works for the current session.
-      }
-    });
-    button.addEventListener("keydown", (event) => {
-      let nextIndex: number | null = null;
-      if (event.key === "ArrowUp") {
-        nextIndex =
-          (index - 1 + themePreferenceButtons.length) %
-          themePreferenceButtons.length;
-      } else if (event.key === "ArrowDown") {
-        nextIndex = (index + 1) % themePreferenceButtons.length;
-      }
-      if (nextIndex === null) {
-        return;
-      }
-      event.preventDefault();
-      themePreferenceButtons[nextIndex]?.focus();
-      themePreferenceButtons[nextIndex]?.click();
-    });
-  });
-  systemDarkTheme.addEventListener("change", () => {
-    if (currentThemePreference === "system") {
-      applyThemePreference("system");
-    }
-  });
-}
-
 function openPreferencesDialog(): void {
   if (!preferencesModal) {
     return;
@@ -1887,124 +1618,6 @@ function closePreferencesDialog(): void {
   if (previousFocus?.isConnected) {
     previousFocus.focus();
   }
-}
-
-function presentNextAppDialog(): void {
-  if (
-    activeAppDialog ||
-    appDialogQueue.length === 0 ||
-    !appDialogModal ||
-    !appDialogElement ||
-    !appDialogActions ||
-    !appDialogTitle ||
-    !appDialogMessage
-  ) {
-    return;
-  }
-  activeAppDialog = appDialogQueue.shift() ?? null;
-  if (!activeAppDialog) {
-    return;
-  }
-  const { options } = activeAppDialog;
-  appDialogDefaultValue = options.defaultValue;
-  appDialogCancelValue = options.cancelValue;
-  appDialogPreviousFocus =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-  const tone = options.tone ?? "info";
-  appDialogElement.dataset.tone = tone;
-  if (appDialogIcon) {
-    appDialogIcon.textContent = tone === "info" ? "i" : "!";
-  }
-  if (appDialogEyebrow) {
-    appDialogEyebrow.textContent =
-      options.eyebrow ??
-      (tone === "danger"
-        ? "發生錯誤"
-        : tone === "warning"
-          ? "請確認"
-          : "提示");
-  }
-  appDialogTitle.textContent = options.title;
-  appDialogMessage.textContent = options.message;
-  if (appDialogDetail) {
-    appDialogDetail.textContent = options.detail ?? "";
-  }
-  appDialogActions.replaceChildren();
-  appDialogActions.classList.toggle(
-    "decision-actions",
-    options.buttons.some((button) => button.variant === "dangerGhost"),
-  );
-  let defaultButton: HTMLButtonElement | null = null;
-  options.buttons.forEach((dialogButton: AppDialogButton) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = dialogButton.label;
-    const variant = dialogButton.variant ?? "ghost";
-    button.className =
-      variant === "primary"
-        ? "ui-button primary"
-        : variant === "danger"
-          ? "ui-button danger-solid"
-          : variant === "dangerGhost"
-            ? "ui-button danger-ghost"
-          : "ui-button ghost";
-    button.addEventListener("click", () => {
-      closeAppDialog(dialogButton.value);
-    });
-    appDialogActions.appendChild(button);
-    if (dialogButton.value === options.defaultValue) {
-      defaultButton = button;
-    }
-  });
-  appDialogModal.classList.add("active");
-  window.requestAnimationFrame(() => {
-    (defaultButton ?? appDialogActions.querySelector("button"))?.focus();
-  });
-}
-
-function closeAppDialog(response: number): void {
-  if (!activeAppDialog || !appDialogModal) {
-    return;
-  }
-  const current = activeAppDialog;
-  activeAppDialog = null;
-  appDialogModal.classList.remove("active");
-  appDialogActions?.replaceChildren();
-  current.resolve(response);
-  const previousFocus = appDialogPreviousFocus;
-  appDialogPreviousFocus = null;
-  if (appDialogQueue.length > 0) {
-    window.requestAnimationFrame(presentNextAppDialog);
-  } else if (previousFocus?.isConnected) {
-    previousFocus.focus();
-  }
-}
-
-function showAppDialog(options: AppDialogOptions): Promise<number> {
-  if (!appDialogModal || !appDialogElement || !appDialogActions) {
-    return Promise.resolve(options.cancelValue);
-  }
-  return new Promise((resolve) => {
-    appDialogQueue.push({ options, resolve });
-    presentNextAppDialog();
-  });
-}
-
-async function showAppNotice(options: {
-  eyebrow?: string;
-  title: string;
-  message: string;
-  detail?: string;
-  tone?: "info" | "warning" | "danger";
-}): Promise<void> {
-  await showAppDialog({
-    ...options,
-    buttons: [{ label: "知道了", value: 0, variant: "primary" }],
-    defaultValue: 0,
-    cancelValue: 0,
-  });
 }
 
 function hookSteps(): void {
@@ -2323,7 +1936,7 @@ function drawBasemap(): void {
     ctx.save();
     ctx.translate((i + wrapShift) * MAP_WIDTH, 0);
     for (const layer of cachedBasemapLayers) {
-      const style = layerStyleFor(layer.id);
+      const style = layerStyleFor(activeStyleId, layer.id);
       if (style.fill && style.fill !== "none") {
         ctx.fillStyle = style.fill;
         for (const path of layer.paths) {
@@ -2422,7 +2035,12 @@ function viewCenterLonLat(): [number, number] {
   return unproject(centerX, centerY, width, height);
 }
 
-function visibleMapBounds(): { x: number; y: number; width: number; height: number } | null {
+function visibleMapBounds(): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} | null {
   if (cropBBox && (activeStep === "2" || activeStep === "3")) {
     return { ...cropBBox };
   }
@@ -2502,7 +2120,9 @@ function addToolItem(tool: typeof activeTool): void {
     if (hasDuplicateMarker(marker)) {
       return;
     }
-    if (!dispatchEditorCommand(createAddObjectCommand(editorDocument, marker))) {
+    if (
+      !dispatchEditorCommand(createAddObjectCommand(editorDocument, marker))
+    ) {
       return;
     }
     previewMarker = null;
@@ -2578,724 +2198,60 @@ async function renderBasemap() {
   drawBasemap();
 }
 
-function renderMarkers() {
-  if (!svg) {
-    return;
-  }
-  const width = svg.viewBox.baseVal.width || 1200;
-  const height = svg.viewBox.baseVal.height || 800;
-  const root = ensureMapRoot(svg);
-  const markerWrap = ensureMarkersContainer(root);
-  const rankMap = getDisplayRankMap();
-  const sortedMarkers = [...markerObjects()].sort((a, b) => {
-    const ra = rankMap.get(markerOverlayKey(a.id)) ?? Number.MAX_SAFE_INTEGER;
-    const rb = rankMap.get(markerOverlayKey(b.id)) ?? Number.MAX_SAFE_INTEGER;
-    if (ra !== rb) {
-      return ra - rb;
-    }
-    return 0;
-  });
-  const renderItems: Array<{ marker: Marker; preview: boolean }> = [
-    ...sortedMarkers.map((marker) => ({ marker, preview: false })),
-  ];
-  if (previewMarker) {
-    renderItems.push({ marker: previewMarker, preview: true });
-  }
-  if (previewToolMarker) {
-    renderItems.push({ marker: previewToolMarker, preview: true });
-  }
-
-  for (const i of WRAPS) {
-    const wrap = ensureWrapGroup(
-      markerWrap,
-      `marker-${i}`,
-      (i + worldShift) * width,
-    );
-    wrap.innerHTML = "";
-    for (const item of renderItems) {
-      const marker = item.marker;
-      const [x, y] = project(marker.longitude, marker.latitude, width, height);
-      const circle = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle",
-      );
-      circle.setAttribute("cx", x.toFixed(2));
-      circle.setAttribute("cy", y.toFixed(2));
-      circle.setAttribute("data-marker", "dot");
-      circle.setAttribute("data-id", marker.id);
-      circle.setAttribute("data-base", String(marker.style.dotSize));
-      circle.setAttribute("r", (marker.style.dotSize / view.scale).toFixed(2));
-      circle.setAttribute("fill", marker.style.dotColor);
-        circle.setAttribute(
-          "stroke",
-          activeStep === "3" && marker.id === selectedMarkerId
-            ? "#38bdf8"
-            : "#fff7ed",
-        );
-      circle.setAttribute("stroke-width", (1.2 / view.scale).toFixed(2));
-      if (item.preview) {
-        circle.setAttribute("opacity", "0.7");
-        circle.setAttribute("data-preview", "true");
-      }
-      const hit = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle",
-      );
-      const hitRadius = Math.max(14, marker.style.dotSize * 3) / view.scale;
-      hit.setAttribute("cx", x.toFixed(2));
-      hit.setAttribute("cy", y.toFixed(2));
-      hit.setAttribute("r", hitRadius.toFixed(2));
-      hit.setAttribute("fill", "transparent");
-      hit.setAttribute("data-marker", "dot-hit");
-      hit.setAttribute("data-id", marker.id);
-      hit.setAttribute("data-export-ignore", "true");
-      hit.style.pointerEvents = "all";
-      circle.addEventListener("click", (event) => {
-        if (activeStep !== "3") {
-          return;
-        }
-        event.stopPropagation();
-        if (!item.preview) {
-          selectMarker(marker.id);
-        }
-      });
-      hit.addEventListener("mousedown", (event) => {
-        if (activeStep !== "3" || item.preview) {
-          return;
-        }
-        event.stopPropagation();
-        selectMarker(marker.id);
-        const start = mapPointFromEvent(event);
-        beginEditorTransaction();
-        markerDrag = {
-          markerId: marker.id,
-          startX: start.x,
-          startY: start.y,
-          startLon: marker.longitude,
-          startLat: marker.latitude,
-        };
-      });
-      wrap.appendChild(hit);
-      wrap.appendChild(circle);
-
-      if (marker.showLabel === false) {
-        continue;
-      }
-      const label = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "text",
-      );
-      const scale = labelZoomScale(view.scale);
-      const offsetScale = labelOffsetScale(view.scale);
-      const offsetX = marker.style.textOffsetX * offsetScale;
-      const offsetY = marker.style.textOffsetY * offsetScale;
-      label.setAttribute("data-x", x.toFixed(2));
-      label.setAttribute("data-y", y.toFixed(2));
-      label.setAttribute("data-offset-x", marker.style.textOffsetX.toFixed(2));
-      label.setAttribute("data-offset-y", marker.style.textOffsetY.toFixed(2));
-      label.setAttribute("x", (x + offsetX).toFixed(2));
-      label.setAttribute("y", (y + offsetY).toFixed(2));
-      label.setAttribute(
-        "text-anchor",
-        marker.style.textAnchor ??
-          (marker.style.textOffsetX < 0 ? "end" : "start"),
-      );
-      label.setAttribute("data-marker", "label");
-      label.setAttribute("data-id", marker.id);
-      label.setAttribute("data-base", String(marker.style.textSize));
-      label.setAttribute("fill", marker.style.textColor);
-      label.setAttribute(
-        "font-size",
-        (marker.style.textSize * scale).toFixed(2),
-      );
-      label.setAttribute("font-family", marker.style.fontFamily);
-      const labelText = markerLabelText(marker);
-      label.textContent = labelText;
-      if (item.preview) {
-        label.setAttribute("data-preview", "true");
-      }
-      const isLabelSelected =
-        !!(labelDrag && labelDrag.markerId === marker.id) ||
-        selectedLabelMarkerId === marker.id;
-      if (isLabelSelected) {
-        label.setAttribute("data-dragging", "true");
-      } else {
-        label.removeAttribute("data-dragging");
-      }
-      label.addEventListener("click", (event) => {
-        if (activeStep !== "3") {
-          return;
-        }
-        event.stopPropagation();
-        if (!item.preview) {
-          selectMarker(marker.id);
-          selectedLabelMarkerId = marker.id;
-          renderMarkers();
-        }
-      });
-      const startLabelDrag = (event: MouseEvent) => {
-        if (activeStep !== "3" || item.preview) {
-          return;
-        }
-        event.stopPropagation();
-        selectMarker(marker.id);
-        selectedLabelMarkerId = marker.id;
-        label.setAttribute("data-dragging", "true");
-        const start = mapPointFromEvent(event);
-        beginEditorTransaction();
-        labelDrag = {
-          markerId: marker.id,
-          startX: start.x,
-          startY: start.y,
-          startOffsetX: marker.style.textOffsetX,
-          startOffsetY: marker.style.textOffsetY,
-        };
-      };
-      label.addEventListener("mousedown", startLabelDrag);
-      wrap.appendChild(label);
-
-      const labelBox = label.getBBox();
-      const labelHit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      const renderedFontSize = marker.style.textSize * scale;
-      const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.24);
-      const textStroke = renderedFontSize * 0.045;
-      const desiredScreenStroke = Math.max(
-        0.85,
-        Math.min(3.2, zoomStroke + textStroke),
-      );
-      const dragStroke =
-        desiredScreenStroke / Math.max(0.001, view.scale * lastScaleFit);
-      const selectionPad = Math.max(
-        0.35,
-        Math.min(2.4, renderedFontSize * 0.045 + dragStroke * 1.15),
-      );
-      const hitPad = selectionPad;
-      labelHit.setAttribute("x", (labelBox.x - hitPad).toFixed(2));
-      labelHit.setAttribute("y", (labelBox.y - hitPad).toFixed(2));
-      labelHit.setAttribute("width", (labelBox.width + hitPad * 2).toFixed(2));
-      labelHit.setAttribute("height", (labelBox.height + hitPad * 2).toFixed(2));
-      labelHit.setAttribute("fill", "transparent");
-      labelHit.setAttribute("data-marker", "label-hit");
-      labelHit.setAttribute("data-id", marker.id);
-      labelHit.setAttribute("data-export-ignore", "true");
-      labelHit.style.pointerEvents = "all";
-      labelHit.addEventListener("click", (event) => {
-        if (activeStep !== "3" || item.preview) {
-          return;
-        }
-        event.stopPropagation();
-        selectMarker(marker.id);
-        selectedLabelMarkerId = marker.id;
-        renderMarkers();
-      });
-      labelHit.addEventListener("mousedown", startLabelDrag);
-      wrap.insertBefore(labelHit, label);
-      if (isLabelSelected) {
-        const dragBox = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        const pad = selectionPad;
-        const boxX = labelBox.x - pad;
-        const boxY = labelBox.y - pad;
-        const boxWidth = labelBox.width + pad * 2;
-        const boxHeight = labelBox.height + pad * 2;
-        dragBox.setAttribute("data-marker", "label-drag-box");
-        dragBox.setAttribute("data-export-ignore", "true");
-        dragBox.style.pointerEvents = "none";
-        const addDragBoxLine = (
-          x1: number,
-          y1: number,
-          x2: number,
-          y2: number,
-          segments: number,
-        ) => {
-          const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-          line.setAttribute("x1", x1.toFixed(2));
-          line.setAttribute("y1", y1.toFixed(2));
-          line.setAttribute("x2", x2.toFixed(2));
-          line.setAttribute("y2", y2.toFixed(2));
-          line.setAttribute("stroke", "rgba(56, 189, 248, 0.95)");
-          line.setAttribute("stroke-width", dragStroke.toFixed(2));
-          line.setAttribute("stroke-linecap", "butt");
-          const lineLength = Math.max(1, Math.hypot(x2 - x1, y2 - y1));
-          const dash = lineLength / Math.max(1, segments * 2 - 1);
-          line.setAttribute("stroke-dasharray", `${dash.toFixed(2)} ${dash.toFixed(2)}`);
-          dragBox.appendChild(line);
-        };
-        addDragBoxLine(boxX, boxY, boxX + boxWidth, boxY, 4);
-        addDragBoxLine(boxX + boxWidth, boxY, boxX + boxWidth, boxY + boxHeight, 3);
-        addDragBoxLine(boxX + boxWidth, boxY + boxHeight, boxX, boxY + boxHeight, 4);
-        addDragBoxLine(boxX, boxY + boxHeight, boxX, boxY, 3);
-        wrap.insertBefore(dragBox, label);
-      }
-    }
-  }
-  renderShapes();
+const overlayRenderer = createOverlayRenderer({
+  getState: () => ({
+    svg,
+    view,
+    WRAPS,
+    worldShift,
+    activeStep,
+    selectedMarkerId,
+    selectedShapeId,
+    selectedLabelMarkerId,
+    previewMarker,
+    previewToolMarker,
+    previewShape,
+    labelDrag,
+    shapeDrag,
+    lastScaleFit,
+  }),
+  markerObjects,
+  shapeObjects,
+  getDisplayRankMap,
+  markerOverlayKey,
+  shapeOverlayKey,
+  markerLabelText,
+  selectMarker,
+  selectShape,
+  mapPointFromEvent,
+  beginEditorTransaction,
+  setSelectedLabelMarkerId: (id: string) => {
+    selectedLabelMarkerId = id;
+  },
+  setMarkerDrag: (drag: MarkerDrag | null) => {
+    markerDrag = drag;
+  },
+  setLabelDrag: (drag: LabelDrag | null) => {
+    labelDrag = drag;
+  },
+  setShapeDrag: (drag: ShapeDrag | null) => {
+    shapeDrag = drag;
+  },
+});
+function renderMarkers(): void {
+  overlayRenderer.renderMarkers();
 }
-
 function renderShapes(): void {
-  if (!svg) {
-    return;
-  }
-  const width = svg.viewBox.baseVal.width || 1200;
-  const height = svg.viewBox.baseVal.height || 800;
-  const root = ensureMapRoot(svg);
-  const shapeWrap = ensureShapesContainer(root);
-  const rankMap = getDisplayRankMap();
-  const sortedShapes = [...shapeObjects()].sort((a, b) => {
-    const ra = rankMap.get(shapeOverlayKey(a.id)) ?? Number.MAX_SAFE_INTEGER;
-    const rb = rankMap.get(shapeOverlayKey(b.id)) ?? Number.MAX_SAFE_INTEGER;
-    if (ra !== rb) {
-      return ra - rb;
-    }
-    return 0;
-  });
-  const renderItems: Array<{ shape: ShapeItem; preview: boolean }> = [
-    ...sortedShapes.map((shape) => ({ shape, preview: false })),
-  ];
-  if (previewShape) {
-    renderItems.push({ shape: previewShape, preview: true });
-  }
-  for (const i of WRAPS) {
-    const wrap = ensureWrapGroup(
-      shapeWrap,
-      `shape-${i}`,
-      (i + worldShift) * width,
-    );
-    wrap.innerHTML = "";
-    for (const item of renderItems) {
-      const shape = item.shape;
-      const [x, y] = project(shape.longitude, shape.latitude, width, height);
-      if (shape.type === "line") {
-        const half = shape.width / 2;
-        const line = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "line",
-        );
-        line.setAttribute("x1", (x - half).toFixed(2));
-        line.setAttribute("y1", y.toFixed(2));
-        line.setAttribute("x2", (x + half).toFixed(2));
-        line.setAttribute("y2", y.toFixed(2));
-        line.setAttribute("stroke", shape.style.strokeColor);
-        line.setAttribute(
-          "stroke-width",
-          (shape.style.strokeWidth / view.scale).toFixed(2),
-        );
-        line.setAttribute("stroke-linecap", "round");
-        line.setAttribute("data-shape", "line");
-        line.setAttribute("data-id", shape.id);
-        if (item.preview) {
-          line.setAttribute("opacity", "0.6");
-          line.setAttribute("data-preview", "true");
-        }
-        const hit = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "line",
-        );
-        hit.setAttribute("x1", (x - half).toFixed(2));
-        hit.setAttribute("y1", y.toFixed(2));
-        hit.setAttribute("x2", (x + half).toFixed(2));
-        hit.setAttribute("y2", y.toFixed(2));
-        hit.setAttribute("stroke", "transparent");
-        hit.setAttribute(
-          "stroke-width",
-          (Math.max(14, shape.style.strokeWidth * 4) / view.scale).toFixed(2),
-        );
-        hit.setAttribute("stroke-linecap", "round");
-        hit.setAttribute("data-shape", "line");
-        hit.setAttribute("data-id", shape.id);
-        hit.setAttribute("data-export-ignore", "true");
-        line.addEventListener("click", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (!item.preview) {
-            selectShape(shape.id);
-          }
-        });
-        const onDragStart = (event: MouseEvent) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (item.preview) {
-            return;
-          }
-          const start = mapPointFromEvent(event);
-          beginEditorTransaction();
-          shapeDrag = {
-            shapeId: shape.id,
-            startX: start.x,
-            startY: start.y,
-            startLon: shape.longitude,
-            startLat: shape.latitude,
-          };
-        };
-        line.addEventListener("mousedown", onDragStart);
-        hit.addEventListener("mousedown", onDragStart);
-        hit.addEventListener("click", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (!item.preview) {
-            selectShape(shape.id);
-          }
-        });
-        wrap.appendChild(hit);
-        wrap.appendChild(line);
-      } else if (shape.type === "arrow") {
-        const half = shape.width / 2;
-        const line = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "line",
-        );
-        line.setAttribute("x1", (x - half).toFixed(2));
-        line.setAttribute("y1", y.toFixed(2));
-        line.setAttribute("x2", (x + half).toFixed(2));
-        line.setAttribute("y2", y.toFixed(2));
-        line.setAttribute("stroke", shape.style.strokeColor);
-        line.setAttribute(
-          "stroke-width",
-          (shape.style.strokeWidth / view.scale).toFixed(2),
-        );
-        line.setAttribute("stroke-linecap", "round");
-        line.setAttribute("data-shape", "arrow");
-        line.setAttribute("data-id", shape.id);
-        const headSize = Math.max(6, shape.style.strokeWidth * 2) / view.scale;
-        const path = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "path",
-        );
-        const x2 = x + half;
-        const y2 = y;
-        const d = `M ${x2.toFixed(2)} ${y2.toFixed(2)} L ${(
-          x2 - headSize
-        ).toFixed(2)} ${(y2 - headSize * 0.6).toFixed(2)} L ${(
-          x2 - headSize
-        ).toFixed(2)} ${(y2 + headSize * 0.6).toFixed(2)} Z`;
-        path.setAttribute("d", d);
-        path.setAttribute("fill", shape.style.strokeColor);
-        path.setAttribute("data-shape", "arrow");
-        path.setAttribute("data-id", shape.id);
-        if (item.preview) {
-          line.setAttribute("opacity", "0.6");
-          line.setAttribute("data-preview", "true");
-          path.setAttribute("opacity", "0.6");
-          path.setAttribute("data-preview", "true");
-        }
-        const onClick = (event: MouseEvent) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (!item.preview) {
-            selectShape(shape.id);
-          }
-        };
-        const onDragStart = (event: MouseEvent) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (item.preview) {
-            return;
-          }
-          const start = mapPointFromEvent(event);
-          beginEditorTransaction();
-          shapeDrag = {
-            shapeId: shape.id,
-            startX: start.x,
-            startY: start.y,
-            startLon: shape.longitude,
-            startLat: shape.latitude,
-          };
-        };
-        line.addEventListener("click", onClick);
-        path.addEventListener("click", onClick);
-        line.addEventListener("mousedown", onDragStart);
-        path.addEventListener("mousedown", onDragStart);
-        const hit = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "line",
-        );
-        hit.setAttribute("x1", (x - half).toFixed(2));
-        hit.setAttribute("y1", y.toFixed(2));
-        hit.setAttribute("x2", (x + half).toFixed(2));
-        hit.setAttribute("y2", y.toFixed(2));
-        hit.setAttribute("stroke", "transparent");
-        hit.setAttribute(
-          "stroke-width",
-          (Math.max(14, shape.style.strokeWidth * 4) / view.scale).toFixed(2),
-        );
-        hit.setAttribute("stroke-linecap", "round");
-        hit.setAttribute("data-shape", "arrow");
-        hit.setAttribute("data-id", shape.id);
-        hit.setAttribute("data-export-ignore", "true");
-        if (!item.preview) {
-          hit.addEventListener("mousedown", onDragStart);
-          hit.addEventListener("click", onClick);
-        }
-        wrap.appendChild(hit);
-        wrap.appendChild(line);
-        wrap.appendChild(path);
-      } else if (shape.type === "area") {
-        const rect = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "rect",
-        );
-        rect.setAttribute("x", (x - shape.width / 2).toFixed(2));
-        rect.setAttribute("y", (y - shape.height / 2).toFixed(2));
-        rect.setAttribute("width", shape.width.toFixed(2));
-        rect.setAttribute("height", shape.height.toFixed(2));
-        rect.setAttribute("fill", shape.style.fillColor);
-        rect.setAttribute("fill-opacity", shape.style.fillOpacity.toFixed(2));
-        rect.setAttribute("stroke", shape.style.strokeColor);
-        const areaStrokeScale = shapeStrokeScale(shape.width, shape.height);
-        rect.setAttribute(
-          "stroke-width",
-          ((shape.style.strokeWidth * areaStrokeScale) / view.scale).toFixed(2),
-        );
-        rect.setAttribute("data-shape", "area");
-        rect.setAttribute("data-id", shape.id);
-        if (item.preview) {
-          rect.setAttribute("opacity", "0.6");
-          rect.setAttribute("data-preview", "true");
-        }
-        rect.addEventListener("click", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (!item.preview) {
-            selectShape(shape.id);
-          }
-        });
-        rect.addEventListener("mousedown", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (item.preview) {
-            return;
-          }
-          const start = mapPointFromEvent(event);
-          beginEditorTransaction();
-          shapeDrag = {
-            shapeId: shape.id,
-            startX: start.x,
-            startY: start.y,
-            startLon: shape.longitude,
-            startLat: shape.latitude,
-          };
-        });
-        const hit = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "rect",
-        );
-        hit.setAttribute("x", (x - shape.width / 2).toFixed(2));
-        hit.setAttribute("y", (y - shape.height / 2).toFixed(2));
-        hit.setAttribute("width", shape.width.toFixed(2));
-        hit.setAttribute("height", shape.height.toFixed(2));
-        hit.setAttribute("fill", "transparent");
-        hit.setAttribute("data-shape", "area");
-        hit.setAttribute("data-id", shape.id);
-        hit.setAttribute("data-export-ignore", "true");
-        hit.addEventListener("mousedown", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (item.preview) {
-            return;
-          }
-          const start = mapPointFromEvent(event);
-          beginEditorTransaction();
-          shapeDrag = {
-            shapeId: shape.id,
-            startX: start.x,
-            startY: start.y,
-            startLon: shape.longitude,
-            startLat: shape.latitude,
-          };
-        });
-        hit.addEventListener("click", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (!item.preview) {
-            selectShape(shape.id);
-          }
-        });
-        wrap.appendChild(hit);
-        wrap.appendChild(rect);
-      } else if (shape.type === "text") {
-        const label = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "text",
-        );
-        const scale = labelZoomScale(view.scale);
-        label.setAttribute("x", x.toFixed(2));
-        label.setAttribute("y", y.toFixed(2));
-        label.setAttribute("fill", shape.style.textColor);
-        label.setAttribute(
-          "font-size",
-          (shape.style.textSize * scale).toFixed(2),
-        );
-        label.setAttribute("font-family", shape.style.fontFamily);
-        label.setAttribute("data-shape", "text");
-        label.setAttribute("data-id", shape.id);
-        label.textContent = shape.text ?? "文字標示";
-        if (item.preview) {
-          label.setAttribute("opacity", "0.6");
-          label.setAttribute("data-preview", "true");
-        }
-        const startTextShapeDrag = (event: MouseEvent) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (item.preview) {
-            return;
-          }
-          selectShape(shape.id);
-          svg?.classList.add("shape-moving");
-          const start = mapPointFromEvent(event);
-          beginEditorTransaction();
-          shapeDrag = {
-            shapeId: shape.id,
-            startX: start.x,
-            startY: start.y,
-            startLon: shape.longitude,
-            startLat: shape.latitude,
-          };
-        };
-        label.addEventListener("click", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (!item.preview) {
-            selectShape(shape.id);
-          }
-        });
-        label.addEventListener("mousedown", startTextShapeDrag);
-        wrap.appendChild(label);
-
-        const labelBox = label.getBBox();
-        const renderedFontSize = shape.style.textSize * scale;
-        const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.24);
-        const textStroke = renderedFontSize * 0.045;
-        const desiredScreenStroke = Math.max(
-          0.85,
-          Math.min(3.2, zoomStroke + textStroke),
-        );
-        const dragStroke =
-          desiredScreenStroke / Math.max(0.001, view.scale * lastScaleFit);
-        const selectionPad = Math.max(
-          0.35,
-          Math.min(2.4, renderedFontSize * 0.045 + dragStroke * 1.15),
-        );
-        const hitPad = selectionPad;
-        const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        hit.setAttribute("x", (labelBox.x - hitPad).toFixed(2));
-        hit.setAttribute("y", (labelBox.y - hitPad).toFixed(2));
-        hit.setAttribute("width", (labelBox.width + hitPad * 2).toFixed(2));
-        hit.setAttribute("height", (labelBox.height + hitPad * 2).toFixed(2));
-        hit.setAttribute("fill", "transparent");
-        hit.setAttribute("data-shape", "text");
-        hit.setAttribute("data-id", shape.id);
-        hit.setAttribute("data-export-ignore", "true");
-        hit.addEventListener("mousedown", startTextShapeDrag);
-        hit.addEventListener("click", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (!item.preview) {
-            selectShape(shape.id);
-          }
-        });
-        wrap.insertBefore(hit, label);
-        const isTextSelected =
-          !item.preview &&
-          (selectedShapeId === shape.id || shapeDrag?.shapeId === shape.id);
-        if (isTextSelected) {
-          const dragBox = document.createElementNS("http://www.w3.org/2000/svg", "g");
-          const pad = selectionPad;
-          const boxX = labelBox.x - pad;
-          const boxY = labelBox.y - pad;
-          const boxWidth = labelBox.width + pad * 2;
-          const boxHeight = labelBox.height + pad * 2;
-          dragBox.setAttribute("data-shape", "text-selection");
-          dragBox.setAttribute("data-export-ignore", "true");
-          dragBox.style.pointerEvents = "none";
-          const addDragBoxLine = (
-            x1: number,
-            y1: number,
-            x2: number,
-            y2: number,
-            segments: number,
-          ) => {
-            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            line.setAttribute("x1", x1.toFixed(2));
-            line.setAttribute("y1", y1.toFixed(2));
-            line.setAttribute("x2", x2.toFixed(2));
-            line.setAttribute("y2", y2.toFixed(2));
-            line.setAttribute("stroke", "rgba(56, 189, 248, 0.95)");
-            line.setAttribute("stroke-width", dragStroke.toFixed(2));
-            line.setAttribute("stroke-linecap", "butt");
-            const lineLength = Math.max(1, Math.hypot(x2 - x1, y2 - y1));
-            const dash = lineLength / Math.max(1, segments * 2 - 1);
-            line.setAttribute("stroke-dasharray", `${dash.toFixed(2)} ${dash.toFixed(2)}`);
-            dragBox.appendChild(line);
-          };
-          addDragBoxLine(boxX, boxY, boxX + boxWidth, boxY, 4);
-          addDragBoxLine(boxX + boxWidth, boxY, boxX + boxWidth, boxY + boxHeight, 3);
-          addDragBoxLine(boxX + boxWidth, boxY + boxHeight, boxX, boxY + boxHeight, 4);
-          addDragBoxLine(boxX, boxY + boxHeight, boxX, boxY, 3);
-          wrap.insertBefore(dragBox, label);
-        }
-      }
-    }
-  }
+  overlayRenderer.renderShapes();
 }
-
 function updateMarkerStyles(): void {
-  if (!svg) {
-    return;
-  }
-  const root = ensureMapRoot(svg);
-  const markerWrap = ensureMarkersContainer(root);
-  const dots = markerWrap.querySelectorAll<SVGCircleElement>(
-    'circle[data-marker="dot"]',
-  );
-  dots.forEach((dot) => {
-    const base = Number(dot.getAttribute("data-base") ?? "4");
-    dot.setAttribute("r", (base / view.scale).toFixed(2));
-    dot.setAttribute("stroke-width", (1.2 / view.scale).toFixed(2));
-    const id = dot.getAttribute("data-id");
-    dot.setAttribute(
-      "stroke",
-      activeStep === "3" && id && id === selectedMarkerId
-        ? "#38bdf8"
-        : "#fff7ed",
-    );
-  });
-  const labels = markerWrap.querySelectorAll<SVGTextElement>(
-    'text[data-marker="label"]',
-  );
-  labels.forEach((label) => {
-    const base = Number(label.getAttribute("data-base") ?? "13");
-    const scale = labelZoomScale(view.scale);
-    label.setAttribute("font-size", (base * scale).toFixed(2));
-    const baseX = Number(label.getAttribute("data-x") ?? "0");
-    const baseY = Number(label.getAttribute("data-y") ?? "0");
-    const offsetX = Number(label.getAttribute("data-offset-x") ?? "0");
-    const offsetY = Number(label.getAttribute("data-offset-y") ?? "0");
-    const offsetScale = labelOffsetScale(view.scale);
-    label.setAttribute("x", (baseX + offsetX * offsetScale).toFixed(2));
-    label.setAttribute("y", (baseY + offsetY * offsetScale).toFixed(2));
+  updateOverlayMarkerStyles({
+    svg,
+    scale: view.scale,
+    activeStep,
+    selectedMarkerId,
+    labelZoomScale,
+    labelOffsetScale,
   });
 }
 
@@ -3568,35 +2524,6 @@ function handleCoordSearch(
   syncMarkerControls(previewMarker);
   renderCoordResult(target, marker, parsed.lat, parsed.lon);
 }
-function defaultMarkerStyle(): MarkerStyle {
-  return {
-    dotSize: 7,
-    textSize: 7,
-    dotColor: "#f97316",
-    textColor: "#fde68a",
-    textOffsetX: 8,
-    textOffsetY: -6,
-    textAnchor: "start",
-    fontFamily: "IBM Plex Sans, sans-serif",
-  };
-}
-
-function defaultShapeStyle(type: ShapeItem["type"]): ShapeStyle {
-  const base: ShapeStyle = {
-    strokeColor: "#38bdf8",
-    strokeWidth: 2,
-    fillColor: "#38bdf8",
-    fillOpacity: 0.35,
-    textColor: "#fde68a",
-    textSize: 7,
-    fontFamily: "IBM Plex Sans, sans-serif",
-  };
-  if (type === "area") {
-    base.fillOpacity = 0.4;
-  }
-  return base;
-}
-
 function buildManualMarkerAt(center: { lon: number; lat: number }): Marker {
   manualMarkerCount += 1;
   return {
@@ -4088,7 +3015,9 @@ function syncItemNameControl(): void {
     return;
   }
   if (shape) {
-    const sameTypeShapes = shapeObjects().filter((item) => item.type === shape.type);
+    const sameTypeShapes = shapeObjects().filter(
+      (item) => item.type === shape.type,
+    );
     const index = Math.max(
       1,
       sameTypeShapes.findIndex((item) => item.id === shape.id) + 1,
@@ -4350,82 +3279,29 @@ function handleStepThreeBlankMouseDown(event: MouseEvent): void {
   }
 }
 
-function createLayerDeleteButton(
-  label: string,
-  onDelete: () => void,
-): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.className = "marker-delete-button";
-  button.type = "button";
-  button.title = "刪除";
-  button.setAttribute("aria-label", `刪除 ${label}`);
-  button.innerHTML = `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"></path>
-    </svg>
-  `;
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    onDelete();
-  });
-  return button;
-}
-
 function renderMarkerList(): void {
   if (!markerList) {
     return;
   }
   syncOrderKeys();
-  markerList.innerHTML = "";
-  const markersById = new Map(markerObjects().map((item) => [item.id, item]));
-  const shapesById = new Map(shapeObjects().map((item) => [item.id, item]));
   const uniqueNames = uniqueOverlayNameMap();
-  editorDocument.listOrderKeys.forEach((overlayKey) => {
-    const row = document.createElement("div");
-    row.className = "marker-item";
-    const title = document.createElement("span");
-    title.className = "marker-item-title";
-    const actions = document.createElement("div");
-    actions.className = "marker-actions";
-
-    if (overlayKey.startsWith("marker:")) {
-      const markerId = overlayKey.slice("marker:".length);
-      const marker = markersById.get(markerId);
-      if (!marker) {
-        return;
-      }
-      row.classList.toggle("selected", marker.id === selectedMarkerId);
-      row.dataset.kind = "marker";
-      title.textContent = uniqueNames.get(overlayKey) ?? markerListName(marker);
-      const btn = createLayerDeleteButton(title.textContent, () => {
-        deleteMarker(marker.id);
-      });
-      actions.appendChild(btn);
-      row.addEventListener("click", () => selectMarker(marker.id));
-    } else if (overlayKey.startsWith("shape:")) {
-      const shapeId = overlayKey.slice("shape:".length);
-      const shape = shapesById.get(shapeId);
-      if (!shape) {
-        return;
-      }
-      row.classList.toggle("selected", shape.id === selectedShapeId);
-      row.dataset.kind = shape.type;
-      title.textContent = uniqueNames.get(overlayKey) ?? "標示";
-      const btn = createLayerDeleteButton(title.textContent, () => {
-        deleteShape(shape.id);
-      });
-      actions.appendChild(btn);
-      row.addEventListener("click", () => selectShape(shape.id));
-    } else {
-      return;
-    }
-
-    row.appendChild(title);
-    row.appendChild(actions);
-    markerList.appendChild(row);
+  const renderedCount = renderObjectList({
+    container: markerList,
+    orderKeys: editorDocument.listOrderKeys,
+    markers: markerObjects(),
+    shapes: shapeObjects(),
+    selectedMarkerId,
+    selectedShapeId,
+    displayName: (key, object) =>
+      uniqueNames.get(key) ??
+      (isMarker(object) ? markerListName(object) : "標示"),
+    onSelectMarker: selectMarker,
+    onSelectShape: selectShape,
+    onDeleteMarker: deleteMarker,
+    onDeleteShape: deleteShape,
   });
   if (clearMarkersButton) {
-    clearMarkersButton.disabled = markerList.childElementCount === 0;
+    clearMarkersButton.disabled = renderedCount === 0;
   }
 }
 
@@ -4620,11 +3496,11 @@ function finalizeOrderCommit(session: OrderDragSession): void {
     .map((row) => row.dataset.key ?? "")
     .filter((key) => key.length > 0);
   const currentOrder =
-    mode === "list" ? editorDocument.listOrderKeys : editorDocument.displayOrderKeys;
+    mode === "list"
+      ? editorDocument.listOrderKeys
+      : editorDocument.displayOrderKeys;
   if (
-    !dispatchEditorCommand(
-      createReorderCommand(mode, currentOrder, nextOrder),
-    )
+    !dispatchEditorCommand(createReorderCommand(mode, currentOrder, nextOrder))
   ) {
     return;
   }
@@ -4783,7 +3659,9 @@ function createOrderItem(
 
   const moveToEdge = (edge: "top" | "bottom") => {
     const current =
-      mode === "list" ? editorDocument.listOrderKeys : editorDocument.displayOrderKeys;
+      mode === "list"
+        ? editorDocument.listOrderKeys
+        : editorDocument.displayOrderKeys;
     const base = current.filter((key) => key !== item.key);
     const next = edge === "top" ? [item.key, ...base] : [...base, item.key];
     dispatchEditorCommand(createReorderCommand(mode, current, next));
@@ -4846,9 +3724,7 @@ function openOrderDialog(): void {
   renderOrderDialog();
   listOrderModal.classList.add("active");
   window.requestAnimationFrame(() => {
-    listOrderModal
-      .querySelector<HTMLElement>("button, [tabindex]")
-      ?.focus();
+    listOrderModal.querySelector<HTMLElement>("button, [tabindex]")?.focus();
   });
 }
 
@@ -4920,7 +3796,9 @@ function attachOrderDragGlobalEvents(): void {
 }
 
 function deleteMarker(markerId: string): void {
-  if (!dispatchEditorCommand(createRemoveObjectCommand(editorDocument, markerId))) {
+  if (
+    !dispatchEditorCommand(createRemoveObjectCommand(editorDocument, markerId))
+  ) {
     return;
   }
   if (selectedMarkerId === markerId) {
@@ -5037,7 +3915,10 @@ function buildProject(): MapProject | null {
       projection: "EPSG:4326",
     },
     layers,
-    objects: editorDocumentToV02Objects(editorDocument, preservedProjectObjects),
+    objects: editorDocumentToV02Objects(
+      editorDocument,
+      preservedProjectObjects,
+    ),
     ui: {
       ...(currentProject?.ui ?? {}),
       listOrderKeys: [...editorDocument.listOrderKeys],
@@ -5048,8 +3929,12 @@ function buildProject(): MapProject | null {
       ratioMode,
       activeRatioId,
       cropRatio,
-      customRatioA: ratioInputA ? Number(ratioInputA.value) || undefined : undefined,
-      customRatioB: ratioInputB ? Number(ratioInputB.value) || undefined : undefined,
+      customRatioA: ratioInputA
+        ? Number(ratioInputA.value) || undefined
+        : undefined,
+      customRatioB: ratioInputB
+        ? Number(ratioInputB.value) || undefined
+        : undefined,
     },
   };
 }
@@ -5152,55 +4037,6 @@ async function handleSaveBeforeClose(): Promise<void> {
   }
 }
 
-function projectValidationMessage(
-  validation: {
-    valid: boolean;
-    errors: Array<{ path: string; message: string }>;
-  } | undefined,
-): string | null {
-  if (!validation || validation.valid) {
-    return null;
-  }
-  const details = validation.errors
-    .slice(0, 6)
-    .map((error) => `${error.path}: ${error.message}`)
-    .join("\n");
-  const extraCount = Math.max(0, validation.errors.length - 6);
-  return [
-    "專案檔格式驗證失敗，已停止載入。",
-    details,
-    extraCount > 0 ? `另有 ${extraCount} 個錯誤。` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function projectDatapackMismatchMessage(project: MapProject): string | null {
-  const messages: string[] = [];
-  if (
-    project.dataPackId &&
-    currentPackId &&
-    project.dataPackId !== currentPackId
-  ) {
-    messages.push(
-      `資料包 ID 不一致：專案使用 ${project.dataPackId}，本機目前為 ${currentPackId}。`,
-    );
-  }
-  if (
-    project.dataPackVersion &&
-    currentPackVersion &&
-    project.dataPackVersion !== currentPackVersion
-  ) {
-    messages.push(
-      `資料包版本不一致：專案使用 ${project.dataPackVersion}，本機目前為 ${currentPackVersion}。`,
-    );
-  }
-  if (messages.length === 0) {
-    return null;
-  }
-  return messages.join("\n");
-}
-
 async function handleLoad() {
   if (!window.mapSchematic?.loadProject) {
     return;
@@ -5251,7 +4087,11 @@ async function handleLoad() {
     }
     return;
   }
-  const mismatchMessage = projectDatapackMismatchMessage(loadedProject);
+  const mismatchMessage = projectDatapackMismatchMessage(
+    loadedProject,
+    currentPackId,
+    currentPackVersion,
+  );
   if (mismatchMessage) {
     const response = await showAppDialog({
       eyebrow: "資料版本不同",
@@ -5319,7 +4159,10 @@ async function handleLoad() {
   ) {
     ratioMode = loadedProject.ui.ratioMode;
   }
-  if (typeof loadedProject.ui?.cropRatio === "number" && loadedProject.ui.cropRatio > 0) {
+  if (
+    typeof loadedProject.ui?.cropRatio === "number" &&
+    loadedProject.ui.cropRatio > 0
+  ) {
     cropRatio = loadedProject.ui.cropRatio;
   }
   if (ratioInputA && typeof loadedProject.ui?.customRatioA === "number") {
@@ -5359,7 +4202,9 @@ async function handleLoad() {
   }
   if (statusEl) {
     const preservedNotice =
-      preservedCount > 0 ? `；另保留 ${preservedCount} 個目前無法編輯的物件` : "";
+      preservedCount > 0
+        ? `；另保留 ${preservedCount} 個目前無法編輯的物件`
+        : "";
     if (result.recoveredFromBackup) {
       statusEl.textContent = `已從備份恢復並載入：${result.path}${preservedNotice}`;
     } else if (result.migratedFromVersion) {
@@ -5504,7 +4349,7 @@ function renderExportSvg(): {
     if (layer.pathData.length === 0) {
       continue;
     }
-    const style = layerStyleFor(layer.id);
+    const style = layerStyleFor(activeStyleId, layer.id);
     const pathElement = document.createElementNS(svgNs, "path");
     pathElement.setAttribute("d", layer.pathData.join(" "));
     pathElement.setAttribute("fill", style.fill ?? "none");
@@ -5532,7 +4377,8 @@ function renderExportSvg(): {
     image.setAttribute("height", String(MAP_HEIGHT));
     image.setAttribute("preserveAspectRatio", "none");
     image.setAttribute("opacity", "0.45");
-    const blendMode = hillshadeBlend === "source-over" ? "normal" : hillshadeBlend;
+    const blendMode =
+      hillshadeBlend === "source-over" ? "normal" : hillshadeBlend;
     image.setAttribute("style", `mix-blend-mode:${blendMode}`);
     worldDefinition.appendChild(image);
   }
@@ -5567,90 +4413,6 @@ function renderExportSvg(): {
   const serializer = new XMLSerializer();
   const data = `<?xml version="1.0" encoding="UTF-8"?>\n${serializer.serializeToString(svgClone)}`;
   return { data, width: outputWidth, height: outputHeight };
-}
-
-function frameSizeFor(canvas: HTMLCanvasElement, frame: ExportFrameStyle): number {
-  const base = Math.min(canvas.width, canvas.height);
-  if (frame === "thin") {
-    return Math.max(8, Math.round(base * 0.012));
-  }
-  if (frame === "mat") {
-    return Math.max(24, Math.round(base * 0.0325));
-  }
-  if (frame === "dark") {
-    return Math.max(17, Math.round(base * 0.0225));
-  }
-  return 0;
-}
-
-function applyExportFrame(
-  source: HTMLCanvasElement,
-  frame: ExportFrameStyle,
-): HTMLCanvasElement {
-  const inset = frameSizeFor(source, frame);
-  if (frame === "none" || inset <= 0) {
-    return source;
-  }
-  const framed = document.createElement("canvas");
-  framed.width = source.width + inset * 2;
-  framed.height = source.height + inset * 2;
-  const ctx = framed.getContext("2d");
-  if (!ctx) {
-    return source;
-  }
-
-  if (frame === "mat") {
-    ctx.fillStyle = "#f8fafc";
-    ctx.fillRect(0, 0, framed.width, framed.height);
-    ctx.strokeStyle = "#334155";
-    ctx.lineWidth = Math.max(2, Math.round(inset * 0.06));
-    ctx.strokeRect(
-      ctx.lineWidth / 2,
-      ctx.lineWidth / 2,
-      framed.width - ctx.lineWidth,
-      framed.height - ctx.lineWidth,
-    );
-    ctx.strokeStyle = "rgba(15, 23, 42, 0.24)";
-    ctx.lineWidth = Math.max(1, Math.round(inset * 0.025));
-    ctx.strokeRect(
-      inset - ctx.lineWidth / 2,
-      inset - ctx.lineWidth / 2,
-      source.width + ctx.lineWidth,
-      source.height + ctx.lineWidth,
-    );
-  } else if (frame === "dark") {
-    ctx.fillStyle = "#111827";
-    ctx.fillRect(0, 0, framed.width, framed.height);
-    const outer = Math.max(2, Math.round(inset * 0.08));
-    const inner = Math.max(1, Math.round(inset * 0.04));
-    ctx.strokeStyle = "#020617";
-    ctx.lineWidth = outer;
-    ctx.strokeRect(outer / 2, outer / 2, framed.width - outer, framed.height - outer);
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
-    ctx.lineWidth = inner;
-    ctx.strokeRect(
-      inset - inner / 2,
-      inset - inner / 2,
-      source.width + inner,
-      source.height + inner,
-    );
-  } else {
-    ctx.fillStyle = "#111827";
-    ctx.fillRect(0, 0, framed.width, framed.height);
-  }
-
-  ctx.drawImage(source, inset, inset);
-  if (frame === "thin") {
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
-    ctx.lineWidth = Math.max(1, Math.round(inset * 0.15));
-    ctx.strokeRect(
-      inset - ctx.lineWidth / 2,
-      inset - ctx.lineWidth / 2,
-      source.width + ctx.lineWidth,
-      source.height + ctx.lineWidth,
-    );
-  }
-  return framed;
 }
 
 async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
@@ -5748,7 +4510,9 @@ function handleClearMarkers(): void {
 }
 
 function deleteShape(shapeId: string): void {
-  if (!dispatchEditorCommand(createRemoveObjectCommand(editorDocument, shapeId))) {
+  if (
+    !dispatchEditorCommand(createRemoveObjectCommand(editorDocument, shapeId))
+  ) {
     return;
   }
   if (selectedShapeId === shapeId) {
@@ -6444,6 +5208,8 @@ async function boot() {
       const texture = await loadHillshadeTexture(
         relief.path,
         hillshadeProjection,
+        MAP_WIDTH,
+        MAP_HEIGHT,
       );
       if (texture) {
         hillshadeTexture = texture;
@@ -6453,7 +5219,12 @@ async function boot() {
         hillshadeImage.src = relief.path;
         hillshadeImage.onload = () => {
           if (hillshadeImage) {
-            hillshadeTexture = buildHillshadeTexture(hillshadeImage);
+            hillshadeTexture = buildHillshadeTexture({
+              image: hillshadeImage,
+              width: MAP_WIDTH,
+              height: MAP_HEIGHT,
+              unproject,
+            });
             requestBasemapDraw();
           }
         };
@@ -6665,7 +5436,7 @@ listOrderModal?.addEventListener("click", (event) => {
 });
 appDialogModal?.addEventListener("click", (event) => {
   if (event.target === appDialogModal) {
-    closeAppDialog(appDialogCancelValue);
+    appDialog.closeCancel();
   }
 });
 coordEditModal?.addEventListener("click", (event) => {
@@ -6689,7 +5460,9 @@ exportFrameOptions.forEach((button) => {
   });
 });
 exportFrameClose?.addEventListener("click", () => closeExportFrameDialog(null));
-exportFrameCancel?.addEventListener("click", () => closeExportFrameDialog(null));
+exportFrameCancel?.addEventListener("click", () =>
+  closeExportFrameDialog(null),
+);
 exportFrameApply?.addEventListener("click", () =>
   closeExportFrameDialog(selectedExportFrame),
 );
@@ -6724,40 +5497,7 @@ window.addEventListener("keydown", (event) => {
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement ||
     (target instanceof HTMLElement && target.isContentEditable);
-  if (appDialogModal?.classList.contains("active")) {
-    const buttons = Array.from(
-      appDialogActions?.querySelectorAll<HTMLButtonElement>("button") ?? [],
-    );
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeAppDialog(appDialogCancelValue);
-      return;
-    }
-    if (event.key === "Enter") {
-      if (
-        target instanceof HTMLButtonElement &&
-        appDialogActions?.contains(target)
-      ) {
-        return;
-      }
-      event.preventDefault();
-      closeAppDialog(appDialogDefaultValue);
-      return;
-    }
-    if (event.key === "Tab" && buttons.length > 0) {
-      event.preventDefault();
-      const activeIndex = buttons.indexOf(
-        document.activeElement as HTMLButtonElement,
-      );
-      const direction = event.shiftKey ? -1 : 1;
-      const nextIndex =
-        activeIndex < 0
-          ? event.shiftKey
-            ? buttons.length - 1
-            : 0
-          : (activeIndex + direction + buttons.length) % buttons.length;
-      buttons[nextIndex]?.focus();
-    }
+  if (appDialog.handleKeyDown(event)) {
     return;
   }
   if (preferencesModal?.classList.contains("active")) {
@@ -6869,7 +5609,7 @@ window.mapSchematic?.onAppDialogRequest?.((request) => {
   });
 });
 
-initializeTheme();
+initializeThemePreferences({ buttons: themePreferenceButtons });
 hookToolbar();
 hookSteps();
 attachOrderDragGlobalEvents();
