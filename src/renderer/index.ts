@@ -134,19 +134,8 @@ const themePreferenceButtons = Array.from(
 const reliefToggle = document.getElementById(
   "reliefToggle",
 ) as HTMLInputElement | null;
-const reliefBlendSelect = document.getElementById(
-  "reliefBlendSelect",
-) as HTMLSelectElement | null;
-const reliefBlendDropdown = document.getElementById("reliefBlendDropdown");
-const reliefBlendTrigger = document.getElementById(
-  "reliefBlendTrigger",
-) as HTMLButtonElement | null;
-const reliefBlendMenu = document.getElementById(
-  "reliefBlendMenu",
-) as HTMLDivElement | null;
-const reliefBlendValue = document.getElementById("reliefBlendValue");
-const reliefBlendOptions = Array.from(
-  document.querySelectorAll<HTMLButtonElement>("[data-blend-value]"),
+const reliefEffectButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-relief-effect]"),
 );
 const reliefModeField = document.getElementById("reliefModeField");
 const ratioSwapButton = document.getElementById(
@@ -474,9 +463,6 @@ const styleOutline = document.getElementById(
 const styleSoft = document.getElementById(
   "styleSoft",
 ) as HTMLButtonElement | null;
-const reliefBlendButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>("[data-relief]"),
-);
 const mapStage = document.querySelector(".map-stage") as HTMLDivElement | null;
 const cropFrame = document.getElementById("cropFrame") as HTMLDivElement | null;
 const cropOverlay = document.getElementById(
@@ -619,7 +605,13 @@ let basemapDrawPending = false;
 let shiftLocked = false;
 let shiftLockValue = 0;
 let hillshadeEnabled = false;
-let hillshadeBlend: GlobalCompositeOperation = "overlay";
+type ReliefEffect = "relief-soft" | "relief-natural" | "relief-strong";
+const reliefEffectSettings: Record<ReliefEffect, { alpha: number }> = {
+  "relief-soft": { alpha: 0.3 },
+  "relief-natural": { alpha: 0.46 },
+  "relief-strong": { alpha: 0.62 },
+};
+let hillshadeBlend: ReliefEffect = "relief-natural";
 let hillshadeImage: HTMLImageElement | null = null;
 let hillshadeTexture: HTMLCanvasElement | null = null;
 let hillshadeProjection: string | null = null;
@@ -730,6 +722,9 @@ function applyViewTransform(): void {
   );
   updateZoomIndicator();
   updateMarkerStyles();
+  if (activeStep === "1" && cropBox) {
+    updateCropBBox();
+  }
   requestBasemapDraw();
 }
 
@@ -745,7 +740,7 @@ function saveStepOneCropSnapshot(): void {
   if (!mapStage) {
     return;
   }
-  if (!cropBBox && cropBox) {
+  if (cropBox) {
     updateCropBBox();
   }
   const rect = mapStage.getBoundingClientRect();
@@ -782,13 +777,18 @@ function setActiveStep(stepId: string): void {
   if (previousStep === "1" && (stepId === "2" || stepId === "3")) {
     saveStepOneCropSnapshot();
   }
-  if (stepId === "1" && previousStep !== "1" && stepOneCropSnapshot) {
+  if (
+    stepId === "1" &&
+    (previousStep === "2" || previousStep === "3") &&
+    stepOneCropSnapshot
+  ) {
     restoreStepOneCropSnapshot();
   }
-  activeStep = stepId;
-  if (stepId !== "2") {
-    setReliefBlendDropdownOpen(false);
+  if (stepId === "1" && previousStep === "0") {
+    cropBBox = null;
+    stepOneCropSnapshot = null;
   }
+  activeStep = stepId;
   stepPanels.forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.stepPanel === stepId);
   });
@@ -905,66 +905,39 @@ function setActiveStyleButton(targetId: string): void {
   requestBasemapDraw();
 }
 
-function setReliefMode(enabled: boolean, blend?: string): void {
+function normalizeReliefEffect(value?: string): ReliefEffect {
+  if (
+    value === "relief-soft" ||
+    value === "relief-natural" ||
+    value === "relief-strong"
+  ) {
+    return value;
+  }
+  if (value === "soft-light") {
+    return "relief-soft";
+  }
+  if (value === "multiply") {
+    return "relief-strong";
+  }
+  return "relief-natural";
+}
+
+function setReliefMode(enabled: boolean, effect?: string): void {
   hillshadeEnabled = enabled;
-  if (enabled && blend) {
-    hillshadeBlend = blend as GlobalCompositeOperation;
+  if (enabled) {
+    hillshadeBlend = normalizeReliefEffect(effect ?? hillshadeBlend);
   }
   if (reliefToggle) {
     reliefToggle.checked = enabled;
   }
-  if (reliefBlendSelect) {
-    reliefBlendSelect.disabled = !enabled;
-    reliefBlendSelect.value = hillshadeBlend;
-  }
-  if (reliefBlendTrigger) {
-    reliefBlendTrigger.disabled = !enabled;
-  }
-  const selectedBlendOption = reliefBlendOptions.find(
-    (button) => button.dataset.blendValue === hillshadeBlend,
-  );
-  if (reliefBlendValue && selectedBlendOption) {
-    reliefBlendValue.textContent =
-      selectedBlendOption.querySelector("span")?.textContent ?? "疊加";
-  }
-  reliefBlendOptions.forEach((button) => {
-    button.setAttribute(
-      "aria-selected",
-      String(button.dataset.blendValue === hillshadeBlend),
-    );
-  });
-  if (!enabled) {
-    setReliefBlendDropdownOpen(false);
-  }
   reliefModeField?.classList.toggle("disabled", !enabled);
-  const target = enabled ? hillshadeBlend : "off";
-  reliefBlendButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.relief === target);
+  reliefEffectButtons.forEach((button) => {
+    const active = enabled && button.dataset.reliefEffect === hillshadeBlend;
+    button.disabled = !enabled;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-checked", String(active));
   });
   requestBasemapDraw();
-}
-
-function setReliefBlendDropdownOpen(open: boolean): void {
-  if (!reliefBlendDropdown || !reliefBlendTrigger || !reliefBlendMenu) {
-    return;
-  }
-  const shouldOpen = open && !reliefBlendTrigger.disabled;
-  reliefBlendDropdown.classList.toggle("open", shouldOpen);
-  reliefBlendTrigger.setAttribute("aria-expanded", String(shouldOpen));
-  reliefBlendMenu.hidden = !shouldOpen;
-}
-
-function focusReliefBlendOption(direction: 1 | -1): void {
-  if (reliefBlendOptions.length === 0) {
-    return;
-  }
-  const selectedIndex = reliefBlendOptions.findIndex(
-    (button) => button.dataset.blendValue === hillshadeBlend,
-  );
-  const fallbackIndex = direction > 0 ? 0 : reliefBlendOptions.length - 1;
-  reliefBlendOptions[
-    selectedIndex >= 0 ? selectedIndex : fallbackIndex
-  ]?.focus();
 }
 
 function applyCanvasRatio(ratio: number, targetId?: string): void {
@@ -1740,93 +1713,17 @@ function hookSteps(): void {
     setActiveStyleButton("styleOutline"),
   );
   styleSoft?.addEventListener("click", () => setActiveStyleButton("styleSoft"));
-  reliefBlendButtons.forEach((button) => {
+  reliefToggle?.addEventListener("change", () => {
+    setReliefMode(reliefToggle.checked, hillshadeBlend);
+  });
+  reliefEffectButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      const value = button.dataset.relief ?? "off";
-      reliefBlendButtons.forEach((btn) =>
-        btn.classList.toggle("active", btn === button),
-      );
-      if (value === "off") {
-        setReliefMode(false);
+      const value = button.dataset.reliefEffect;
+      if (!value) {
         return;
       }
       setReliefMode(true, value);
     });
-  });
-  reliefToggle?.addEventListener("change", () => {
-    setReliefMode(
-      reliefToggle.checked,
-      reliefBlendSelect?.value ?? hillshadeBlend,
-    );
-  });
-  reliefBlendSelect?.addEventListener("change", () => {
-    setReliefMode(
-      reliefToggle?.checked ?? hillshadeEnabled,
-      reliefBlendSelect.value,
-    );
-  });
-  reliefBlendTrigger?.addEventListener("click", () => {
-    const open = reliefBlendTrigger.getAttribute("aria-expanded") !== "true";
-    setReliefBlendDropdownOpen(open);
-  });
-  reliefBlendTrigger?.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setReliefBlendDropdownOpen(false);
-      return;
-    }
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
-      return;
-    }
-    event.preventDefault();
-    setReliefBlendDropdownOpen(true);
-    focusReliefBlendOption(event.key === "ArrowDown" ? 1 : -1);
-  });
-  reliefBlendOptions.forEach((button, index) => {
-    button.addEventListener("click", () => {
-      const value = button.dataset.blendValue;
-      if (!value) {
-        return;
-      }
-      if (reliefBlendSelect) {
-        reliefBlendSelect.value = value;
-      }
-      setReliefMode(reliefToggle?.checked ?? hillshadeEnabled, value);
-      setReliefBlendDropdownOpen(false);
-      reliefBlendTrigger?.focus();
-    });
-    button.addEventListener("keydown", (event) => {
-      let nextIndex: number | null = null;
-      if (event.key === "ArrowDown") {
-        nextIndex = (index + 1) % reliefBlendOptions.length;
-      } else if (event.key === "ArrowUp") {
-        nextIndex =
-          (index - 1 + reliefBlendOptions.length) % reliefBlendOptions.length;
-      } else if (event.key === "Home") {
-        nextIndex = 0;
-      } else if (event.key === "End") {
-        nextIndex = reliefBlendOptions.length - 1;
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        setReliefBlendDropdownOpen(false);
-        reliefBlendTrigger?.focus();
-        return;
-      }
-      if (nextIndex === null) {
-        return;
-      }
-      event.preventDefault();
-      reliefBlendOptions[nextIndex]?.focus();
-    });
-  });
-  document.addEventListener("click", (event) => {
-    if (
-      reliefBlendDropdown &&
-      event.target instanceof Node &&
-      !reliefBlendDropdown.contains(event.target)
-    ) {
-      setReliefBlendDropdownOpen(false);
-    }
   });
   document
     .querySelectorAll<HTMLButtonElement>(".tool-select")
@@ -1966,8 +1863,8 @@ function drawBasemap(): void {
       (offsetX + view.tx * scaleFit) * dpr,
       (offsetY + view.ty * scaleFit) * dpr,
     );
-    ctx.globalCompositeOperation = hillshadeBlend;
-    ctx.globalAlpha = 0.45;
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = reliefEffectSettings[hillshadeBlend].alpha;
     const wrapShift = shiftLocked ? shiftLockValue : worldShift;
     const viewWidthMap = stageWidth / Math.max(0.0001, scaleFit * view.scale);
     const wrapSpan = Math.min(
@@ -4376,10 +4273,11 @@ function renderExportSvg(): {
     image.setAttribute("width", String(MAP_WIDTH));
     image.setAttribute("height", String(MAP_HEIGHT));
     image.setAttribute("preserveAspectRatio", "none");
-    image.setAttribute("opacity", "0.45");
-    const blendMode =
-      hillshadeBlend === "source-over" ? "normal" : hillshadeBlend;
-    image.setAttribute("style", `mix-blend-mode:${blendMode}`);
+    image.setAttribute(
+      "opacity",
+      String(reliefEffectSettings[hillshadeBlend].alpha),
+    );
+    image.setAttribute("style", "mix-blend-mode:multiply");
     worldDefinition.appendChild(image);
   }
   defs.appendChild(worldDefinition);

@@ -821,9 +821,57 @@ select:focus-visible,
   background: var(--ui-surface-strong);
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius);
+  margin-top: -7px;
   transition:
     background-color 140ms ease,
     border-color 140ms ease;
+}
+
+.relief-effect-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.relief-effect-options button {
+  display: grid;
+  min-height: 56px;
+  align-content: center;
+  gap: 3px;
+  padding: 7px 6px;
+  color: var(--ui-text-muted);
+  background: var(--ui-surface-strong);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.relief-effect-options button small {
+  color: var(--ui-text-soft);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.relief-effect-options button:hover:not(:disabled) {
+  color: var(--ui-text);
+  border-color: var(--ui-border-strong);
+}
+
+.relief-effect-options button.active {
+  color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+  border-color: var(--ui-accent-border);
+}
+
+.relief-effect-options button.active small {
+  color: var(--ui-accent);
+}
+
+.relief-mode-field.disabled .relief-effect-options {
+  opacity: 0.48;
 }
 
 .custom-ratio-label {

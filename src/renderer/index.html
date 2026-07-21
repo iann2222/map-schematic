@@ -1935,73 +1935,22 @@
               class="form-field relief-mode-field disabled"
               id="reliefModeField"
             >
-              <span class="form-label">陰影混合方式</span>
-              <div class="custom-select" id="reliefBlendDropdown">
-                <button
-                  class="custom-select-trigger"
-                  id="reliefBlendTrigger"
-                  type="button"
-                  aria-haspopup="listbox"
-                  aria-controls="reliefBlendMenu"
-                  aria-expanded="false"
-                  disabled
-                >
-                  <span id="reliefBlendValue">疊加</span>
-                  <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="m8 10 4 4 4-4"></path>
-                  </svg>
+              <span class="form-label">陰影效果</span>
+              <div class="relief-effect-options" role="radiogroup" aria-label="陰影效果">
+                <button type="button" data-relief-effect="relief-soft" role="radio">
+                  <span>柔和</span>
+                  <small>低對比</small>
                 </button>
-                <div
-                  class="custom-select-menu"
-                  id="reliefBlendMenu"
-                  role="listbox"
-                  aria-label="陰影混合方式"
-                  hidden
-                >
-                  <button type="button" role="option" data-blend-value="source-over">
-                    <span>覆蓋</span>
-                    <span class="custom-select-description">直接顯示陰影明暗</span>
-                  </button>
-                  <button type="button" role="option" data-blend-value="multiply">
-                    <span>加深</span>
-                    <span class="custom-select-description">加強地形暗部</span>
-                  </button>
-                  <button type="button" role="option" data-blend-value="screen">
-                    <span>濾色</span>
-                    <span class="custom-select-description">提亮地形亮部</span>
-                  </button>
-                  <button type="button" role="option" data-blend-value="overlay">
-                    <span>疊加</span>
-                    <span class="custom-select-description">平衡明暗對比</span>
-                  </button>
-                  <button type="button" role="option" data-blend-value="soft-light">
-                    <span>柔光</span>
-                    <span class="custom-select-description">呈現較柔和的起伏</span>
-                  </button>
-                  <button type="button" role="option" data-blend-value="hard-light">
-                    <span>強光</span>
-                    <span class="custom-select-description">強化地形對比</span>
-                  </button>
-                </div>
+                <button type="button" data-relief-effect="relief-natural" role="radio">
+                  <span>自然</span>
+                  <small>建議</small>
+                </button>
+                <button type="button" data-relief-effect="relief-strong" role="radio">
+                  <span>清晰</span>
+                  <small>較強起伏</small>
+                </button>
               </div>
-              <select class="native-select-state" id="reliefBlendSelect" disabled aria-hidden="true" tabindex="-1">
-                <option value="source-over">覆蓋</option>
-                <option value="multiply">加深</option>
-                <option value="screen">濾色</option>
-                <option value="overlay">疊加</option>
-                <option value="soft-light">柔光</option>
-                <option value="hard-light">強光</option>
-              </select>
             </div>
-          </div>
-          <div class="legacy-relief-controls" aria-hidden="true">
-            <button data-relief="off">關閉</button>
-            <button data-relief="source-over">覆蓋</button>
-            <button data-relief="multiply">加深</button>
-            <button data-relief="screen">濾色</button>
-            <button data-relief="overlay">疊加</button>
-            <button data-relief="soft-light">柔光</button>
-            <button data-relief="hard-light">強光</button>
           </div>
         </div>
         <div class="step-panel tool-panel" data-step-panel="3">
