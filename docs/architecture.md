@@ -16,6 +16,13 @@
 - `pack-release.json`：官方資料包版本、下載位置、SHA-256 與來源檔案設定。
 - `package.json`、`tsconfig.*.json`、`vitest.config.ts`：建置與測試設定。
 
+## 開發環境
+
+- Node.js：支援 Node 20.19 以上的 Node 20、Node 22.12 以上的 Node 22，以及 Node 24 以上；建議 Node 20 LTS。`.nvmrc` 提供 nvm／fnm 使用的主版本。
+- 安裝依賴：使用 `npm ci` 依 `package-lock.json` 安裝固定版本。
+- 換作業系統或 CPU 架構時不可直接複製 `node_modules`；`postinstall` 會透過 `electron-rebuild` 重建 `better-sqlite3` 的原生模組。
+- 已打包的 Electron 應用程式內含 runtime，一般使用者無須安裝 Node.js。
+
 ## 執行流程
 
 1. `npm run build`
