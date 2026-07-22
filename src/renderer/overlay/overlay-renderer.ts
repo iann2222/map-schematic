@@ -326,6 +326,8 @@ function renderShapes(): void {
     for (const item of renderItems) {
       const shape = item.shape;
       const [x, y] = project(shape.longitude, shape.latitude, width, height);
+      const rotation = Number.isFinite(shape.rotation) ? (shape.rotation ?? 0) : 0;
+      const rotationTransform = `rotate(${rotation.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})`;
       if (shape.type === "line") {
         const half = shape.width / 2;
         const line = document.createElementNS(
@@ -344,6 +346,7 @@ function renderShapes(): void {
         line.setAttribute("stroke-linecap", "round");
         line.setAttribute("data-shape", "line");
         line.setAttribute("data-id", shape.id);
+        line.setAttribute("transform", rotationTransform);
         if (item.preview) {
           line.setAttribute("opacity", "0.6");
           line.setAttribute("data-preview", "true");
@@ -365,6 +368,7 @@ function renderShapes(): void {
         hit.setAttribute("data-shape", "line");
         hit.setAttribute("data-id", shape.id);
         hit.setAttribute("data-export-ignore", "true");
+        hit.setAttribute("transform", rotationTransform);
         line.addEventListener("click", (event) => {
           interactions.selectShape(event, shape, item.preview);
         });
@@ -402,6 +406,7 @@ function renderShapes(): void {
         line.setAttribute("stroke-linecap", "round");
         line.setAttribute("data-shape", "arrow");
         line.setAttribute("data-id", shape.id);
+        line.setAttribute("transform", rotationTransform);
         const headSize = Math.max(6, shape.style.strokeWidth * 2) / view.scale;
         const path = document.createElementNS(
           "http://www.w3.org/2000/svg",
@@ -418,6 +423,7 @@ function renderShapes(): void {
         path.setAttribute("fill", shape.style.strokeColor);
         path.setAttribute("data-shape", "arrow");
         path.setAttribute("data-id", shape.id);
+        path.setAttribute("transform", rotationTransform);
         if (item.preview) {
           line.setAttribute("opacity", "0.6");
           line.setAttribute("data-preview", "true");
@@ -451,6 +457,7 @@ function renderShapes(): void {
         hit.setAttribute("data-shape", "arrow");
         hit.setAttribute("data-id", shape.id);
         hit.setAttribute("data-export-ignore", "true");
+        hit.setAttribute("transform", rotationTransform);
         if (!item.preview) {
           hit.addEventListener("mousedown", onDragStart);
           hit.addEventListener("click", onClick);

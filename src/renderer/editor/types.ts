@@ -45,6 +45,7 @@ export type ShapeItem = {
   latitude: number;
   width: number;
   height: number;
+  rotation?: number;
   text?: string;
   style: ShapeStyle;
 };

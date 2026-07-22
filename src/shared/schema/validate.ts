@@ -241,7 +241,7 @@ export function validateProject(input: unknown): ValidationResult {
       } else {
         const numericStyleFields = [
           "fontSize", "strokeWidth", "fillOpacity", "textOffsetX", "textOffsetY",
-          "dotSize", "textSize", "width", "height"
+          "dotSize", "textSize", "width", "height", "rotation"
         ];
         for (const field of numericStyleFields) {
           if (style[field] !== undefined && !isFiniteNumber(style[field])) {

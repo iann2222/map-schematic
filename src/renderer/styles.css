@@ -1540,6 +1540,92 @@ select:focus-visible,
   background: var(--ui-accent-soft);
 }
 
+.rotation-number-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px auto;
+  align-items: center;
+  gap: 0;
+}
+
+.rotation-number-field input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 9px;
+  color: var(--ui-text);
+  background: var(--ui-surface-strong);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius) 0 0 var(--ui-radius);
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+}
+
+.rotation-number-field input::-webkit-inner-spin-button,
+.rotation-number-field input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.rotation-number-field input:focus {
+  border-color: var(--ui-focus);
+  box-shadow: 0 0 0 2px rgba(76, 125, 255, 0.12);
+}
+
+.rotation-stepper {
+  display: grid;
+  width: 28px;
+  height: 36px;
+  grid-template-rows: 1fr 1fr;
+  overflow: hidden;
+  background: var(--ui-surface-muted);
+  border: 1px solid var(--ui-border-strong);
+  border-left: 0;
+  border-radius: 0 var(--ui-radius) var(--ui-radius) 0;
+}
+
+.rotation-stepper button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  height: 17px;
+  padding: 0;
+  color: var(--ui-text-soft);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  place-items: center;
+}
+
+.rotation-stepper button + button {
+  border-top: 1px solid var(--ui-border);
+}
+
+.rotation-stepper button:hover {
+  color: var(--ui-text);
+  background: var(--ui-accent-soft);
+}
+
+.rotation-stepper button:active {
+  color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent-soft) 75%, var(--ui-surface-muted));
+}
+
+.rotation-stepper svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rotation-unit {
+  margin-left: 7px;
+  color: var(--ui-text-soft);
+  font-size: 12px;
+}
+
 .layers-view {
   padding: 0;
 }
@@ -2046,7 +2132,7 @@ select:focus-visible,
 }
 
 .inspector-panel .step-panel > .settings-stack {
-  margin-top: 5px;
+  margin-top: 0;
   padding-top: 10px;
   border-top: 1px solid var(--ui-border);
 }

@@ -269,12 +269,18 @@ const shapeTextFont = document.getElementById(
 const shapeLineWidth = document.getElementById(
   "shapeLineWidth",
 ) as HTMLDivElement | null;
+const shapeLineRotation = document.getElementById(
+  "shapeLineRotation",
+) as HTMLInputElement | null;
 const shapeLineColor = document.getElementById(
   "shapeLineColor",
 ) as HTMLInputElement | null;
 const shapeArrowWidth = document.getElementById(
   "shapeArrowWidth",
 ) as HTMLDivElement | null;
+const shapeArrowRotation = document.getElementById(
+  "shapeArrowRotation",
+) as HTMLInputElement | null;
 const shapeArrowColor = document.getElementById(
   "shapeArrowColor",
 ) as HTMLInputElement | null;
@@ -2624,6 +2630,7 @@ function buildShapeAt(
     latitude: center.lat,
     width: size,
     height,
+    rotation: 0,
     text: type === "text" ? "文字標示" : undefined,
     style: defaultShapeStyle(type),
   };
@@ -3024,6 +3031,9 @@ function syncShapeControls(shape: ShapeItem | null): void {
     if (shapeLineWidthSlider) {
       setSliderValue(shapeLineWidthSlider, shape.style.strokeWidth, true);
     }
+    if (shapeLineRotation) {
+      shapeLineRotation.value = String(shape.rotation ?? 0);
+    }
   }
   if (shape.type === "arrow") {
     if (shapeArrowColor) {
@@ -3031,6 +3041,9 @@ function syncShapeControls(shape: ShapeItem | null): void {
     }
     if (shapeArrowWidthSlider) {
       setSliderValue(shapeArrowWidthSlider, shape.style.strokeWidth, true);
+    }
+    if (shapeArrowRotation) {
+      shapeArrowRotation.value = String(shape.rotation ?? 0);
     }
   }
   if (shape.type === "area") {
@@ -4684,6 +4697,80 @@ function attachShapeControls(): void {
     const shapeId = getSelectedShape()?.id ?? "none";
     updateShapeFromControls(`shape:${shapeId}:${property}`);
   };
+  const bindRotationInput = (input: HTMLInputElement | null): void => {
+    input?.addEventListener("input", () => {
+      if (!Number.isFinite(input.valueAsNumber)) {
+        return;
+      }
+      const rotation = Math.max(0, Math.min(360, input.valueAsNumber));
+      if (rotation !== input.valueAsNumber) {
+        input.value = String(rotation);
+      }
+      update("rotation");
+    });
+    input?.addEventListener("change", () => {
+      if (!Number.isFinite(input.valueAsNumber)) {
+        input.value = String(getSelectedShape()?.rotation ?? 0);
+      }
+    });
+  };
+  bindRotationInput(shapeLineRotation);
+  bindRotationInput(shapeArrowRotation);
+  document
+    .querySelectorAll<HTMLButtonElement>("[data-rotation-target]")
+    .forEach((button) => {
+      const targetId = button.dataset.rotationTarget;
+      const step = Number(button.dataset.rotationStep);
+      const input = targetId
+        ? (document.getElementById(targetId) as HTMLInputElement | null)
+        : null;
+      if (!input || !Number.isFinite(step)) {
+        return;
+      }
+      let repeatDelay: number | null = null;
+      let repeatInterval: number | null = null;
+      const stopRepeating = (): void => {
+        if (repeatDelay !== null) {
+          window.clearTimeout(repeatDelay);
+          repeatDelay = null;
+        }
+        if (repeatInterval !== null) {
+          window.clearInterval(repeatInterval);
+          repeatInterval = null;
+        }
+      };
+      const applyStep = (): void => {
+        const current = Number.isFinite(input.valueAsNumber)
+          ? input.valueAsNumber
+          : (getSelectedShape()?.rotation ?? 0);
+        input.value = String(Math.max(0, Math.min(360, current + step)));
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+        event.preventDefault();
+        applyStep();
+        button.setPointerCapture(event.pointerId);
+        repeatDelay = window.setTimeout(() => {
+          repeatDelay = null;
+          repeatInterval = window.setInterval(applyStep, 75);
+        }, 380);
+      });
+      button.addEventListener("pointerup", stopRepeating);
+      button.addEventListener("pointercancel", stopRepeating);
+      button.addEventListener("lostpointercapture", stopRepeating);
+      button.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        if (!event.repeat) {
+          applyStep();
+        }
+      });
+    });
   shapeTextInput?.addEventListener("input", () => update("text"));
   shapeTextColor?.addEventListener("input", () => {
     syncShapeColorPalettes();
@@ -4819,6 +4906,8 @@ function isCoordLabelDefault(): boolean {
 bindFirstClickSelect(itemNameInput, () => true);
 bindFirstClickSelect(markerLabelInput, () => true);
 bindFirstClickSelect(shapeTextInput, isShapeTextDefault);
+bindFirstClickSelect(shapeLineRotation, () => true);
+bindFirstClickSelect(shapeArrowRotation, () => true);
 bindFirstClickSelect(coordLabelInput, isCoordLabelDefault);
 bindFirstClickSelect(ratioInputA, () => true);
 bindFirstClickSelect(ratioInputB, () => true);
@@ -4889,6 +4978,12 @@ function updateShapeFromControls(mergeKey?: string): void {
         if (shapeLineWidthSlider) {
           draft.style.strokeWidth = shapeLineWidthSlider.value;
         }
+        if (
+          shapeLineRotation &&
+          Number.isFinite(shapeLineRotation.valueAsNumber)
+        ) {
+          draft.rotation = shapeLineRotation.valueAsNumber;
+        }
       }
       if (draft.type === "arrow") {
         if (shapeArrowColor) {
@@ -4896,6 +4991,12 @@ function updateShapeFromControls(mergeKey?: string): void {
         }
         if (shapeArrowWidthSlider) {
           draft.style.strokeWidth = shapeArrowWidthSlider.value;
+        }
+        if (
+          shapeArrowRotation &&
+          Number.isFinite(shapeArrowRotation.valueAsNumber)
+        ) {
+          draft.rotation = shapeArrowRotation.valueAsNumber;
         }
       }
       if (draft.type === "area") {
@@ -5545,6 +5646,83 @@ completeExportPdf?.addEventListener("click", () => {
   closeCompleteDialog();
   handleExport("pdf");
 });
+
+function nudgeSelectedObject(event: KeyboardEvent): boolean {
+  if (
+    activeStep !== "3" ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    document.querySelector(".modal-backdrop.active")
+  ) {
+    return false;
+  }
+  const directions: Record<string, { x: number; y: number }> = {
+    ArrowLeft: { x: -1, y: 0 },
+    ArrowRight: { x: 1, y: 0 },
+    ArrowUp: { x: 0, y: -1 },
+    ArrowDown: { x: 0, y: 1 },
+  };
+  const direction = directions[event.key];
+  if (!direction || (!selectedMarkerId && !selectedShapeId)) {
+    return false;
+  }
+  const screenStep = event.shiftKey ? 10 : 1;
+  const mapStep = screenStep / Math.max(0.001, lastScaleFit * view.scale);
+  const width = svg?.viewBox.baseVal.width || MAP_WIDTH;
+  const height = svg?.viewBox.baseVal.height || MAP_HEIGHT;
+  const move = (longitude: number, latitude: number): [number, number] => {
+    const [x, y] = project(longitude, latitude, width, height);
+    const [nextLongitude, nextLatitude] = unproject(
+      x + direction.x * mapStep,
+      y + direction.y * mapStep,
+      width,
+      height,
+    );
+    return [
+      Math.max(WORLD_BBOX.minLon, Math.min(WORLD_BBOX.maxLon, nextLongitude)),
+      Math.max(WORLD_BBOX.minLat, Math.min(WORLD_BBOX.maxLat, nextLatitude)),
+    ];
+  };
+
+  const marker = getSelectedMarker();
+  if (marker) {
+    const changed = updateMarkerObject(
+      marker,
+      (draft) => {
+        [draft.longitude, draft.latitude] = move(
+          draft.longitude,
+          draft.latitude,
+        );
+      },
+      `marker:${marker.id}:nudge`,
+    );
+    if (changed) {
+      renderMarkers();
+      syncMarkerControls(getSelectedMarker());
+    }
+    return changed;
+  }
+  const shape = getSelectedShape();
+  if (!shape) {
+    return false;
+  }
+  const changed = updateShapeObject(
+    shape,
+    (draft) => {
+      [draft.longitude, draft.latitude] = move(
+        draft.longitude,
+        draft.latitude,
+      );
+    },
+    `shape:${shape.id}:nudge`,
+  );
+  if (changed) {
+    renderMarkers();
+  }
+  return changed;
+}
+
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   const target = event.target;
@@ -5554,6 +5732,9 @@ window.addEventListener("keydown", (event) => {
     target instanceof HTMLSelectElement ||
     (target instanceof HTMLElement && target.isContentEditable);
   if (appDialog.handleKeyDown(event)) {
+    return;
+  }
+  if (event.defaultPrevented) {
     return;
   }
   if (preferencesModal?.classList.contains("active")) {
@@ -5577,6 +5758,10 @@ window.addEventListener("keydown", (event) => {
       redoEditorChange();
       return;
     }
+  }
+  if (!isTextEditing && nudgeSelectedObject(event)) {
+    event.preventDefault();
+    return;
   }
   if (event.key === "Escape") {
     if (exportFrameModal?.classList.contains("active")) {

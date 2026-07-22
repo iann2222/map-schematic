@@ -2115,6 +2115,22 @@
                   </svg>
                 </button>
               </div>
+              <div class="tool-item" data-tool="text">
+                <button class="tool-btn tool-select" data-tool="text">
+                  <span class="tool-icon text-tool-icon" aria-hidden="true">T</span>
+                  <span>文字框</span>
+                </button>
+                <button
+                  class="icon-btn tool-add"
+                  data-add-tool="text"
+                  title="置於畫布中央"
+                  aria-label="將文字框置於畫布中央"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14"></path>
+                  </svg>
+                </button>
+              </div>
               <div class="tool-item" data-tool="line">
                 <button class="tool-btn tool-select" data-tool="line">
                   <span class="tool-icon" aria-hidden="true">
@@ -2151,22 +2167,6 @@
                   data-add-tool="area"
                   title="置於畫布中央"
                   aria-label="將區域置於畫布中央"
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14"></path>
-                  </svg>
-                </button>
-              </div>
-              <div class="tool-item" data-tool="text">
-                <button class="tool-btn tool-select" data-tool="text">
-                  <span class="tool-icon text-tool-icon" aria-hidden="true">T</span>
-                  <span>文字</span>
-                </button>
-                <button
-                  class="icon-btn tool-add"
-                  data-add-tool="text"
-                  title="置於畫布中央"
-                  aria-label="將文字置於畫布中央"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 5v14M5 12h14"></path>
@@ -2685,6 +2685,40 @@
                 <div class="slider-marks"></div>
               </div>
             </div>
+            <div class="option-row">
+              <label class="ratio-label" for="shapeLineRotation">旋轉角度</label>
+              <div class="rotation-number-field">
+                <input
+                  type="number"
+                  id="shapeLineRotation"
+                  min="0"
+                  max="360"
+                  step="1"
+                  value="0"
+                />
+                <span class="rotation-stepper">
+                  <button
+                    type="button"
+                    data-rotation-target="shapeLineRotation"
+                    data-rotation-step="1"
+                    title="增加 1 度"
+                    aria-label="增加 1 度"
+                  >
+                    <svg viewBox="0 0 24 24"><path d="m7 14 5-5 5 5"></path></svg>
+                  </button>
+                  <button
+                    type="button"
+                    data-rotation-target="shapeLineRotation"
+                    data-rotation-step="-1"
+                    title="減少 1 度"
+                    aria-label="減少 1 度"
+                  >
+                    <svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg>
+                  </button>
+                </span>
+                <span class="rotation-unit" aria-hidden="true">°</span>
+              </div>
+            </div>
             <div class="option-row color-row">
               <div class="color-head">
                 <label class="ratio-label">線條顏色</label>
@@ -2746,6 +2780,40 @@
                   <div class="slider-thumb" tabindex="0"></div>
                 </div>
                 <div class="slider-marks"></div>
+              </div>
+            </div>
+            <div class="option-row">
+              <label class="ratio-label" for="shapeArrowRotation">旋轉角度</label>
+              <div class="rotation-number-field">
+                <input
+                  type="number"
+                  id="shapeArrowRotation"
+                  min="0"
+                  max="360"
+                  step="1"
+                  value="0"
+                />
+                <span class="rotation-stepper">
+                  <button
+                    type="button"
+                    data-rotation-target="shapeArrowRotation"
+                    data-rotation-step="1"
+                    title="增加 1 度"
+                    aria-label="增加 1 度"
+                  >
+                    <svg viewBox="0 0 24 24"><path d="m7 14 5-5 5 5"></path></svg>
+                  </button>
+                  <button
+                    type="button"
+                    data-rotation-target="shapeArrowRotation"
+                    data-rotation-step="-1"
+                    title="減少 1 度"
+                    aria-label="減少 1 度"
+                  >
+                    <svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg>
+                  </button>
+                </span>
+                <span class="rotation-unit" aria-hidden="true">°</span>
               </div>
             </div>
             <div class="option-row color-row">

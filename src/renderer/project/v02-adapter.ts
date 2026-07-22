@@ -30,6 +30,17 @@ function markerLabelText(marker: Marker): string {
   return marker.name;
 }
 
+function normalizeRotation(value: unknown): number {
+  const rotation = Number(value);
+  if (!Number.isFinite(rotation)) {
+    return 0;
+  }
+  if (rotation >= 0 && rotation <= 360) {
+    return rotation;
+  }
+  return ((rotation % 360) + 360) % 360;
+}
+
 function projectObjectTypeForShape(
   type: ShapeItem["type"],
 ): MapProject["objects"][number]["type"] {
@@ -133,6 +144,7 @@ export function editorDocumentToV02Objects(
       displayName: shape.displayName,
       width: shape.width,
       height: shape.height,
+      rotation: normalizeRotation(shape.rotation),
       strokeColor: shape.style.strokeColor,
       strokeWidth: shape.style.strokeWidth,
       fillColor: shape.style.fillColor,
@@ -224,6 +236,7 @@ export function mapProjectToEditorDocument(project: MapProject): V02EditorLoadRe
       latitude: lat,
       width: Number(style.width ?? (shapeType === "line" ? 140 : 80)),
       height: Number(style.height ?? (shapeType === "line" ? 0 : 70)),
+      rotation: normalizeRotation(style.rotation),
       text: typeof object.text === "string" ? object.text : undefined,
       style: {
         strokeColor: String(style.strokeColor ?? "#38bdf8"),

@@ -57,6 +57,7 @@ function createProject(): MapProject {
           shapeType: "arrow",
           width: 140,
           height: 56,
+          rotation: 45,
           strokeColor: "#38bdf8",
           strokeWidth: 2,
           fillColor: "#38bdf8",
@@ -99,6 +100,10 @@ describe("mapproj v0.2 editor adapter", () => {
       "marker:marker-1",
       "shape:arrow-1"
     ]);
+    const arrow = loaded.document.objects.find(
+      (object) => object.objectKind === "shape" && object.id === "arrow-1"
+    );
+    expect(arrow?.objectKind === "shape" ? arrow.rotation : undefined).toBe(45);
     expect(loaded.preservedObjects.map((object) => object.id)).toEqual(["polygon-1"]);
   });
 
@@ -115,5 +120,30 @@ describe("mapproj v0.2 editor adapter", () => {
       ["polygon-1", "areaLabel"]
     ]);
     expect(saved[2]).toEqual(createProject().objects[2]);
+    expect(saved[1].style.rotation).toBe(45);
+  });
+
+  it("defaults missing shape rotation to zero", () => {
+    const project = createProject();
+    delete project.objects[1].style.rotation;
+
+    const loaded = mapProjectToEditorDocument(project);
+    const arrow = loaded.document.objects.find(
+      (object) => object.objectKind === "shape" && object.id === "arrow-1"
+    );
+
+    expect(arrow?.objectKind === "shape" ? arrow.rotation : undefined).toBe(0);
+  });
+
+  it("converts legacy negative rotation to an equivalent positive angle", () => {
+    const project = createProject();
+    project.objects[1].style.rotation = -90;
+
+    const loaded = mapProjectToEditorDocument(project);
+    const arrow = loaded.document.objects.find(
+      (object) => object.objectKind === "shape" && object.id === "arrow-1"
+    );
+
+    expect(arrow?.objectKind === "shape" ? arrow.rotation : undefined).toBe(270);
   });
 });
