@@ -463,6 +463,12 @@ const styleOutline = document.getElementById(
 const styleSoft = document.getElementById(
   "styleSoft",
 ) as HTMLButtonElement | null;
+const mapStyleHoverPreview = document.getElementById(
+  "mapStyleHoverPreview",
+) as HTMLDivElement | null;
+const mapStyleHoverCanvas = document.getElementById(
+  "mapStyleHoverCanvas",
+) as HTMLCanvasElement | null;
 const mapStage = document.querySelector(".map-stage") as HTMLDivElement | null;
 const cropFrame = document.getElementById("cropFrame") as HTMLDivElement | null;
 const cropOverlay = document.getElementById(
@@ -615,6 +621,8 @@ let hillshadeBlend: ReliefEffect = "relief-natural";
 let hillshadeImage: HTMLImageElement | null = null;
 let hillshadeTexture: HTMLCanvasElement | null = null;
 let hillshadeProjection: string | null = null;
+let stylePreviewTimer: number | null = null;
+let stylePreviewPointer = { x: 0, y: 0 };
 let editingCoordMarker: Marker | null = null;
 
 function syncHistoryControls(): void {
@@ -774,6 +782,7 @@ function restoreStepOneCropSnapshot(): void {
 
 function setActiveStep(stepId: string): void {
   const previousStep = activeStep;
+  hideMapStylePreview();
   if (previousStep === "1" && (stepId === "2" || stepId === "3")) {
     saveStepOneCropSnapshot();
   }
@@ -898,6 +907,7 @@ function setActiveRatioButton(targetId?: string): void {
 }
 
 function setActiveStyleButton(targetId: string): void {
+  hideMapStylePreview();
   activeStyleId = targetId;
   styleButtons.forEach((button) => {
     button.classList.toggle("active", button.id === targetId);
@@ -1699,20 +1709,31 @@ function hookSteps(): void {
   ratioInputB?.addEventListener("focus", () =>
     setActiveRatioButton("ratioCustom"),
   );
-  styleOriginal?.addEventListener("click", () =>
-    setActiveStyleButton("styleOriginal"),
-  );
-  styleDefault?.addEventListener("click", () =>
-    setActiveStyleButton("styleDefault"),
-  );
-  styleMinimal?.addEventListener("click", () =>
-    setActiveStyleButton("styleMinimal"),
-  );
-  styleDark?.addEventListener("click", () => setActiveStyleButton("styleDark"));
-  styleOutline?.addEventListener("click", () =>
-    setActiveStyleButton("styleOutline"),
-  );
-  styleSoft?.addEventListener("click", () => setActiveStyleButton("styleSoft"));
+  styleButtons.forEach((button) => {
+    button.addEventListener("click", () => setActiveStyleButton(button.id));
+    button.addEventListener("pointerenter", (event) => {
+      if (event.pointerType === "touch") {
+        return;
+      }
+      stylePreviewPointer = { x: event.clientX, y: event.clientY };
+      scheduleMapStylePreview(button.id);
+    });
+    button.addEventListener("pointermove", (event) => {
+      stylePreviewPointer = { x: event.clientX, y: event.clientY };
+      if (mapStyleHoverPreview?.classList.contains("visible")) {
+        positionMapStylePreview(event.clientX, event.clientY);
+      }
+    });
+    button.addEventListener("pointerleave", hideMapStylePreview);
+    button.addEventListener("focus", () => {
+      const rect = button.getBoundingClientRect();
+      stylePreviewPointer = { x: rect.right, y: rect.top + rect.height / 2 };
+      scheduleMapStylePreview(button.id, 120);
+    });
+    button.addEventListener("blur", hideMapStylePreview);
+  });
+  window.addEventListener("blur", hideMapStylePreview);
+  window.addEventListener("resize", hideMapStylePreview);
   reliefToggle?.addEventListener("change", () => {
     setReliefMode(reliefToggle.checked, hillshadeBlend);
   });
@@ -1797,6 +1818,178 @@ function requestBasemapDraw(): void {
   });
 }
 
+function paintCachedBasemap(
+  ctx: CanvasRenderingContext2D,
+  styleId: string,
+  wrapShift: number,
+  wrapSpan: number,
+): void {
+  for (let i = -wrapSpan; i <= wrapSpan; i += 1) {
+    ctx.save();
+    ctx.translate((i + wrapShift) * MAP_WIDTH, 0);
+    for (const layer of cachedBasemapLayers) {
+      const style = layerStyleFor(styleId, layer.id);
+      if (style.fill && style.fill !== "none") {
+        ctx.fillStyle = style.fill;
+        for (const path of layer.paths) {
+          ctx.fill(path);
+        }
+      }
+      if (style.stroke && style.stroke !== "none") {
+        ctx.strokeStyle = style.stroke;
+        ctx.lineWidth = (style.strokeWidth ?? 0.4) / view.scale;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        for (const path of layer.paths) {
+          ctx.stroke(path);
+        }
+      }
+    }
+    ctx.restore();
+  }
+}
+
+function paintHillshade(
+  ctx: CanvasRenderingContext2D,
+  wrapShift: number,
+  wrapSpan: number,
+): void {
+  if (!hillshadeEnabled || !hillshadeTexture) {
+    return;
+  }
+  ctx.globalCompositeOperation = "multiply";
+  ctx.globalAlpha = reliefEffectSettings[hillshadeBlend].alpha;
+  for (let i = -wrapSpan; i <= wrapSpan; i += 1) {
+    ctx.save();
+    ctx.translate((i + wrapShift) * MAP_WIDTH, 0);
+    ctx.drawImage(hillshadeTexture, 0, 0, MAP_WIDTH, MAP_HEIGHT);
+    ctx.restore();
+  }
+}
+
+function hideMapStylePreview(): void {
+  if (stylePreviewTimer !== null) {
+    window.clearTimeout(stylePreviewTimer);
+    stylePreviewTimer = null;
+  }
+  mapStyleHoverPreview?.classList.remove("visible");
+  if (mapStyleHoverPreview) {
+    mapStyleHoverPreview.hidden = true;
+  }
+}
+
+function positionMapStylePreview(clientX: number, clientY: number): void {
+  if (!mapStyleHoverPreview || mapStyleHoverPreview.hidden) {
+    return;
+  }
+  const gap = 14;
+  const edge = 10;
+  const rect = mapStyleHoverPreview.getBoundingClientRect();
+  let left = clientX + gap;
+  let top = clientY - rect.height - gap;
+  if (left + rect.width > window.innerWidth - edge) {
+    left = clientX - rect.width - gap;
+  }
+  if (top < edge) {
+    top = clientY + gap;
+  }
+  mapStyleHoverPreview.style.left = `${Math.min(
+    window.innerWidth - rect.width - edge,
+    Math.max(edge, left),
+  )}px`;
+  mapStyleHoverPreview.style.top = `${Math.min(
+    window.innerHeight - rect.height - edge,
+    Math.max(edge, top),
+  )}px`;
+}
+
+function drawMapStylePreview(styleId: string): boolean {
+  if (
+    !mapStyleHoverCanvas ||
+    !mapStage ||
+    cachedBasemapLayers.length === 0
+  ) {
+    return false;
+  }
+  const previewWidth = 196;
+  const previewHeight = 122;
+  const dpr = window.devicePixelRatio || 1;
+  mapStyleHoverCanvas.width = Math.round(previewWidth * dpr);
+  mapStyleHoverCanvas.height = Math.round(previewHeight * dpr);
+  const ctx = mapStyleHoverCanvas.getContext("2d");
+  if (!ctx) {
+    return false;
+  }
+  const stageRect = mapStage.getBoundingClientRect();
+  const stageWidth = Math.max(1, stageRect.width);
+  const stageHeight = Math.max(1, stageRect.height);
+  const scaleFit = Math.min(stageWidth / MAP_WIDTH, stageHeight / MAP_HEIGHT);
+  const offsetX = (stageWidth - MAP_WIDTH * scaleFit) / 2;
+  const offsetY = (stageHeight - MAP_HEIGHT * scaleFit) / 2;
+  const previewScale = Math.min(
+    previewWidth / stageWidth,
+    previewHeight / stageHeight,
+  );
+  const previewOffsetX = (previewWidth - stageWidth * previewScale) / 2;
+  const previewOffsetY = (previewHeight - stageHeight * previewScale) / 2;
+  const transformScale = view.scale * scaleFit * previewScale * dpr;
+  const transformX =
+    (previewOffsetX + (offsetX + view.tx * scaleFit) * previewScale) * dpr;
+  const transformY =
+    (previewOffsetY + (offsetY + view.ty * scaleFit) * previewScale) * dpr;
+  const wrapShift = shiftLocked ? shiftLockValue : worldShift;
+  const viewWidthMap = stageWidth / Math.max(0.0001, scaleFit * view.scale);
+  const wrapSpan = Math.min(
+    5,
+    Math.max(1, Math.ceil(viewWidthMap / MAP_WIDTH / 2) + 1),
+  );
+
+  ctx.clearRect(0, 0, mapStyleHoverCanvas.width, mapStyleHoverCanvas.height);
+  ctx.save();
+  ctx.setTransform(
+    transformScale,
+    0,
+    0,
+    transformScale,
+    transformX,
+    transformY,
+  );
+  paintCachedBasemap(ctx, styleId, wrapShift, wrapSpan);
+  ctx.restore();
+  if (hillshadeEnabled && hillshadeTexture) {
+    ctx.save();
+    ctx.setTransform(
+      transformScale,
+      0,
+      0,
+      transformScale,
+      transformX,
+      transformY,
+    );
+    paintHillshade(ctx, wrapShift, wrapSpan);
+    ctx.restore();
+  }
+  return true;
+}
+
+function scheduleMapStylePreview(styleId: string, delay = 260): void {
+  hideMapStylePreview();
+  if (activeStep !== "2" || !mapStyleHoverPreview) {
+    return;
+  }
+  stylePreviewTimer = window.setTimeout(() => {
+    stylePreviewTimer = null;
+    if (!drawMapStylePreview(styleId)) {
+      return;
+    }
+    mapStyleHoverPreview.hidden = false;
+    positionMapStylePreview(stylePreviewPointer.x, stylePreviewPointer.y);
+    requestAnimationFrame(() => {
+      mapStyleHoverPreview.classList.add("visible");
+    });
+  }, delay);
+}
+
 function drawBasemap(): void {
   if (!canvas || !svg || cachedBasemapLayers.length === 0) {
     return;
@@ -1829,29 +2022,7 @@ function drawBasemap(): void {
     5,
     Math.max(1, Math.ceil(viewWidthMap / MAP_WIDTH / 2) + 1),
   );
-  for (let i = -wrapSpan; i <= wrapSpan; i += 1) {
-    ctx.save();
-    ctx.translate((i + wrapShift) * MAP_WIDTH, 0);
-    for (const layer of cachedBasemapLayers) {
-      const style = layerStyleFor(activeStyleId, layer.id);
-      if (style.fill && style.fill !== "none") {
-        ctx.fillStyle = style.fill;
-        for (const path of layer.paths) {
-          ctx.fill(path);
-        }
-      }
-      if (style.stroke && style.stroke !== "none") {
-        ctx.strokeStyle = style.stroke;
-        ctx.lineWidth = (style.strokeWidth ?? 0.4) / view.scale;
-        ctx.lineJoin = "round";
-        ctx.lineCap = "round";
-        for (const path of layer.paths) {
-          ctx.stroke(path);
-        }
-      }
-    }
-    ctx.restore();
-  }
+  paintCachedBasemap(ctx, activeStyleId, wrapShift, wrapSpan);
   ctx.restore();
   if (hillshadeEnabled && hillshadeTexture) {
     ctx.save();
@@ -1863,20 +2034,7 @@ function drawBasemap(): void {
       (offsetX + view.tx * scaleFit) * dpr,
       (offsetY + view.ty * scaleFit) * dpr,
     );
-    ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = reliefEffectSettings[hillshadeBlend].alpha;
-    const wrapShift = shiftLocked ? shiftLockValue : worldShift;
-    const viewWidthMap = stageWidth / Math.max(0.0001, scaleFit * view.scale);
-    const wrapSpan = Math.min(
-      5,
-      Math.max(1, Math.ceil(viewWidthMap / MAP_WIDTH / 2) + 1),
-    );
-    for (let i = -wrapSpan; i <= wrapSpan; i += 1) {
-      ctx.save();
-      ctx.translate((i + wrapShift) * MAP_WIDTH, 0);
-      ctx.drawImage(hillshadeTexture, 0, 0, MAP_WIDTH, MAP_HEIGHT);
-      ctx.restore();
-    }
+    paintHillshade(ctx, wrapShift, wrapSpan);
     ctx.restore();
   }
 }

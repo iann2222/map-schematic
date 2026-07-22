@@ -4,7 +4,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 const layerStylePresets: Record<string, Record<string, LayerStyle>> = {
   styleOriginal: {
-    ocean: { fill: "#0f1c3f" }, land: { fill: "#1f2937" }, lakes: { fill: "#142247" },
+    ocean: { fill: "#172650" }, land: { fill: "#2a3446" }, lakes: { fill: "#1d2d59" },
     rivers: { stroke: "#3b82f6", strokeWidth: 0.6 }, coastline: { stroke: "#cbd5f5", strokeWidth: 0.6 },
   },
   styleDefault: {

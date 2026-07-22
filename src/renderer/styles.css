@@ -973,13 +973,55 @@ select:focus-visible,
   border-color: var(--ui-accent-border);
 }
 
+.map-style-hover-preview {
+  position: fixed;
+  z-index: 70;
+  width: 208px;
+  padding: 6px;
+  background: color-mix(in srgb, var(--ui-surface-strong) 94%, transparent);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 8px;
+  box-shadow: var(--ui-shadow-popover);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px) scale(0.985);
+  transform-origin: top left;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  backdrop-filter: blur(10px);
+}
+
+.map-style-hover-preview[hidden] {
+  display: none;
+}
+
+.map-style-hover-preview.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.map-style-hover-preview canvas {
+  display: block;
+  width: 196px;
+  height: 122px;
+  background: var(--ui-stage);
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-style-hover-preview {
+    transition: none;
+  }
+}
+
 .map-style-preview {
   position: relative;
   width: 58px;
   height: 38px;
   overflow: hidden;
-  background: #b9d8eb;
-  border: 1px solid #a7adb4;
+  background: #2c3f76;
+  border: 1px solid #cbd5f5;
   border-radius: 4px;
 }
 
@@ -994,8 +1036,8 @@ select:focus-visible,
   top: 10px;
   width: 44px;
   height: 29px;
-  background: #e8dcc1;
-  border: 1px solid rgba(32, 34, 38, 0.38);
+  background: #4a5870;
+  border: 1px solid #cbd5f5;
   border-radius: 55% 35% 30% 45%;
   transform: rotate(-8deg);
 }
@@ -1005,58 +1047,64 @@ select:focus-visible,
   top: -7px;
   width: 29px;
   height: 24px;
-  background: #e8dcc1;
-  border: 1px solid rgba(32, 34, 38, 0.38);
+  background: #4a5870;
+  border: 1px solid #cbd5f5;
   border-radius: 35% 60% 45% 45%;
 }
 
 .map-style-preview.light {
-  background: #dcecf4;
+  background: #dbeafe;
+  border-color: #94a3b8;
 }
 
 .map-style-preview.light::before,
 .map-style-preview.light::after {
-  background: #f8f5ea;
+  background: #f1f5f9;
+  border-color: #94a3b8;
 }
 
 .map-style-preview.dark {
-  background: #1e3a4a;
+  background: #0b1020;
+  border-color: #cbd5f5;
 }
 
 .map-style-preview.dark::before,
 .map-style-preview.dark::after {
-  background: #4b6357;
-  border-color: #87a692;
+  background: #1f2a44;
+  border-color: #cbd5f5;
 }
 
 .map-style-preview.soft {
-  background: #cfdadc;
+  background: #e8f0fb;
+  border-color: #c3cee3;
 }
 
 .map-style-preview.soft::before,
 .map-style-preview.soft::after {
-  background: #d9d3c5;
-  border-color: #8a938e;
+  background: #faf6e8;
+  border-color: #c3cee3;
 }
 
 .map-style-preview.outline {
-  background: #f8f8f5;
+  background: transparent;
+  border-color: #e2e8f0;
 }
 
 .map-style-preview.outline::before,
 .map-style-preview.outline::after {
-  background: #f8f8f5;
-  border-color: #3f444a;
+  background: transparent;
+  border-color: #e2e8f0;
 }
 
 .map-style-preview.minimal {
-  background: #f1f3f4;
+  background: #eef2f7;
+  border-color: #aebccd;
 }
 
 .map-style-preview.minimal::before,
 .map-style-preview.minimal::after {
-  background: #ffffff;
-  border-color: #b4b9bf;
+  background: #f1f5f9;
+  border-color: #aebccd;
 }
 
 .map-style-copy {
