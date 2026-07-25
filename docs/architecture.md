@@ -9,7 +9,8 @@
 - `docs/`：產品與技術架構文件。
 - `src/`：Electron main、preload、renderer 與共用 TypeScript 原始碼。
 - `test/`：本機自動化測試與共用測試資料。
-- `scripts/`：建置與官方資料包製作輔助腳本。
+- `scripts/`：編譯靜態資源與官方資料包製作輔助腳本。
+- `packaging/`：Windows 封裝設定、目標格式選擇與封裝腳本。
 - `geodata/`：開發模式的官方資料包根目錄，已由 gitignore 排除。
 - `geodata_source/`：資料包原始資料，已由 gitignore 排除。
 - `project_files/`：開發模式的專案檔與匯出預設目錄，已由 gitignore 排除。
@@ -27,7 +28,7 @@
 
 1. `npm run build`
    - 編譯 main（CommonJS）與 renderer（ESM）。
-   - 複製 renderer 靜態檔到 `dist/renderer/`。
+   - 複製 renderer 靜態檔到 `out/renderer/`。
 2. `npm start`
    - 啟動 Electron 並載入 preload 與 renderer。
    - 檢查官方資料包是否存在且完整。
@@ -35,6 +36,9 @@
    - 已安裝資料包損壞且無法恢復時，先詢問使用者是否重新下載。
 3. `npm run start:dev`
    - 依序執行建置與啟動，適合本機開發。
+4. `npm run package:win`
+   - 先建置，再依 `packaging/release-config.mjs` 產生 Windows x64 安裝程式、可攜式資料夾或可攜式 ZIP。
+   - 產物位於 `dist/`；不包含官方資料包；完成後會印出實際產物路徑。
 
 ## 本機測試
 
@@ -57,6 +61,8 @@
   - 建立安全隔離的 Electron 視窗與應用程式選單。
   - 註冊資料包、底圖、地形、GeoNames、專案檔與匯出 IPC。
   - 管理檔案選擇、未儲存變更確認、專案備份恢復詢問、PDF 產生及開發版／封裝版輸出路徑。
+- `src/main/data-root.ts`
+  - 決定開發版與封裝版共用的官方資料包位置，並保留使用中的位置設定。
 - `src/main/preload.ts`
   - 透過 `contextBridge` 提供受限的 renderer API。
 - `src/main/datapack-download.ts`
@@ -113,9 +119,11 @@
 
 ## 資料與輸出路徑
 
-- 開發模式：`MAP_SCHEMATIC_ROOT` 預設為 repo 根目錄，資料包位於 `geodata/`，專案與匯出預設位於 `project_files/`。
-- 封裝版本：`MAP_SCHEMATIC_ROOT` 預設為 Electron `userData`，資料包位於其下的 `geodata/`；專案與匯出預設位於使用者文件目錄下的 `map-schematic/`。
-- 可透過 `MAP_SCHEMATIC_ROOT` 覆寫資料根目錄；程式碼不得硬編碼絕對路徑。
+- 資料包根目錄由 `src/main/data-root.ts` 統一決定，實際資料位於其下的 `geodata/`；開發版與封裝版會讀取 `%LOCALAPPDATA%\map-schematic\datapack-location.json` 的相同位置設定，因此可共用同一份資料包。
+- 第一次從已有資料包的開發版啟動時，會使用 repo 根目錄並記住這個位置；之後安裝版會直接共用該資料包。
+- 若尚無既有資料包，兩種模式都預設使用 `%LOCALAPPDATA%\map-schematic\geodata`，首次初始化後只會保存一份。
+- `MAP_SCHEMATIC_ROOT` 可暫時覆寫資料包根目錄，供可攜式部署、測試或進階使用；程式碼不得硬編碼絕對路徑。
+- 專案與匯出預設位置：開發模式為 repo 的 `project_files/`；封裝版本為使用者文件目錄下的 `map-schematic/`。
 
 ## 資料包建置與發佈
 
@@ -123,5 +131,9 @@
   - 讀取 `geodata_source/`，在暫存建置目錄建立並驗證完整資料包，成功後才替換正式產物；缺少必要內容時保留舊建置。
 - `scripts/update_pack_release.py`
   - 驗證資料包 ZIP 內的 manifest、檔案清單、大小與 checksum，再由 manifest 產生 `pack-release.json` 的 id／version。
+- `out/`
+  - TypeScript 編譯結果與 renderer 靜態檔。
 - `dist/`
-  - 存放 TypeScript 編譯結果與 renderer 靜態檔，不是原始碼來源。
+  - Windows 封裝產物，例如安裝程式與 exe。
+- `packaging/`
+  - 集中 Windows 封裝設定、目標格式選擇與封裝腳本。可輸出 NSIS 安裝程式、可攜式資料夾或可攜式 ZIP，且不會發佈或下載資料包。

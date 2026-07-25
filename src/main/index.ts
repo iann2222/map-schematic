@@ -17,6 +17,7 @@ import type {
   ReadyDataPack
 } from "../shared/datapack/types";
 import { resolveDataRoot } from "../shared/paths";
+import { configureDataRoot } from "./data-root";
 import { searchGeonames } from "./geonames";
 import { ensureDatapackReady } from "./datapack-download";
 
@@ -178,11 +179,18 @@ function attachUnsavedChangesGuard(win: BrowserWindow): void {
   });
 }
 
+function developmentWindowIcon(): string | undefined {
+  return app.isPackaged
+    ? undefined
+    : path.join(app.getAppPath(), "packaging", "icon.ico");
+}
+
 function createMainWindow() {
-  const preloadPath = path.join(app.getAppPath(), "dist", "main", "preload.js");
-  const htmlPath = path.join(app.getAppPath(), "dist", "renderer", "index.html");
+  const preloadPath = path.join(app.getAppPath(), "out", "main", "preload.js");
+  const htmlPath = path.join(app.getAppPath(), "out", "renderer", "index.html");
 
   const win = new BrowserWindow({
+    icon: developmentWindowIcon(),
     width: 1200,
     height: 860,
     minWidth: 960,
@@ -383,7 +391,7 @@ function defaultProjectPath(): string {
 }
 
 app.whenReady().then(() => {
-  process.env.MAP_SCHEMATIC_ROOT ??= app.isPackaged ? app.getPath("userData") : process.cwd();
+  configureDataRoot();
   Menu.setApplicationMenu(buildAppMenu());
 
   ipcMain.on("app-dialog:response", (event, payload: unknown) => {

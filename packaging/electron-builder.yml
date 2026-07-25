@@ -1,0 +1,26 @@
+appId: com.iann2222.mapschematic
+directories:
+  output: dist
+files:
+  - out/**
+  - pack-release.json
+  - package.json
+  - "!geodata/**"
+  - "!geodata_source/**"
+  - "!project_files/**"
+  - "!test/**"
+  - "!docs/**"
+  - "!scripts/**"
+  - "!src/**"
+asar: true
+asarUnpack:
+  - node_modules/better-sqlite3/**
+artifactName: ${productName}-${version}-Setup-${arch}.${ext}
+win:
+  icon: packaging/icon.ico
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false

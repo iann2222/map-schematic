@@ -1,7 +1,10 @@
 ﻿# Dependencies
 node_modules/
 
-# Build output
+# Application build output
+out/
+
+# Packaged release output
 dist/
 
 # Local data

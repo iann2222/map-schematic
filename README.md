@@ -1,6 +1,6 @@
 # map-schematic
 
-`map-schematic` 是一套 Electron + TypeScript 的離線地圖示意圖製作工具。使用者可基於真實地理形狀設定地圖範圍與底圖樣式，加入地名、文字、點、線、區域與箭頭，並保存為可重新編輯的 `.mapproj` 專案檔。
+`map-schematic` 是一套 Electron + TypeScript 的離線地圖示意圖製作工具。使用者可基於真實地理形狀設定地圖範圍與底圖樣式，加入地名、文字、點、線、區域與箭頭，並儲存為可重新編輯的 `.mapproj` 專案檔。
 
 ## 核心原則
 
@@ -13,62 +13,54 @@
 
 - Step 0 大致定位、Step 1 範圍與比例、Step 2 底圖樣式、Step 3 標示與繪製。
 - Natural Earth 向量底圖、GeoNames 離線搜尋、座標搜尋與地形陰影。
-- 統一資料包 manager：完整性驗證、active 版本管理、安全更新、舊版 fallback 與損壞修復。
-- 點、文字、線、區域與箭頭標示，並支援排序、拖曳、樣式調整與 Undo/Redo。
-- `.mapproj` 專案檔遷移、原子儲存、有效備份、確認後恢復、結構驗證與資料包版本提示。
-- PNG、PDF 與真正向量 SVG 匯出；PNG／PDF 匯出前可選擇無外框或簡易畫框。
-- 本機系統字型選項與 fallback；專案檔保存字型設定，但不內嵌字型檔。
-- Vitest 本機自動化測試。
+- 統一資料包管理：完整性驗證、版本切換、安全更新、舊版回退與損壞修復。
+- 點、文字、線、區域與箭頭標示，支援排序、拖曳、樣式調整與復原／重做。
+- `.mapproj` 專案檔支援版本遷移、原子儲存、備份與復原、結構驗證與資料包版本提示。
+- 匯出 PNG、PDF 與向量 SVG，PNG／PDF 可選擇無外框或簡易畫框。
+- 支援本機系統字型（含 fallback）；專案檔僅記錄字型設定，不內嵌字型檔。
+- 內建 Vitest 自動化測試。
 
 ## 開始使用
 
-開發環境支援 Node 20（20.19 以上）、Node 22（22.12 以上）與 Node 24 以上，建議使用 Node 20 LTS。若使用 nvm 或 fnm，可依 `.nvmrc` 切換版本。
-
-安裝依賴：
+**環境需求**：Node 20（20.19 以上）、22（22.12 以上）或 24 以上，建議使用 Node 20 LTS。若使用 nvm 或 fnm，可依 `.nvmrc` 切換版本。
 
 ```powershell
+# 安裝依賴
 npm ci
-```
 
-建置並啟動 Electron：
-
-```powershell
+# 建置並啟動 Electron
 npm run start:dev
-```
 
-若已完成建置，可直接啟動：
-
-```powershell
+# 已完成建置後，可直接啟動
 npm start
 ```
 
-換裝置、作業系統或 CPU 架構時，請重新執行 `npm ci`，不要直接複製 `node_modules`；安裝後專案會自動重建 `better-sqlite3` 的 Electron 原生模組。打包後的應用程式已內含 runtime，一般使用者無需安裝 Node.js。
+> 換裝置、作業系統或 CPU 架構時，請重新執行 `npm ci`，不要直接複製 `node_modules`；安裝時會自動重建 `better-sqlite3` 的原生模組。打包後的應用程式已內含 runtime，一般使用者不需安裝 Node.js。
 
-首次啟動若缺少資料包，程式會依 `pack-release.json` 下載並驗證官方資料包。若已安裝的資料包損壞且無法由上一版本恢復，程式會先徵得使用者同意，才重新連網下載。
+**首次啟動**：若缺少資料包，程式會依 `pack-release.json` 自動下載並驗證官方資料包。若已安裝的資料包損壞且無法從舊版本恢復，程式會先徵得使用者同意，才重新連網下載。
 
-### 新裝置啟動
-
-取得專案後，依序執行：
+**新裝置啟動範例**：
 
 ```powershell
 cd path\to\map-schematic
-fnm install 20
-fnm use 20
+fnm install 20   # 或 nvm install 20
+fnm use 20       # 或 nvm use 20
 npm ci
 npm run start:dev
 ```
 
 使用 nvm 時，將前兩行改為 `nvm install 20` 與 `nvm use 20`。首次啟動若本機缺少完整資料包，應用程式會詢問並下載官方資料包；安裝驗證完成後，日常使用即不需網路連線。
 
-資料包不會隨 Git repository 複製。搬移既有 `.mapproj` 專案檔時，請確認新裝置已安裝相容的資料包版本；最簡單的方式是讓應用程式於首次啟動時自行初始化。
+資料包不會隨 Git repository 複製。搬移既有 `.mapproj` 專案檔時，請確認新裝置已安裝相容版本的資料包，最簡單的方式是讓應用程式於首次啟動時自行初始化。
 
 ## 測試與建置
 
 ```powershell
-npm test
-npm run test:watch
-npm run test:typecheck
-npm run build
+npm test                # 執行測試
+npm run test:watch      # 監看模式
+npm run test:typecheck  # 型別檢查
+npm run build           # 建置
+npm run package:win     # Windows 封裝
 ```
 
 各測試指令的用途詳見 `docs/architecture.md`。
@@ -81,10 +73,32 @@ npm run build
 - 開發與資料政策：`AGENTS.md`
 - 資料來源與授權：`ATTRIBUTIONS.md`
 
+## Windows 封裝
+
+```powershell
+npm run package:win
+```
+
+此指令會先建置，再依 `packaging/release-config.mjs` 產生 x64 產物，完成後終端機會印出實際產物路徑。`releaseTarget` 可選擇以下三種格式（各格式說明見檔案內註解）：
+
+| 格式     | 產物位置                               | 說明                                       |
+| -------- | -------------------------------------- | ------------------------------------------ |
+| `setup`  | `dist/Map Schematic-<version>-Setup-x64.exe` | 安裝程式，已內含 Electron runtime    |
+| `folder` | `dist/win-unpacked/`                   | 可攜式程式，執行其中的 `Map Schematic.exe` |
+| `zip`    | `dist/Map Schematic-<version>-Portable-x64.zip` | 可攜式程式壓縮檔                      |
+
+封裝產物中不含官方資料包；首次啟動時仍會詢問並下載、驗證，之後即可離線使用。
+
+> 封裝使用 `packaging/icon.ico` 作為 Windows 應用程式、安裝程式與捷徑圖示；原始設計檔保留為 `packaging/icon-source.png`。尚未設定程式碼簽章，首次執行或安裝時 Windows 可能顯示未知發行者或 SmartScreen 提示。
+
+更換原始 PNG 後，可在 Windows 執行 `powershell -ExecutionPolicy Bypass -File packaging/create-icon.ps1`，重新產生多尺寸的 `icon.ico`。
+
 ## 資料與輸出位置
 
-- **目前的開發模式**：以 `npm run start:dev` 或 `npm start` 從 repo 啟動時，資料包位於 repo 的 `geodata/`，專案檔與匯出預設位於 `project_files/`。
-- **未來的封裝版本**：透過安裝後的桌面應用程式啟動時，資料包位於 Electron `userData` 下的 `geodata/`，專案檔與匯出預設位於使用者文件目錄下的 `map-schematic/`。
-- 兩種模式預設使用不同位置，不會自動共用資料包。目前 repo 尚未提供封裝腳本；新裝置 clone 後依 README 的啟動流程執行，仍屬於開發模式。
+- **共用資料包**：開發版與安裝版共用同一個資料包根目錄（實際資料位於其下的 `geodata/`），不會因安裝版而複製一份。位置設定儲存於 `%LOCALAPPDATA%\map-schematic\datapack-location.json`。
+- **首次從開發版啟動**：若 repo 內已有完整資料包，會直接使用 repo 的 `geodata/`，並讓之後的安裝版共用它。
+- **無既有資料包時**：開發版與安裝版皆使用 `%LOCALAPPDATA%\map-schematic\geodata`；初始化完成後只會保留一份資料包。
+- **進階指定位置**：可在啟動前設定環境變數 `MAP_SCHEMATIC_ROOT`，暫時指定包含 `geodata/` 的根目錄，適合可攜式部署或測試。
+- **專案與匯出**：開發模式預設使用 repo 的 `project_files/`；安裝版預設使用使用者文件目錄下的 `map-schematic/`。
 
 大型資料與本機輸出不應提交至 Git repository。
