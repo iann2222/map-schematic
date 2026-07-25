@@ -10,7 +10,7 @@
   "main": "out/main/index.js",
   "scripts": {
     "build": "node scripts/clean-output.mjs && tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json && node scripts/copy-static.mjs",
-    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "electron-builder install-app-deps",
     "start": "electron .",
     "start:dev": "npm run build && electron .",
     "package:win": "node packaging/package-win.mjs",
@@ -19,16 +19,15 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "adm-zip": "^0.5.12",
-    "better-sqlite3": "^9.4.3"
+    "adm-zip": "^0.6.0",
+    "better-sqlite3": "^12.11.1"
   },
   "devDependencies": {
-    "@types/adm-zip": "^0.5.5",
-    "@types/better-sqlite3": "^7.6.10",
-    "@types/node": "^20.11.30",
-    "electron": "^30.0.0",
-    "electron-builder": "^25.1.8",
-    "electron-rebuild": "^3.2.9",
+    "@types/adm-zip": "^0.5.8",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.19.43",
+    "electron": "^41.7.1",
+    "electron-builder": "26.0.0",
     "typescript": "^5.4.5",
     "vitest": "^4.1.10"
   }
