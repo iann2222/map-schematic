@@ -98,6 +98,23 @@ describe("validateProject", () => {
     );
   });
 
+  it("requires longitude/latitude viewport coordinates to use EPSG:4326", () => {
+    const project = createTestProject() as unknown as {
+      viewport: { projection: string };
+    };
+    project.viewport.projection = "EPSG:3857";
+
+    expect(validateProject(project)).toMatchObject({
+      valid: false,
+      errors: [
+        {
+          path: "viewport.projection",
+          message: "must be EPSG:4326 because bbox uses longitude/latitude degrees"
+        }
+      ]
+    });
+  });
+
   it("rejects malformed ordering and ratio settings", () => {
     const project = createTestProject() as unknown as Record<string, unknown>;
     project.ui = {

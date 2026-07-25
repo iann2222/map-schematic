@@ -2439,6 +2439,7 @@ function setPreviewMarker(result: GeonamesResult): void {
   previewMarker = {
     objectKind: "marker",
     id: `preview-${result.id}`,
+    layerId: defaultObjectLayerId(),
     name:
       result.nameAlt && result.nameAlt !== result.name
         ? result.nameAlt
@@ -2523,6 +2524,7 @@ function buildCoordMarker(
   return {
     objectKind: "marker",
     id: `${idPrefix}-${Date.now()}`,
+    layerId: defaultObjectLayerId(),
     name: "座標標示",
     nameAlt: coordsText,
     latitude: parsed.lat,
@@ -2590,6 +2592,7 @@ function buildManualMarkerAt(center: { lon: number; lat: number }): Marker {
   return {
     objectKind: "marker",
     id: `manual-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    layerId: defaultObjectLayerId(),
     name: `點標示${manualMarkerCount}`,
     latitude: center.lat,
     longitude: center.lon,
@@ -2605,6 +2608,7 @@ function buildPreviewMarkerAt(center: { lon: number; lat: number }): Marker {
   return {
     objectKind: "marker",
     id: "preview-tool-marker",
+    layerId: defaultObjectLayerId(),
     name: "點標示",
     latitude: center.lat,
     longitude: center.lon,
@@ -2625,6 +2629,7 @@ function buildShapeAt(
   return {
     objectKind: "shape",
     id: `shape-${type}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    layerId: defaultObjectLayerId(),
     type,
     longitude: center.lon,
     latitude: center.lat,
@@ -2859,6 +2864,7 @@ function addMarkerFromGeonames(result: GeonamesResult): void {
   const marker: Marker = {
     objectKind: "marker",
     id: `geo-${result.id}-${Date.now()}`,
+    layerId: defaultObjectLayerId(),
     name: nameLocal,
     nameAlt: nameOriginal,
     latitude: result.latitude,
@@ -3941,6 +3947,15 @@ function currentSelectionBBox(): BBox {
   return { ...WORLD_BBOX };
 }
 
+function defaultObjectLayerId(): string {
+  const layers = currentProject?.layers ?? [];
+  return (
+    layers.find((layer) => layer.id === "layer-1")?.id ??
+    layers[0]?.id ??
+    "layer-1"
+  );
+}
+
 function buildProject(): MapProject | null {
   if (!currentPackVersion || !currentPackId) {
     return null;
@@ -3960,19 +3975,9 @@ function buildProject(): MapProject | null {
           zIndex: 0,
         },
       ];
-  if (!layers.some((layer) => layer.id === "layer-1")) {
-    layers.push({
-      id: "layer-1",
-      name: "Default",
-      visible: true,
-      locked: false,
-      opacity: 1,
-      zIndex: layers.length,
-    });
-  }
   return {
     ...(currentProject ?? {}),
-    schemaVersion: "0.2",
+    schemaVersion: "0.3",
     createdAt: base,
     updatedAt: now,
     dataPackVersion: currentPackVersion,
@@ -3986,6 +3991,7 @@ function buildProject(): MapProject | null {
     objects: editorDocumentToV02Objects(
       editorDocument,
       preservedProjectObjects,
+      defaultObjectLayerId(),
     ),
     ui: {
       ...(currentProject?.ui ?? {}),

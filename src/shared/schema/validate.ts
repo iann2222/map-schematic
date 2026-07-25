@@ -119,8 +119,11 @@ export function validateProject(input: unknown): ValidationResult {
   if (!isRecord(viewport)) {
     errors.push({ path: "viewport", message: "must be an object" });
   } else {
-    if (viewport.projection !== "EPSG:3857" && viewport.projection !== "EPSG:4326") {
-      errors.push({ path: "viewport.projection", message: "unsupported projection" });
+    if (viewport.projection !== "EPSG:4326") {
+      errors.push({
+        path: "viewport.projection",
+        message: "must be EPSG:4326 because bbox uses longitude/latitude degrees"
+      });
     }
     validateBBox(viewport.bbox, "viewport.bbox", errors);
   }

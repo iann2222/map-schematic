@@ -12,6 +12,7 @@ export type MarkerStyle = {
 export type Marker = {
   objectKind: "marker";
   id: string;
+  layerId: string;
   name: string;
   nameAlt?: string;
   displayName?: string;
@@ -39,6 +40,7 @@ export type ShapeStyle = {
 export type ShapeItem = {
   objectKind: "shape";
   id: string;
+  layerId: string;
   type: "line" | "area" | "text" | "arrow";
   displayName?: string;
   longitude: number;

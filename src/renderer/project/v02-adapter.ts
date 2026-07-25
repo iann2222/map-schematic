@@ -96,13 +96,14 @@ function markerSourceType(
 export function editorDocumentToV02Objects(
   document: EditorDocument,
   preservedObjects: MapProject["objects"] = [],
+  defaultLayerId = "layer-1",
 ): MapProject["objects"] {
   const markers = document.objects.filter(isMarker);
   const shapes = document.objects.filter(isShape);
   const markerObjects: MapProject["objects"] = markers.map((marker, index) => ({
     id: marker.id || `obj-${index + 1}`,
     type: "pointLabel",
-    layerId: "layer-1",
+    layerId: marker.layerId || defaultLayerId,
     style: {
       name: marker.name,
       nameAlt: marker.nameAlt,
@@ -138,7 +139,7 @@ export function editorDocumentToV02Objects(
   const shapeObjects: MapProject["objects"] = shapes.map((shape, index) => ({
     id: shape.id || `shape-${index + 1}`,
     type: projectObjectTypeForShape(shape.type),
-    layerId: "layer-1",
+    layerId: shape.layerId || defaultLayerId,
     style: {
       shapeType: shape.type,
       displayName: shape.displayName,
@@ -190,6 +191,7 @@ export function mapProjectToEditorDocument(project: MapProject): V02EditorLoadRe
       objects.push({
         objectKind: "marker",
         id: object.id,
+        layerId: object.layerId,
         name,
         nameAlt:
           typeof style.nameAlt === "string"
@@ -230,6 +232,7 @@ export function mapProjectToEditorDocument(project: MapProject): V02EditorLoadRe
     objects.push({
       objectKind: "shape",
       id: object.id,
+      layerId: object.layerId,
       type: shapeType,
       displayName: typeof style.displayName === "string" ? style.displayName : undefined,
       longitude: lon,

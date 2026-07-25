@@ -19,6 +19,7 @@ function createMarker(name = "A"): Marker {
   return {
     objectKind: "marker",
     id: "marker-1",
+    layerId: "layer-1",
     name,
     latitude: 25,
     longitude: 121,
@@ -40,6 +41,7 @@ function createShape(): ShapeItem {
   return {
     objectKind: "shape",
     id: "shape-1",
+    layerId: "layer-1",
     type: "text",
     longitude: 120,
     latitude: 24,

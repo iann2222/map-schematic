@@ -18,17 +18,17 @@ function createLegacyProject(): Record<string, unknown> {
 }
 
 describe("migrateProject", () => {
-  it("migrates a 0.1 project to 0.2 and adds the UI container", () => {
+  it("migrates a 0.1 project to 0.3 and adds the UI container", () => {
     const legacy = createLegacyProject();
     const result = migrateProject(legacy);
 
     expect(result).toMatchObject({
       fromVersion: "0.1",
-      toVersion: "0.2",
+      toVersion: "0.3",
       migrated: true,
-      appliedVersions: ["0.2"]
+      appliedVersions: ["0.2", "0.3"]
     });
-    expect(result.project.schemaVersion).toBe("0.2");
+    expect(result.project.schemaVersion).toBe("0.3");
     expect(result.project.ui).toEqual({});
     expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
     expect(legacy).not.toHaveProperty("ui");
@@ -43,6 +43,21 @@ describe("migrateProject", () => {
       hillshadeEnabled: true,
       ratioMode: "fixed"
     });
+  });
+
+  it("normalizes the legacy viewport projection to its longitude/latitude bbox contract", () => {
+    const legacy = createTestProject() as unknown as {
+      schemaVersion: string;
+      viewport: { projection: string };
+    };
+    legacy.schemaVersion = "0.2";
+    legacy.viewport.projection = "EPSG:3857";
+
+    const result = migrateProject(legacy);
+
+    expect(result.project.viewport.projection).toBe("EPSG:4326");
+    expect(result.appliedVersions).toEqual(["0.3"]);
+    expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
   });
 
   it("does not hide invalid legacy UI values", () => {

@@ -38,6 +38,20 @@ const migrations: Record<string, MigrationStep> = {
           : isRecord(project.ui)
             ? { ...project.ui }
             : project.ui
+      })
+  },
+  "0.2": {
+    toVersion: "0.3",
+    migrate: (project) => ({
+      ...project,
+      schemaVersion: "0.3",
+      viewport: isRecord(project.viewport)
+        ? {
+            ...project.viewport,
+            // The bbox contract has always used longitude/latitude degrees.
+            projection: "EPSG:4326"
+          }
+        : project.viewport
     })
   }
 };

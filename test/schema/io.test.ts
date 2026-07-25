@@ -30,7 +30,7 @@ describe("project schema IO", () => {
     const project = createTestProject();
     const serialized = serializeProject(project);
 
-    expect(serialized).toContain('\n  "schemaVersion": "0.2"');
+    expect(serialized).toContain('\n  "schemaVersion": "0.3"');
     expect(JSON.parse(serialized)).toEqual(project);
   });
 
@@ -180,13 +180,14 @@ describe("project schema IO", () => {
     await fs.writeFile(filePath, JSON.stringify(legacy), "utf8");
 
     const loaded = await loadProjectFromFile(filePath);
-    expect(loaded.project.schemaVersion).toBe("0.2");
+    expect(loaded.project.schemaVersion).toBe("0.3");
     expect(loaded.project.ui).toEqual({});
     expect(loaded.validation.valid).toBe(true);
     expect(loaded.migration).toMatchObject({
       migrated: true,
       fromVersion: "0.1",
-      toVersion: "0.2"
+      toVersion: "0.3",
+      appliedVersions: ["0.2", "0.3"]
     });
   });
 
@@ -195,7 +196,7 @@ describe("project schema IO", () => {
     await fs.writeFile(
       filePath,
       JSON.stringify({
-        schemaVersion: "0.2",
+        schemaVersion: "0.3",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         dataPackVersion: "2026.02",

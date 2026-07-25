@@ -8,7 +8,7 @@ import type {
 
 export type * from "./mapproj-contract";
 
-export const CURRENT_SCHEMA_VERSION = "0.2" as const satisfies SchemaVersion;
+export const CURRENT_SCHEMA_VERSION = "0.3" as const satisfies SchemaVersion;
 
 export function createEmptyProject(params: {
   dataPackVersion: string;
@@ -18,7 +18,7 @@ export function createEmptyProject(params: {
   viewport?: Partial<Viewport>;
 }): MapProject {
   const now = new Date().toISOString();
-  const projection: Projection = params.projection ?? "EPSG:3857";
+  const projection: Projection = params.projection ?? "EPSG:4326";
   const canvas: Canvas = {
     width: params.canvas?.width ?? 1280,
     height: params.canvas?.height ?? 720,

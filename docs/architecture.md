@@ -93,7 +93,7 @@
   - 比較目前專案與最近一次成功儲存／載入的內容，供未儲存狀態提示使用。
   - 分離目前 renderer 可編輯的 point 物件與尚未支援的幾何物件；後者不顯示，但再次儲存時會原樣保留。
 - `src/renderer/project/v02-adapter.ts`
-  - 集中處理 `.mapproj` v0.2 與 `EditorDocument` 的雙向轉換，renderer 互動邏輯不直接解析專案欄位。
+  - 集中處理 `.mapproj` 與 `EditorDocument` 的雙向轉換，保留可編輯物件的圖層歸屬，renderer 互動邏輯不直接解析專案欄位。
 - `src/renderer/map/geometry.ts`
   - 集中 EPSG:4326／EPSG:3857 投影與 GeoJSON 至 SVG path 轉換。
 - `src/renderer/ui/slider.ts`
@@ -107,11 +107,11 @@
   - 定義 manifest／release 契約、檔案校驗、active 版本、初始化、更新、修復、安全啟用與 fallback。
   - `pack-release.json` 是目標資料包 id／version 的唯一來源，不另在程式碼維護重複版本常數。
 - `src/shared/schema/mapproj.ts`
-  - 提供目前 `.mapproj` v0.2 版本常數與初始專案。
+  - 提供目前 `.mapproj` v0.3 版本常數與初始專案。
 - `src/shared/schema/mapproj-contract.d.ts`
   - 集中定義 main、preload、renderer 共用的 `.mapproj` 資料契約。
 - `src/shared/schema/migrate.ts`
-  - 依 schemaVersion 逐版遷移專案；目前支援 v0.1 → v0.2，未知版本不會被猜測轉換。
+  - 依 schemaVersion 逐版遷移專案；目前支援 v0.1 → v0.2 → v0.3，未知版本不會被猜測轉換。
 - `src/shared/schema/validate.ts`
   - 驗證專案結構、物件、座標、樣式、ID 與圖層引用。
 - `src/shared/schema/io.ts`

@@ -1,6 +1,7 @@
-export type SchemaVersion = "0.2";
+export type SchemaVersion = "0.3";
 
-export type Projection = "EPSG:3857" | "EPSG:4326";
+// Viewport bbox values are always longitude/latitude degrees.
+export type Projection = "EPSG:4326";
 
 export type CanvasUnit = "px" | "mm";
 
