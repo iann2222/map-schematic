@@ -190,6 +190,52 @@ describe("DataPackManager", () => {
     await expect(fs.access(previousRoot)).resolves.toBeUndefined();
   });
 
+  it("restores a damaged target when replacing it with a downloaded pack fails", async () => {
+    const oldRef = { id: "standard", version: "2026.02" };
+    const oldRoot = getPackRoot(dataRoot, oldRef.id, oldRef.version);
+    const targetRoot = getPackRoot(dataRoot, targetRef.id, targetRef.version);
+    await createTestDatapack(oldRoot, oldRef);
+    await setActivePack(dataRoot, oldRef);
+    await createTestDatapack(targetRoot, targetRef);
+    const damagedFile = path.join(targetRoot, "basemap", "land.geojson");
+    await fs.writeFile(damagedFile, "damaged", "utf8");
+    const { manager } = await createManager();
+    const originalRename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (oldPath, newPath) => {
+      if (
+        String(oldPath).includes("-installing") &&
+        String(newPath) === targetRoot
+      ) {
+        throw new Error("simulated install switch failure");
+      }
+      return originalRename(oldPath, newPath);
+    });
+
+    await expect(
+      manager.ensureReady({ confirmDownload: async () => true })
+    ).rejects.toThrow("simulated install switch failure");
+
+    await expect(fs.readFile(damagedFile, "utf8")).resolves.toBe("damaged");
+    await expect(fs.access(`${targetRoot}-previous`)).rejects.toThrow();
+    expect((await readActivePack(dataRoot)).active).toEqual(oldRef);
+  });
+
+  it("keeps the previous active state when active.json replacement fails", async () => {
+    const oldRef = { id: "standard", version: "2026.02" };
+    await setActivePack(dataRoot, oldRef);
+    const activePath = getActivePath(dataRoot);
+    const originalRename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (oldPath, newPath) => {
+      if (String(newPath) === activePath) {
+        throw new Error("simulated active switch failure");
+      }
+      return originalRename(oldPath, newPath);
+    });
+
+    await expect(setActivePack(dataRoot, targetRef)).rejects.toThrow("simulated active switch failure");
+    expect((await readActivePack(dataRoot)).active).toEqual(oldRef);
+  });
+
   it("rejects a downloaded archive with the wrong release checksum", async () => {
     const { manager } = await createManager();
     await fs.writeFile(archivePath, "changed-after-release-config", "utf8");

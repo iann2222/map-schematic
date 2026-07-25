@@ -286,8 +286,8 @@ Natural Earth 為公開可自由使用資料集，適合製圖用途。
 5. App 啟動時若偵測本機缺少資料包：
    - 依 `pack-release.json` 下載 zip → 驗證 SHA-256 → 解壓至暫存安裝目錄
    - 驗證暫存資料包的 manifest、引用路徑與所有內容檔 checksum
-   - 完整安裝目標版本後才原子更新 `active.json`
-   - 不覆蓋其他有效版本；下載或切換失敗時仍沿用原 active 版本
+   - 目標版本已存在時，先以 rename 保留為 `-previous`，新資料包成功就位並更新 `active.json` 後才清除
+   - 下載或切換失敗時會以 rename 還原舊目標；其他有效版本與原 active 版本均不覆蓋
    - 成功或失敗都清除下載 zip 與暫存安裝目錄
 - 正式使用建議以 GDAL 轉成 `EPSG:3857` 的 `hillshade_3857.png`，確保與渲染投影一致。
 - 地形陰影顯示採 Canvas 混合模式（如 `overlay` / `multiply` / `screen`）可調，以平衡可讀性與清晰度。

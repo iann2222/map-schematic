@@ -225,9 +225,47 @@ export class DataPackManager {
       await fs.rm(previousPath, { recursive: true, force: true });
       return null;
     }
-    await fs.rm(rootPath, { recursive: true, force: true });
-    await fs.rename(previousPath, rootPath);
+    await this.replaceTargetRoot(rootPath, previousPath, false);
     return { ref, rootPath, manifest, source: "recovered" };
+  }
+
+  private async replaceTargetRoot(
+    targetRoot: string,
+    incomingRoot: string,
+    preserveCurrent: boolean
+  ): Promise<string | null> {
+    const previousPath = `${targetRoot}-previous`;
+    const displacedPath = `${targetRoot}-displaced-${randomUUID()}`;
+    let displacedCurrent = false;
+
+    if (await pathExists(targetRoot)) {
+      const destination = preserveCurrent ? previousPath : displacedPath;
+      if (preserveCurrent && (await pathExists(previousPath))) {
+        throw new Error("Datapack replacement has an unresolved previous pack");
+      }
+      await fs.rename(targetRoot, destination);
+      displacedCurrent = true;
+    }
+
+    try {
+      await fs.rename(incomingRoot, targetRoot);
+    } catch (error) {
+      if (displacedCurrent) {
+        const restoreSource = preserveCurrent ? previousPath : displacedPath;
+        try {
+          await fs.rename(restoreSource, targetRoot);
+        } catch {
+          // Keep the preserved directory intact for the next recovery attempt.
+        }
+      }
+      throw error;
+    }
+
+    if (displacedCurrent && !preserveCurrent) {
+      await fs.rm(displacedPath, { recursive: true, force: true });
+    }
+
+    return preserveCurrent && displacedCurrent ? previousPath : null;
   }
 
   private async findFallback(): Promise<ReadyDataPack | null> {
@@ -308,9 +346,11 @@ export class DataPackManager {
       await this.extractArchive(archivePath, installingPath);
       const manifest = await validateInstalledDatapack(installingPath, ref);
       await fs.mkdir(path.dirname(targetRoot), { recursive: true });
-      await fs.rm(targetRoot, { recursive: true, force: true });
-      await fs.rename(installingPath, targetRoot);
+      const previousPath = await this.replaceTargetRoot(targetRoot, installingPath, true);
       await setActivePack(this.dataRoot, ref);
+      if (previousPath) {
+        await fs.rm(previousPath, { recursive: true, force: true });
+      }
       return { ref, rootPath: targetRoot, manifest, source: "downloaded" };
     } finally {
       await fs.rm(installingPath, { recursive: true, force: true });
