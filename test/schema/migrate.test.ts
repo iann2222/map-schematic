@@ -27,17 +27,17 @@ function createLegacyProject(): Record<string, unknown> {
 }
 
 describe("migrateProject", () => {
-  it("migrates a 0.1 project to 0.5 and adds required containers", () => {
+  it("migrates a 0.1 project to 0.6 and adds required containers", () => {
     const legacy = createLegacyProject();
     const result = migrateProject(legacy);
 
     expect(result).toMatchObject({
       fromVersion: "0.1",
-      toVersion: "0.5",
+      toVersion: "0.6",
       migrated: true,
-      appliedVersions: ["0.2", "0.3", "0.4", "0.5"]
+      appliedVersions: ["0.2", "0.3", "0.4", "0.5", "0.6"]
     });
-    expect(result.project.schemaVersion).toBe("0.5");
+    expect(result.project.schemaVersion).toBe("0.6");
     expect(result.project.viewport.bbox).toEqual({
       west: -180,
       south: -85,
@@ -74,7 +74,7 @@ describe("migrateProject", () => {
     const result = migrateProject(legacy);
 
     expect(result.project.viewport.projection).toBe("EPSG:4326");
-    expect(result.appliedVersions).toEqual(["0.3", "0.4", "0.5"]);
+    expect(result.appliedVersions).toEqual(["0.3", "0.4", "0.5", "0.6"]);
     expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
   });
 
@@ -86,7 +86,7 @@ describe("migrateProject", () => {
     const result = migrateProject(legacy);
 
     expect(result.project.history).toEqual({ undo: [], redo: [] });
-    expect(result.appliedVersions).toEqual(["0.4", "0.5"]);
+    expect(result.appliedVersions).toEqual(["0.4", "0.5", "0.6"]);
   });
 
   it("converts a 0.4 bbox to the explicit antimeridian contract", () => {
@@ -100,7 +100,7 @@ describe("migrateProject", () => {
 
     const result = migrateProject(legacy);
 
-    expect(result.appliedVersions).toEqual(["0.5"]);
+    expect(result.appliedVersions).toEqual(["0.5", "0.6"]);
     expect(result.project.viewport.bbox).toEqual({
       west: -180,
       south: -85,
@@ -113,6 +113,84 @@ describe("migrateProject", () => {
       redo: []
     });
     expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("migrates 0.5 canvas output and layer metadata to the 0.6 contract", () => {
+    const legacy = createTestProject() as unknown as Record<string, unknown>;
+    legacy.schemaVersion = "0.5";
+    legacy.canvas = { width: 1200, height: 800, unit: "px" };
+    legacy.layers = [
+      {
+        id: "layer-1",
+        name: "Default",
+        visible: false,
+        locked: true,
+        opacity: 0.5,
+        zIndex: 4
+      }
+    ];
+    legacy.ui = { ratioMode: "fixed", cropRatio: 1 };
+
+    const result = migrateProject(legacy);
+
+    expect(result.appliedVersions).toEqual(["0.6"]);
+    expect(result.project.canvas).toEqual({
+      width: 1200,
+      height: 1200,
+      unit: "px"
+    });
+    expect(result.project.layers).toEqual([
+      { id: "layer-1", name: "Default" }
+    ]);
+    expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("synchronizes a free crop ratio while migrating a 0.5 project", () => {
+    const legacy = createTestProject() as unknown as Record<string, unknown>;
+    legacy.schemaVersion = "0.5";
+    legacy.canvas = { width: 1200, height: 800, unit: "px" };
+    legacy.ui = { ratioMode: "free", cropRatio: 2 };
+
+    const result = migrateProject(legacy);
+
+    expect(result.project.canvas).toEqual({
+      width: 1200,
+      height: 600,
+      unit: "px"
+    });
+    expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("does not silently flatten a multi-layer 0.5 project", () => {
+    const legacy = createTestProject() as unknown as Record<string, unknown>;
+    legacy.schemaVersion = "0.5";
+    legacy.layers = [
+      {
+        id: "layer-1",
+        name: "Default",
+        visible: true,
+        locked: false,
+        opacity: 1,
+        zIndex: 0
+      },
+      {
+        id: "layer-2",
+        name: "Labels",
+        visible: true,
+        locked: false,
+        opacity: 1,
+        zIndex: 1
+      }
+    ];
+
+    const result = migrateProject(legacy);
+
+    expect(result.project.layers).toHaveLength(2);
+    expect(validateProject(result.project).errors).toEqual(
+      expect.arrayContaining([
+        { path: "layers", message: "must contain exactly one layer" }
+      ])
+    );
   });
 
   it("does not hide invalid legacy UI values", () => {

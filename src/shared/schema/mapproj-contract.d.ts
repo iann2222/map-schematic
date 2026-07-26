@@ -1,4 +1,4 @@
-export type SchemaVersion = "0.5";
+export type SchemaVersion = "0.6";
 
 // Viewport bbox values are always longitude/latitude degrees.
 export type Projection = "EPSG:4326";
@@ -27,10 +27,6 @@ export type Viewport = {
 export type Layer = {
   id: string;
   name: string;
-  visible: boolean;
-  locked: boolean;
-  opacity: number;
-  zIndex: number;
 };
 
 export type Geometry =

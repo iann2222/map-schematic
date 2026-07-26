@@ -43,6 +43,11 @@ import {
 } from "./project/project-messages.js";
 import { ProjectOperationCoordinator } from "./project/operation-coordinator.js";
 import {
+  DEFAULT_PROJECT_CANVAS,
+  canvasPixelDimensions,
+  fitCanvasToAspectRatio,
+} from "./project/canvas.js";
+import {
   defaultMarkerStyle,
   defaultShapeStyle,
   labelOffsetScale,
@@ -516,6 +521,7 @@ const MAP_HEIGHT = 800;
 const PNG_EXPORT_SCALE = 2;
 const EDITOR_HISTORY_LIMIT = 300;
 let cropRatio = MAP_WIDTH / MAP_HEIGHT;
+let projectCanvas = { ...DEFAULT_PROJECT_CANVAS };
 let activeStep = "0";
 let ratioMode: "free" | "fixed" = "fixed";
 let originalRatio = MAP_WIDTH / MAP_HEIGHT;
@@ -964,6 +970,7 @@ function setReliefMode(enabled: boolean, effect?: string): void {
 function applyCanvasRatio(ratio: number, targetId?: string): void {
   ratioMode = "fixed";
   cropRatio = ratio;
+  projectCanvas = fitCanvasToAspectRatio(projectCanvas, ratio);
   cropBox = null;
   setActiveRatioButton(targetId);
   updateCropFrame();
@@ -1060,6 +1067,10 @@ function updateCropBBox(): void {
   const width = mapW / view.scale;
   const height = mapH / view.scale;
   cropBBox = { x, y, width, height };
+  if (ratioMode === "free" && cropBox.height > 0) {
+    cropRatio = cropBox.width / cropBox.height;
+    projectCanvas = fitCanvasToAspectRatio(projectCanvas, cropRatio);
+  }
 }
 
 function syncStageSize(): void {
@@ -4083,12 +4094,7 @@ function currentSelectionBBox(): BBox {
 }
 
 function defaultObjectLayerId(): string {
-  const layers = currentProject?.layers ?? [];
-  return (
-    layers.find((layer) => layer.id === "layer-1")?.id ??
-    layers[0]?.id ??
-    "layer-1"
-  );
+  return currentProject?.layers[0]?.id ?? "layer-1";
 }
 
 function buildProject(): MapProject | null {
@@ -4098,26 +4104,20 @@ function buildProject(): MapProject | null {
   syncOrderKeys();
   const now = new Date().toISOString();
   const base = currentProject?.createdAt ?? now;
-  const layers = currentProject?.layers?.length
-    ? currentProject.layers.map((layer) => ({ ...layer }))
-    : [
-        {
-          id: "layer-1",
-          name: "Default",
-          visible: true,
-          locked: false,
-          opacity: 1,
-          zIndex: 0,
-        },
-      ];
+  const currentLayer = currentProject?.layers[0];
+  const layers = [
+    currentLayer
+      ? { id: currentLayer.id, name: currentLayer.name }
+      : { id: "layer-1", name: "Default" },
+  ];
   return {
     ...(currentProject ?? {}),
-    schemaVersion: "0.5",
+    schemaVersion: "0.6",
     createdAt: base,
     updatedAt: now,
     dataPackVersion: currentPackVersion,
     dataPackId: currentPackId,
-    canvas: currentProject?.canvas ?? { width: 1200, height: 800, unit: "px" },
+    canvas: { ...projectCanvas },
     viewport: {
       bbox: currentSelectionBBox(),
       projection: "EPSG:4326",
@@ -4356,6 +4356,7 @@ async function performLoad(): Promise<void> {
     }
   }
   currentProject = loadedProject;
+  projectCanvas = { ...loadedProject.canvas };
   currentProjectPath = result.path ?? null;
   syncProjectHeader();
   const loadedEditor = mapProjectToEditorDocument(loadedProject);
@@ -4501,11 +4502,9 @@ async function renderExportCanvas(exportScale = 1): Promise<{
   if (!crop) {
     return null;
   }
-  const outputScale = Math.max(1, exportScale);
-  const sourceWidth = Math.max(1, Math.round(crop.width * scaleX));
-  const sourceHeight = Math.max(1, Math.round(crop.height * scaleY));
-  const outWidth = Math.max(1, Math.round(sourceWidth * outputScale));
-  const outHeight = Math.max(1, Math.round(sourceHeight * outputScale));
+  const outputSize = canvasPixelDimensions(projectCanvas, exportScale);
+  const outWidth = outputSize.width;
+  const outHeight = outputSize.height;
   const outCanvas = document.createElement("canvas");
   outCanvas.width = outWidth;
   outCanvas.height = outHeight;
@@ -4513,21 +4512,27 @@ async function renderExportCanvas(exportScale = 1): Promise<{
   if (!ctx) {
     return null;
   }
-  const scaledCanvasWidth = canvas.width * outputScale;
-  const scaledCanvasHeight = canvas.height * outputScale;
+  const sourceX = crop.left * scaleX;
+  const sourceY = crop.top * scaleY;
+  const sourceWidth = crop.width * scaleX;
+  const sourceHeight = crop.height * scaleY;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(
     canvas,
-    -crop.left * scaleX * outputScale,
-    -crop.top * scaleY * outputScale,
-    scaledCanvasWidth,
-    scaledCanvasHeight,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    outWidth,
+    outHeight,
   );
   const serializer = new XMLSerializer();
   const svgClone = svg.cloneNode(true) as SVGSVGElement;
-  svgClone.setAttribute("width", String(scaledCanvasWidth));
-  svgClone.setAttribute("height", String(scaledCanvasHeight));
+  svgClone.setAttribute("width", String(canvas.width));
+  svgClone.setAttribute("height", String(canvas.height));
   const svgString = serializer.serializeToString(svgClone);
   const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -4540,10 +4545,14 @@ async function renderExportCanvas(exportScale = 1): Promise<{
     });
     ctx.drawImage(
       img,
-      -crop.left * scaleX * outputScale,
-      -crop.top * scaleY * outputScale,
-      scaledCanvasWidth,
-      scaledCanvasHeight,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      outWidth,
+      outHeight,
     );
   } finally {
     URL.revokeObjectURL(url);
@@ -4573,16 +4582,27 @@ function renderExportSvg(): {
   const viewBoxY = (crop.top - offsetY) / scaleFit;
   const viewBoxWidth = crop.width / scaleFit;
   const viewBoxHeight = crop.height / scaleFit;
-  const outputWidth = Math.max(1, Math.round(crop.width));
-  const outputHeight = Math.max(1, Math.round(crop.height));
+  const outputSize = canvasPixelDimensions(projectCanvas);
+  const outputWidth = outputSize.width;
+  const outputHeight = outputSize.height;
   const svgNs = "http://www.w3.org/2000/svg";
   const xlinkNs = "http://www.w3.org/1999/xlink";
   const xmlnsNs = "http://www.w3.org/2000/xmlns/";
   const svgClone = svg.cloneNode(true) as SVGSVGElement;
   svgClone.setAttribute("xmlns", svgNs);
   svgClone.setAttributeNS(xmlnsNs, "xmlns:xlink", xlinkNs);
-  svgClone.setAttribute("width", String(outputWidth));
-  svgClone.setAttribute("height", String(outputHeight));
+  svgClone.setAttribute(
+    "width",
+    projectCanvas.unit === "mm"
+      ? `${projectCanvas.width}mm`
+      : String(outputWidth),
+  );
+  svgClone.setAttribute(
+    "height",
+    projectCanvas.unit === "mm"
+      ? `${projectCanvas.height}mm`
+      : String(outputHeight),
+  );
   svgClone.setAttribute(
     "viewBox",
     `${viewBoxX.toFixed(4)} ${viewBoxY.toFixed(4)} ${viewBoxWidth.toFixed(4)} ${viewBoxHeight.toFixed(4)}`,

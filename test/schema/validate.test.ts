@@ -54,7 +54,7 @@ describe("validateProject", () => {
     );
   });
 
-  it("rejects duplicate layer and object ids", () => {
+  it("rejects multiple layers and duplicate ids", () => {
     const project = createTestProject();
     project.layers.push({ ...project.layers[0] });
     project.objects.push(createTestPointObject());
@@ -63,8 +63,33 @@ describe("validateProject", () => {
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(
       expect.arrayContaining([
+        { path: "layers", message: "must contain exactly one layer" },
         { path: "layers[1].id", message: "must be unique" },
         { path: "objects[1].id", message: "must be unique" }
+      ])
+    );
+  });
+
+  it("rejects canvas sizes that would create excessive output", () => {
+    const pixelProject = createTestProject();
+    pixelProject.canvas.width = 8193;
+    const millimeterProject = createTestProject();
+    millimeterProject.canvas = { width: 2200, height: 297, unit: "mm" };
+
+    expect(validateProject(pixelProject).errors).toEqual(
+      expect.arrayContaining([
+        {
+          path: "canvas.width",
+          message: "must not exceed 8192 logical output pixels"
+        }
+      ])
+    );
+    expect(validateProject(millimeterProject).errors).toEqual(
+      expect.arrayContaining([
+        {
+          path: "canvas.width",
+          message: "must not exceed 8192 logical output pixels"
+        }
       ])
     );
   });
@@ -166,6 +191,21 @@ describe("validateProject", () => {
         },
         { path: "ui.ratioMode", message: "must be free or fixed" },
         { path: "ui.cropRatio", message: "must be positive" }
+      ])
+    );
+  });
+
+  it("rejects a canvas that disagrees with the saved crop ratio", () => {
+    const project = createTestProject();
+    project.canvas = { width: 1200, height: 800, unit: "px" };
+    project.ui = { ratioMode: "fixed", cropRatio: 1 };
+
+    expect(validateProject(project).errors).toEqual(
+      expect.arrayContaining([
+        {
+          path: "canvas",
+          message: "aspect ratio must match ui.cropRatio"
+        }
       ])
     );
   });

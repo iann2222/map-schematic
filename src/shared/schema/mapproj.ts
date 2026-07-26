@@ -8,7 +8,7 @@ import type {
 
 export type * from "./mapproj-contract";
 
-export const CURRENT_SCHEMA_VERSION = "0.5" as const satisfies SchemaVersion;
+export const CURRENT_SCHEMA_VERSION = "0.6" as const satisfies SchemaVersion;
 
 export function createEmptyProject(params: {
   dataPackVersion: string;
@@ -20,8 +20,8 @@ export function createEmptyProject(params: {
   const now = new Date().toISOString();
   const projection: Projection = params.projection ?? "EPSG:4326";
   const canvas: Canvas = {
-    width: params.canvas?.width ?? 1280,
-    height: params.canvas?.height ?? 720,
+    width: params.canvas?.width ?? 1200,
+    height: params.canvas?.height ?? 800,
     unit: params.canvas?.unit ?? "px"
   };
   const viewport: Viewport = {
@@ -46,11 +46,7 @@ export function createEmptyProject(params: {
     layers: [
       {
         id: "layer-1",
-        name: "Default",
-        visible: true,
-        locked: false,
-        opacity: 1,
-        zIndex: 0
+        name: "Default"
       }
     ],
     objects: [],

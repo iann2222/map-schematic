@@ -188,6 +188,19 @@ export function validateProject(input: unknown): ValidationResult {
     }
     if (canvas.unit !== "px" && canvas.unit !== "mm") {
       errors.push({ path: "canvas.unit", message: "must be px or mm" });
+    } else {
+      const unitScale = canvas.unit === "mm" ? 96 / 25.4 : 1;
+      for (const field of ["width", "height"] as const) {
+        if (
+          isFiniteNumber(canvas[field]) &&
+          canvas[field] * unitScale > 8192
+        ) {
+          errors.push({
+            path: `canvas.${field}`,
+            message: "must not exceed 8192 logical output pixels"
+          });
+        }
+      }
     }
   }
 
@@ -208,6 +221,12 @@ export function validateProject(input: unknown): ValidationResult {
   if (!Array.isArray(layers)) {
     errors.push({ path: "layers", message: "must be an array" });
   } else {
+    if (layers.length !== 1) {
+      errors.push({
+        path: "layers",
+        message: "must contain exactly one layer"
+      });
+    }
     const layerIds = new Set<string>();
     for (let i = 0; i < layers.length; i += 1) {
       const layer = layers[i];
@@ -225,18 +244,6 @@ export function validateProject(input: unknown): ValidationResult {
       }
       if (!isNonEmptyString(layer.name)) {
         errors.push({ path: `${prefix}.name`, message: "must be a non-empty string" });
-      }
-      if (!isFiniteNumber(layer.opacity) || layer.opacity < 0 || layer.opacity > 1) {
-        errors.push({ path: `${prefix}.opacity`, message: "must be between 0 and 1" });
-      }
-      if (!isFiniteNumber(layer.zIndex)) {
-        errors.push({ path: `${prefix}.zIndex`, message: "must be a number" });
-      }
-      if (typeof layer.visible !== "boolean") {
-        errors.push({ path: `${prefix}.visible`, message: "must be a boolean" });
-      }
-      if (typeof layer.locked !== "boolean") {
-        errors.push({ path: `${prefix}.locked`, message: "must be a boolean" });
       }
     }
   }
@@ -378,6 +385,27 @@ export function validateProject(input: unknown): ValidationResult {
         errors.push({ path: `ui.${field}`, message: "must be a finite number" });
       } else if (isFiniteNumber(input.ui[field]) && input.ui[field] <= 0) {
         errors.push({ path: `ui.${field}`, message: "must be positive" });
+      }
+    }
+    if (
+      isRecord(canvas) &&
+      isFiniteNumber(canvas.width) &&
+      canvas.width > 0 &&
+      isFiniteNumber(canvas.height) &&
+      canvas.height > 0 &&
+      isFiniteNumber(input.ui.cropRatio) &&
+      input.ui.cropRatio > 0
+    ) {
+      const canvasRatio = canvas.width / canvas.height;
+      const roundingTolerance = Math.max(
+        0.001,
+        1 / Math.min(canvas.width, canvas.height)
+      );
+      if (Math.abs(canvasRatio - input.ui.cropRatio) > roundingTolerance) {
+        errors.push({
+          path: "canvas",
+          message: "aspect ratio must match ui.cropRatio"
+        });
       }
     }
   }

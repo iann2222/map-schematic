@@ -51,6 +51,52 @@ function migrateViewportBBox(viewport: unknown): unknown {
   };
 }
 
+function migrateCanvasToCropRatio(canvas: unknown, ui: unknown): unknown {
+  if (!isRecord(canvas) || !isRecord(ui)) {
+    return canvas;
+  }
+  if (
+    typeof canvas.width !== "number" ||
+    typeof canvas.height !== "number" ||
+    (canvas.unit !== "px" && canvas.unit !== "mm") ||
+    typeof ui.cropRatio !== "number" ||
+    !Number.isFinite(ui.cropRatio) ||
+    ui.cropRatio <= 0
+  ) {
+    return canvas;
+  }
+  const longEdge = Math.max(canvas.width, canvas.height);
+  const round = (value: number) =>
+    canvas.unit === "px"
+      ? Math.max(1, Math.round(value))
+      : Math.max(0.01, Math.round(value * 100) / 100);
+  return ui.cropRatio >= 1
+    ? {
+        width: round(longEdge),
+        height: round(longEdge / ui.cropRatio),
+        unit: canvas.unit
+      }
+    : {
+        width: round(longEdge * ui.cropRatio),
+        height: round(longEdge),
+        unit: canvas.unit
+      };
+}
+
+function migrateSingleLayer(layers: unknown): unknown {
+  if (!Array.isArray(layers)) {
+    return layers;
+  }
+  return layers.map((layer) =>
+    isRecord(layer)
+      ? {
+          id: layer.id,
+          name: layer.name
+        }
+      : layer
+  );
+}
+
 const migrations: Record<string, MigrationStep> = {
   "0.1": {
     toVersion: "0.2",
@@ -96,6 +142,15 @@ const migrations: Record<string, MigrationStep> = {
       ...project,
       schemaVersion: "0.5",
       viewport: migrateViewportBBox(project.viewport)
+    })
+  },
+  "0.5": {
+    toVersion: "0.6",
+    migrate: (project) => ({
+      ...project,
+      schemaVersion: "0.6",
+      canvas: migrateCanvasToCropRatio(project.canvas, project.ui),
+      layers: migrateSingleLayer(project.layers)
     })
   }
 };

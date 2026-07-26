@@ -8,7 +8,7 @@ import {
 
 function createProject(): MapProject {
   return {
-    schemaVersion: "0.5",
+    schemaVersion: "0.6",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     dataPackVersion: "2026.02",
@@ -24,29 +24,12 @@ function createProject(): MapProject {
       },
       projection: "EPSG:4326"
     },
-    layers: [
-      {
-        id: "layer-1",
-        name: "Default",
-        visible: true,
-        locked: false,
-        opacity: 1,
-        zIndex: 0
-      },
-      {
-        id: "layer-labels",
-        name: "Labels",
-        visible: true,
-        locked: false,
-        opacity: 1,
-        zIndex: 1
-      }
-    ],
+    layers: [{ id: "layer-1", name: "Default" }],
     objects: [
       {
         id: "marker-1",
         type: "pointLabel",
-        layerId: "layer-labels",
+        layerId: "layer-1",
         style: {
           name: "台北",
           sourceType: "geonames",
@@ -66,7 +49,7 @@ function createProject(): MapProject {
       {
         id: "arrow-1",
         type: "arrow",
-        layerId: "layer-labels",
+        layerId: "layer-1",
         style: {
           shapeType: "arrow",
           width: 140,
@@ -121,8 +104,8 @@ describe("mapproj v0.2 editor adapter", () => {
     expect(arrow?.objectKind === "shape" ? arrow.rotation : undefined).toBe(45);
     expect(loaded.preservedObjects.map((object) => object.id)).toEqual(["polygon-1"]);
     expect(loaded.document.objects.map((object) => object.layerId)).toEqual([
-      "layer-labels",
-      "layer-labels"
+      "layer-1",
+      "layer-1"
     ]);
   });
 
@@ -141,8 +124,8 @@ describe("mapproj v0.2 editor adapter", () => {
     expect(saved[2]).toEqual(createProject().objects[2]);
     expect(saved[1].style.rotation).toBe(45);
     expect(saved.map((object) => object.layerId)).toEqual([
-      "layer-labels",
-      "layer-labels",
+      "layer-1",
+      "layer-1",
       "layer-1"
     ]);
   });
