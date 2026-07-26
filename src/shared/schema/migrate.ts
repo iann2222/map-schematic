@@ -53,6 +53,17 @@ const migrations: Record<string, MigrationStep> = {
           }
         : project.viewport
     })
+  },
+  "0.3": {
+    toVersion: "0.4",
+    migrate: (project) => ({
+      ...project,
+      schemaVersion: "0.4",
+      history:
+        project.history === undefined
+          ? { undo: [], redo: [] }
+          : project.history
+    })
   }
 };
 

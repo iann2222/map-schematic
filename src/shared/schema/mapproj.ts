@@ -8,7 +8,7 @@ import type {
 
 export type * from "./mapproj-contract";
 
-export const CURRENT_SCHEMA_VERSION = "0.3" as const satisfies SchemaVersion;
+export const CURRENT_SCHEMA_VERSION = "0.4" as const satisfies SchemaVersion;
 
 export function createEmptyProject(params: {
   dataPackVersion: string;
@@ -53,6 +53,7 @@ export function createEmptyProject(params: {
       }
     ],
     objects: [],
+    history: { undo: [], redo: [] },
     ui: {}
   };
 }

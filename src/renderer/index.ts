@@ -4107,7 +4107,7 @@ function buildProject(): MapProject | null {
       ];
   return {
     ...(currentProject ?? {}),
-    schemaVersion: "0.3",
+    schemaVersion: "0.4",
     createdAt: base,
     updatedAt: now,
     dataPackVersion: currentPackVersion,
@@ -4123,6 +4123,7 @@ function buildProject(): MapProject | null {
       preservedProjectObjects,
       defaultObjectLayerId(),
     ),
+    history: editorCore.exportHistory(),
     ui: {
       ...(currentProject?.ui ?? {}),
       listOrderKeys: [...editorDocument.listOrderKeys],
@@ -4381,7 +4382,12 @@ async function handleLoad() {
   ) {
     setActiveRatioButton(loadedProject.ui.activeRatioId);
   }
-  resetEditorHistory();
+  const historyRestored = editorCore.restoreHistory(loadedProject.history);
+  if (!historyRestored) {
+    resetEditorHistory();
+  } else {
+    syncHistoryControls();
+  }
   syncOrderKeys();
   syncManualMarkerCount();
   renderMarkers();
@@ -4401,6 +4407,15 @@ async function handleLoad() {
       title: "部分物件暫時無法編輯",
       message: `此專案有 ${preservedCount} 個物件使用目前編輯器尚未支援的幾何格式。`,
       detail: "這些物件不會顯示或提供編輯，但再次儲存時會原樣保留。",
+      tone: "warning",
+    });
+  }
+  if (!historyRestored) {
+    await showAppNotice({
+      eyebrow: "編輯歷史未恢復",
+      title: "此專案的復原紀錄無法使用",
+      message: "專案內容已正常載入，但復原與重做紀錄已略過。",
+      detail: "可能是較舊的專案格式，或歷史紀錄與目前內容不一致。",
       tone: "warning",
     });
   }

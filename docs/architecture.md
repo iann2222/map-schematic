@@ -108,11 +108,11 @@
   - 定義 manifest／release 契約、檔案校驗、active 版本、初始化、更新、修復、安全啟用與 fallback。
   - `pack-release.json` 是目標資料包 id／version 的唯一來源，不另在程式碼維護重複版本常數。
 - `src/shared/schema/mapproj.ts`
-  - 提供目前 `.mapproj` v0.3 版本常數與初始專案。
+  - 提供目前 `.mapproj` v0.4 版本常數與初始專案。
 - `src/shared/schema/mapproj-contract.d.ts`
   - 集中定義 main、preload、renderer 共用的 `.mapproj` 資料契約。
 - `src/shared/schema/migrate.ts`
-  - 依 schemaVersion 逐版遷移專案；目前支援 v0.1 → v0.2 → v0.3，未知版本不會被猜測轉換。
+  - 依 schemaVersion 逐版遷移專案；目前支援 v0.1 → v0.2 → v0.3 → v0.4，未知版本不會被猜測轉換。
 - `src/shared/schema/validate.ts`
   - 驗證專案結構、物件、座標、樣式、ID 與圖層引用。
 - `src/shared/schema/io.ts`

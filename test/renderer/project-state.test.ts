@@ -8,7 +8,7 @@ import type { MapProject } from "../../src/renderer/bridge.js";
 
 function createProject(): MapProject {
   return {
-    schemaVersion: "0.3",
+    schemaVersion: "0.4",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     dataPackVersion: "2026.02",
@@ -29,6 +29,7 @@ function createProject(): MapProject {
       }
     ],
     objects: [],
+    history: { undo: [], redo: [] },
     ui: {}
   };
 }

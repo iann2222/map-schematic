@@ -242,4 +242,51 @@ describe("EditorCore history", () => {
     expect(core.canRedo).toBe(false);
     expect(core.document.objects.map((object) => object.id)).toEqual(["shape-1"]);
   });
+
+  it("restores saved undo and redo commands for the current document", () => {
+    const source = new EditorCore(createDocument([createMarker()]));
+    const changed = cloneEditorObject(markerFrom(source)) as Marker;
+    changed.name = "B";
+    source.dispatch(createUpdateObjectCommand(markerFrom(source), changed));
+    source.undo();
+
+    const restored = new EditorCore(createDocument([createMarker()]));
+    expect(restored.restoreHistory(source.exportHistory())).toBe(true);
+    expect(restored.canUndo).toBe(false);
+    expect(restored.canRedo).toBe(true);
+
+    restored.redo();
+    expect(markerFrom(restored).name).toBe("B");
+    restored.undo();
+    expect(markerFrom(restored).name).toBe("A");
+  });
+
+  it("rejects saved history that cannot be applied to the current document", () => {
+    const source = new EditorCore(createDocument());
+    source.dispatch(createAddObjectCommand(source.document, createMarker()));
+    const history = source.exportHistory();
+    const command = history.undo[0] as Extract<
+      typeof history.undo[number],
+      { type: "add-object" }
+    >;
+    command.object.id = "different-marker";
+
+    const restored = new EditorCore(createDocument([createMarker()]));
+    expect(restored.restoreHistory(history)).toBe(false);
+    expect(restored.canUndo).toBe(false);
+    expect(markerFrom(restored).name).toBe("A");
+  });
+
+  it("rejects saved history above the configured total limit", () => {
+    const source = new EditorCore(createDocument([createMarker()]));
+    const changed = cloneEditorObject(markerFrom(source)) as Marker;
+    changed.name = "B";
+    source.dispatch(createUpdateObjectCommand(markerFrom(source), changed));
+    const history = source.exportHistory();
+    history.undo = Array.from({ length: 151 }, () => history.undo[0]);
+    history.redo = Array.from({ length: 150 }, () => history.undo[0]);
+
+    const restored = new EditorCore(createDocument([createMarker()]));
+    expect(restored.restoreHistory(history)).toBe(false);
+  });
 });

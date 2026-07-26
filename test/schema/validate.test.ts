@@ -136,4 +136,30 @@ describe("validateProject", () => {
       ])
     );
   });
+
+  it("rejects malformed or oversized saved history", () => {
+    const malformed = createTestProject() as unknown as Record<string, unknown>;
+    malformed.history = { undo: "not-an-array", redo: [] };
+    const oversized = createTestProject() as unknown as Record<string, unknown>;
+    oversized.history = { undo: Array.from({ length: 301 }, () => ({})), redo: [] };
+    const splitOversized = createTestProject() as unknown as Record<string, unknown>;
+    splitOversized.history = {
+      undo: Array.from({ length: 151 }, () => ({})),
+      redo: Array.from({ length: 150 }, () => ({}))
+    };
+
+    expect(validateProject(malformed).errors).toEqual(
+      expect.arrayContaining([{ path: "history.undo", message: "must be an array" }])
+    );
+    expect(validateProject(oversized).errors).toEqual(
+      expect.arrayContaining([
+        { path: "history.undo", message: "must contain at most 300 commands" }
+      ])
+    );
+    expect(validateProject(splitOversized).errors).toEqual(
+      expect.arrayContaining([
+        { path: "history", message: "must contain at most 300 commands in total" }
+      ])
+    );
+  });
 });

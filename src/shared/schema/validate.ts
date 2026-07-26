@@ -32,6 +32,58 @@ function validateStringArray(value: unknown, path: string, errors: ValidationErr
   }
 }
 
+function isJsonValue(value: unknown, depth = 0): boolean {
+  if (depth > 24 || value === null) {
+    return depth <= 24;
+  }
+  if (typeof value === "string" || typeof value === "boolean") {
+    return true;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+  if (Array.isArray(value)) {
+    return value.length <= 1000 && value.every((entry) => isJsonValue(entry, depth + 1));
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  const keys = Object.keys(value);
+  return (
+    keys.length <= 100 &&
+    keys.every(
+      (key) =>
+        key !== "__proto__" &&
+        key !== "constructor" &&
+        key !== "prototype" &&
+        isJsonValue(value[key], depth + 1)
+    )
+  );
+}
+
+function validateHistory(value: unknown, errors: ValidationError[]): void {
+  if (!isRecord(value)) {
+    errors.push({ path: "history", message: "must be an object" });
+    return;
+  }
+  const stacks: unknown[][] = [];
+  for (const field of ["undo", "redo"] as const) {
+    const stack = value[field];
+    if (!Array.isArray(stack)) {
+      errors.push({ path: `history.${field}`, message: "must be an array" });
+    } else if (stack.length > 300) {
+      errors.push({ path: `history.${field}`, message: "must contain at most 300 commands" });
+    } else if (!stack.every((entry) => isJsonValue(entry))) {
+      errors.push({ path: `history.${field}`, message: "must contain JSON-safe commands" });
+    } else {
+      stacks.push(stack);
+    }
+  }
+  if (stacks.length === 2 && stacks[0].length + stacks[1].length > 300) {
+    errors.push({ path: "history", message: "must contain at most 300 commands in total" });
+  }
+}
+
 function validateBBox(
   bbox: unknown,
   path: string,
@@ -275,6 +327,8 @@ export function validateProject(input: unknown): ValidationResult {
       }
     }
   }
+
+  validateHistory(input.history, errors);
 
   if (!isRecord(input.ui)) {
     errors.push({ path: "ui", message: "must be an object" });

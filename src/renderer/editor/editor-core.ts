@@ -17,11 +17,40 @@ export type EditorCoreRecordOptions = {
   timestamp?: number;
 };
 
+export type EditorHistorySnapshot = {
+  undo: EditorCommand[];
+  redo: EditorCommand[];
+};
+
 type HistoryEntry = {
   command: EditorCommand;
   mergeKey?: string;
   timestamp: number;
 };
+
+function cloneCommand(command: EditorCommand): EditorCommand {
+  return JSON.parse(JSON.stringify(command)) as EditorCommand;
+}
+
+function cloneHistoryCommands(value: unknown, limit: number): EditorCommand[] | null {
+  if (!Array.isArray(value) || value.length > limit) {
+    return null;
+  }
+  try {
+    return value.map((entry) => {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+        throw new Error("History command must be an object");
+      }
+      return cloneCommand(entry as EditorCommand);
+    });
+  } catch {
+    return null;
+  }
+}
+
+function documentsEqual(left: EditorDocument, right: EditorDocument): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
 export class EditorCore {
   readonly document: EditorDocument;
@@ -168,6 +197,61 @@ export class EditorCore {
     this.past = [];
     this.future = [];
     this.emit({ kind: "reset", command: null });
+  }
+
+  exportHistory(): EditorHistorySnapshot {
+    return {
+      undo: this.past.map((entry) => cloneCommand(entry.command)),
+      redo: this.future.map((entry) => cloneCommand(entry.command)),
+    };
+  }
+
+  restoreHistory(snapshot: unknown): boolean {
+    if (
+      typeof snapshot !== "object" ||
+      snapshot === null ||
+      Array.isArray(snapshot)
+    ) {
+      return false;
+    }
+    const record = snapshot as { undo?: unknown; redo?: unknown };
+    const undo = cloneHistoryCommands(record.undo, this.limit);
+    const redo = cloneHistoryCommands(record.redo, this.limit);
+    if (!undo || !redo || undo.length + redo.length > this.limit) {
+      return false;
+    }
+
+    try {
+      const base = cloneEditorDocument(this.document);
+      for (const command of [...undo].reverse()) {
+        if (!applyEditorCommand(base, command, "backward")) {
+          return false;
+        }
+      }
+      const replayed = cloneEditorDocument(base);
+      for (const command of undo) {
+        if (!applyEditorCommand(replayed, command, "forward")) {
+          return false;
+        }
+      }
+      if (!documentsEqual(replayed, this.document)) {
+        return false;
+      }
+      const redone = cloneEditorDocument(this.document);
+      for (const command of [...redo].reverse()) {
+        if (!applyEditorCommand(redone, command, "forward")) {
+          return false;
+        }
+      }
+    } catch {
+      return false;
+    }
+
+    this.transactionBefore = null;
+    this.past = undo.map((command) => ({ command, timestamp: 0 }));
+    this.future = redo.map((command) => ({ command, timestamp: 0 }));
+    this.emit({ kind: "reset", command: null });
+    return true;
   }
 
   private record(command: EditorCommand, options: EditorCoreRecordOptions): void {

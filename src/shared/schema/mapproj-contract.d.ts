@@ -1,4 +1,4 @@
-export type SchemaVersion = "0.3";
+export type SchemaVersion = "0.4";
 
 // Viewport bbox values are always longitude/latitude degrees.
 export type Projection = "EPSG:4326";
@@ -78,6 +78,11 @@ export type MapObject = {
   provenance?: Provenance;
 };
 
+export type ProjectHistory = {
+  undo: unknown[];
+  redo: unknown[];
+};
+
 export type MapProject = {
   schemaVersion: SchemaVersion;
   createdAt: string;
@@ -89,6 +94,7 @@ export type MapProject = {
   viewport: Viewport;
   layers: Layer[];
   objects: MapObject[];
+  history: ProjectHistory;
   ui: {
     listOrderKeys?: string[];
     displayOrderKeys?: string[];

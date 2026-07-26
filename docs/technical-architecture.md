@@ -30,7 +30,7 @@
 
 - 目前 renderer 使用原生 HTML、CSS 與 TypeScript，尚未引入 React 或 Vue；bridge、編輯模型、Editor Core、編輯命令、專案 adapter、投影幾何與共用控制已由入口檔拆成獨立模組。
 - Step 3 以單一 `EditorDocument.objects` 管理點標示與形狀；所有持久編輯由 command-based Editor Core 統一套用與驗證，Undo/Redo 保存欄位差異而非完整 document 快照。
-- 編輯歷史目前只存在記憶體，最多 300 筆；連續文字與滑桿輸入會合併，拖曳記為單一交易。專案載入時重設歷史，不將單純選取或地圖縮放記入歷史。
+- 編輯歷史最多保留 300 筆可序列化命令，隨 `.mapproj` 保存；連續文字與滑桿輸入會合併，拖曳記為單一交易。載入時會驗證歷史可從基底狀態重建目前文件，失敗時略過歷史但保留專案內容；不將單純選取或地圖縮放記入歷史。
 - `.mapproj` 契約由 shared schema 集中定義；renderer 透過專案 adapter 載入與輸出，不另外維護專案資料型別。可編輯物件會保留其 `layerId`，避免多圖層專案在再次儲存時被改寫。
 
 ## 2.2 渲染層策略
@@ -146,7 +146,7 @@
 - 若 `dataPackVersion` 不一致：
   - 提示專案與本機資料包版本差異；
   - 由使用者確認是否仍要載入，不在背景自動下載或替換資料包。
-- 目前 schema 版本為 `0.3`，載入時會依明確 migration chain 逐版轉換；目前支援 `0.1 → 0.2 → 0.3`，未知與較新版本會停止載入。
+- 目前 schema 版本為 `0.4`，載入時會依明確 migration chain 逐版轉換；目前支援 `0.1 → 0.2 → 0.3 → 0.4`，未知與較新版本會停止載入。
 - 更新資料包時需下載完成並通過 SHA-256 與內容驗證後才切換。
 - `pack-release.json` 是 App 目標資料包 id／version 的唯一設定來源，避免 runtime 常數與 release 設定不一致。
 
@@ -392,11 +392,11 @@ Natural Earth 為公開可自由使用資料集，適合製圖用途。
 - 標示物件
 - 樣式設定
 
-## 9.3 `.mapproj` v0.3 最小欄位
+## 9.3 `.mapproj` v0.4 最小欄位
 
 File header：
 
-- schemaVersion（目前為 "0.3"）
+- schemaVersion（目前為 "0.4"）
 - createdAt, updatedAt
 - appVersion（可選）
 
@@ -423,6 +423,11 @@ Objects：
   - sourceId（例如 GeoNames id）
   - query（使用者查詢字串）
 
+History：
+
+- history: undo, redo（合計最多 300 筆可序列化編輯命令）
+- 載入時會檢查命令與目前 objects 是否一致；不一致時不套用歷史。
+
 UI state：
 
 - ui（v0.2 起為必要容器）
@@ -433,7 +438,7 @@ UI state：
 - 每個專案檔包含資料包版本號
 - 載入前先驗證 schema 與必要欄位；格式無效時停止載入並顯示錯誤
 - 若資料包 id 或版本不一致，提示風險並由使用者決定是否繼續
-- 目前寫入 schema `0.3`，並可將 `0.1`、`0.2` 逐版遷移至目前格式
+- 目前寫入 schema `0.4`，並可將 `0.1`、`0.2`、`0.3` 逐版遷移至目前格式；舊專案遷移後以空白歷史開始
 - migration 只處理明確定義的結構變更；缺少版本、未知舊版與較新版本一律不猜測轉換
 
 ## 9.5 原子儲存與恢復

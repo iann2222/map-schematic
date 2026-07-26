@@ -18,18 +18,19 @@ function createLegacyProject(): Record<string, unknown> {
 }
 
 describe("migrateProject", () => {
-  it("migrates a 0.1 project to 0.3 and adds the UI container", () => {
+  it("migrates a 0.1 project to 0.4 and adds required containers", () => {
     const legacy = createLegacyProject();
     const result = migrateProject(legacy);
 
     expect(result).toMatchObject({
       fromVersion: "0.1",
-      toVersion: "0.3",
+      toVersion: "0.4",
       migrated: true,
-      appliedVersions: ["0.2", "0.3"]
+      appliedVersions: ["0.2", "0.3", "0.4"]
     });
-    expect(result.project.schemaVersion).toBe("0.3");
+    expect(result.project.schemaVersion).toBe("0.4");
     expect(result.project.ui).toEqual({});
+    expect(result.project.history).toEqual({ undo: [], redo: [] });
     expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
     expect(legacy).not.toHaveProperty("ui");
   });
@@ -56,8 +57,19 @@ describe("migrateProject", () => {
     const result = migrateProject(legacy);
 
     expect(result.project.viewport.projection).toBe("EPSG:4326");
-    expect(result.appliedVersions).toEqual(["0.3"]);
+    expect(result.appliedVersions).toEqual(["0.3", "0.4"]);
     expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("adds an empty history container to a 0.3 project", () => {
+    const legacy = createTestProject() as unknown as Record<string, unknown>;
+    legacy.schemaVersion = "0.3";
+    delete legacy.history;
+
+    const result = migrateProject(legacy);
+
+    expect(result.project.history).toEqual({ undo: [], redo: [] });
+    expect(result.appliedVersions).toEqual(["0.4"]);
   });
 
   it("does not hide invalid legacy UI values", () => {
