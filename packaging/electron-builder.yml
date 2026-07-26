@@ -12,6 +12,9 @@ files:
   - "!docs/**"
   - "!scripts/**"
   - "!src/**"
+extraResources:
+  - from: ATTRIBUTIONS.md
+    to: ATTRIBUTIONS.md
 asar: true
 asarUnpack:
   - node_modules/better-sqlite3/**

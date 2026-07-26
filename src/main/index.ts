@@ -383,10 +383,24 @@ function buildAppMenu(): Menu {
               "menu:action",
               "app:about"
             )
+        },
+        {
+          label: "資料來源與授權",
+          click: () =>
+            BrowserWindow.getFocusedWindow()?.webContents.send(
+              "menu:action",
+              "app:attributions"
+            )
         }
       ]
     }
   ]);
+}
+
+function attributionsPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "ATTRIBUTIONS.md")
+    : path.join(app.getAppPath(), "ATTRIBUTIONS.md");
 }
 
 function projectFilesRoot(): string {
@@ -402,6 +416,20 @@ function defaultProjectPath(): string {
 app.whenReady().then(() => {
   configureDataRoot();
   Menu.setApplicationMenu(buildAppMenu());
+
+  ipcMain.handle("app:get-attributions", async () => {
+    try {
+      return {
+        ok: true,
+        content: await fs.readFile(attributionsPath(), "utf8")
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: `Unable to read attribution information: ${String(error)}`
+      };
+    }
+  });
 
   ipcMain.on("app-dialog:response", (event, payload: unknown) => {
     if (
@@ -669,7 +697,7 @@ app.whenReady().then(() => {
     applicationVersion: "",
     version: "",
     credits:
-      "資料包：未載入\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief",
+      "資料包：未載入\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief\n完整授權資訊請見「說明 > 資料來源與授權」。",
     copyright: ""
   };
   app.setAboutPanelOptions(aboutBase);

@@ -1,12 +1,12 @@
 # 架構概覽
 
-本文件說明目前 repo 結構與 Electron 應用程式的實際執行流程。產品政策與長期技術決策分別記錄於 `AGENTS.md` 與 `docs/technical-architecture.md`。
+本文件只說明目前 repo 結構與 Electron 應用程式的實際執行流程。產品目標、專案格式、資料包與發布流程分別記錄於 `product-vision.md`、`project-format.md`、`datapack.md` 與 `release-checklist.md`；開發政策以 `AGENTS.md` 為準。
 
 ## 專案結構
 
 - `AGENTS.md`：開發規範、離線原則與資料政策。
 - `README.md`：專案簡介、目前功能與快速開始。
-- `docs/`：產品與技術架構文件。
+- `docs/`：產品願景、現行架構、專案格式、資料包與發布文件。
 - `src/`：Electron main、preload、renderer 與共用 TypeScript 原始碼。
 - `test/`：本機自動化測試與共用測試資料。
 - `scripts/`：編譯靜態資源與官方資料包製作輔助腳本。
@@ -61,11 +61,12 @@
 - `src/main/index.ts`
   - 建立安全隔離的 Electron 視窗與應用程式選單。
   - 註冊資料包、底圖、地形、GeoNames、專案檔與匯出 IPC。
+  - 依開發版／封裝版路徑讀取同一份 `ATTRIBUTIONS.md`，供應用程式內的授權入口顯示。
   - 管理檔案選擇、未儲存變更確認、專案備份恢復詢問、PDF 產生及開發版／封裝版輸出路徑。
 - `src/main/data-root.ts`
   - 決定開發版與封裝版共用的官方資料包位置，並保留使用中的位置設定。
 - `src/main/preload.ts`
-  - 透過 `contextBridge` 提供受限的 renderer API。
+  - 透過 `contextBridge` 提供受限的 renderer API，包括唯讀的資料來源與授權內容。
 - `src/main/datapack-download.ts`
   - 提供 GitHub HTTPS 下載、ZIP 解壓與 Electron app 路徑 adapter；狀態與安裝決策由 shared manager 負責。
 - `src/main/geonames.ts`
@@ -142,15 +143,14 @@
 - `MAP_SCHEMATIC_ROOT` 可暫時覆寫資料包根目錄，供可攜式部署、測試或進階使用；程式碼不得硬編碼絕對路徑。
 - 專案與匯出預設位置：開發模式為 repo 的 `project_files/`；封裝版本為使用者文件目錄下的 `map-schematic/`。
 
-## 資料包建置與發佈
+## 建置與發行產物
 
-- `scripts/build_datapack.py`
-  - 讀取 `geodata_source/`，在暫存建置目錄建立並驗證完整資料包，成功後才替換正式產物；缺少必要內容時保留舊建置。
-- `scripts/update_pack_release.py`
-  - 驗證資料包 ZIP 內的 manifest、檔案清單、大小與 checksum，再由 manifest 產生 `pack-release.json` 的 id／version。
 - `out/`
   - TypeScript 編譯結果與 renderer 靜態檔。
 - `dist/`
   - Windows 封裝產物，例如安裝程式與 exe。
 - `packaging/`
   - 集中 Windows 封裝設定、目標格式選擇與封裝腳本。可輸出 NSIS 安裝程式、可攜式資料夾或可攜式 ZIP，且不會發佈或下載資料包。
+  - `electron-builder.yml` 會將 `ATTRIBUTIONS.md` 複製至發行內容的 `resources/`，供應用程式內顯示與使用者直接查閱。
+
+官方資料包的建置、發布、安裝與更新流程見 `datapack.md`；應用程式與資料包的發布前驗證見 `release-checklist.md`。

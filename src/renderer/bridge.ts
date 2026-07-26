@@ -42,6 +42,11 @@ declare global {
   interface Window {
     mapSchematic?: {
       ping?: () => string;
+      getAttributions?: () => Promise<{
+        ok: boolean;
+        content?: string;
+        error?: string;
+      }>;
       getDatapack?: () => Promise<{
         id: string;
         version: string;

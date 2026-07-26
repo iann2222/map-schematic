@@ -5291,6 +5291,52 @@ function nudgeSelectedObject(event: KeyboardEvent): boolean {
   return changed;
 }
 
+function attributionTextForDialog(markdown: string): string {
+  return markdown
+    .replace(/^#+\s+/gm, "")
+    .replace(/^-\s+/gm, "")
+    .trim();
+}
+
+async function showAttributions(): Promise<void> {
+  if (!window.mapSchematic?.getAttributions) {
+    await showAppNotice({
+      eyebrow: "資料來源與授權",
+      title: "無法讀取授權資訊",
+      message: "目前執行環境未提供授權檔案。",
+      tone: "warning",
+    });
+    return;
+  }
+  let result: {
+    ok: boolean;
+    content?: string;
+    error?: string;
+  };
+  try {
+    result = await window.mapSchematic.getAttributions();
+  } catch (error) {
+    result = { ok: false, error: String(error) };
+  }
+  if (!result.ok || !result.content) {
+    await showAppNotice({
+      eyebrow: "資料來源與授權",
+      title: "無法讀取授權資訊",
+      message: "ATTRIBUTIONS.md 無法載入。",
+      detail: result.error,
+      tone: "warning",
+    });
+    return;
+  }
+  await showAppNotice({
+    eyebrow: "資料來源與授權",
+    title: "官方資料來源",
+    message: "Map Schematic 使用以下資料來源：",
+    detail: attributionTextForDialog(result.content),
+    tone: "info",
+  });
+}
+
 const appCommandController = new AppCommandController({
   getActiveStep: () => appState.workflow.activeStep,
   handleAppDialogKeyDown: (event) => appDialog.handleKeyDown(event),
@@ -5334,6 +5380,9 @@ const appCommandController = new AppCommandController({
       detail: `資料包：${currentPackId || "尚未載入"} ${currentPackVersion}\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief`,
       tone: "info",
     });
+  },
+  showAttributions: () => {
+    void showAttributions();
   },
   exportProject: (format) => {
     void handleExport(format);

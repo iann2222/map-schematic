@@ -57,6 +57,11 @@ type AppDialogRequest = {
 
 contextBridge.exposeInMainWorld("mapSchematic", {
   ping: () => "pong",
+  getAttributions: (): Promise<{
+    ok: boolean;
+    content?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("app:get-attributions"),
   getDatapack: (): Promise<DatapackInfo> => ipcRenderer.invoke("datapack:get"),
   getDatapackStatus: (): Promise<DataPackStatus> => ipcRenderer.invoke("datapack:status"),
   updateDatapack: (): Promise<{

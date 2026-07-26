@@ -21,6 +21,7 @@ export type AppCommandControllerOptions = {
   saveProject: (saveAs: boolean) => void;
   saveBeforeClose: () => void;
   showAbout: () => void;
+  showAttributions: () => void;
   exportProject: (format: "png" | "svg" | "pdf") => void;
   showRequestedDialog: (request: AppDialogRequest) => void;
 };
@@ -134,6 +135,9 @@ export class AppCommandController {
         break;
       case "app:about":
         this.options.showAbout();
+        break;
+      case "app:attributions":
+        this.options.showAttributions();
         break;
       case "export:png":
         this.options.exportProject("png");

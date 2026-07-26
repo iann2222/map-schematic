@@ -67,9 +67,11 @@ npm run package:win     # Windows 封裝
 
 ## 文件
 
-- 產品理念：`docs/product-vision.md`
-- 技術架構與選型：`docs/technical-architecture.md`
-- 程式碼架構：`docs/architecture.md`
+- 產品願景與完成狀態：`docs/product-vision.md`
+- 現行程式架構：`docs/architecture.md`
+- `.mapproj` 專案格式：`docs/project-format.md`
+- 官方資料包：`docs/datapack.md`
+- 發布檢查清單：`docs/release-checklist.md`
 - 開發與資料政策：`AGENTS.md`
 - 資料來源與授權：`ATTRIBUTIONS.md`
 
@@ -88,6 +90,8 @@ npm run package:win
 | `zip`    | `dist/Map Schematic-<version>-Portable-x64.zip` | 可攜式程式壓縮檔                      |
 
 封裝產物中不含官方資料包；首次啟動時仍會詢問並下載、驗證，之後即可離線使用。
+
+資料來源與授權檔會放在封裝內容的 `resources/ATTRIBUTIONS.md`，也可從應用程式的「說明 > 資料來源與授權」查看。
 
 > 封裝使用 `packaging/icon.ico` 作為 Windows 應用程式、安裝程式與捷徑圖示；原始設計檔保留為 `packaging/icon-source.png`。尚未設定程式碼簽章，首次執行或安裝時 Windows 可能顯示未知發行者或 SmartScreen 提示。
 
