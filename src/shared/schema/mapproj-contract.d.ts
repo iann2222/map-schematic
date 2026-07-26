@@ -1,4 +1,4 @@
-export type SchemaVersion = "0.6";
+export type SchemaVersion = "0.7";
 
 // Viewport bbox values are always longitude/latitude degrees.
 export type Projection = "EPSG:4326";
@@ -75,9 +75,118 @@ export type MapObject = {
   provenance?: Provenance;
 };
 
+export type HistoryMarkerStyle = {
+  dotSize: number;
+  textSize: number;
+  dotColor: string;
+  textColor: string;
+  textOffsetX: number;
+  textOffsetY: number;
+  textAnchor?: "start" | "end";
+  fontFamily: string;
+};
+
+export type HistoryMarkerSnapshot = {
+  objectKind: "marker";
+  id: string;
+  layerId: string;
+  name: string;
+  nameAlt?: string;
+  displayName?: string;
+  latitude: number;
+  longitude: number;
+  sourceId?: string;
+  style: HistoryMarkerStyle;
+  sourceType: "geonames" | "coords" | "manual";
+  labelMode: "name" | "coords";
+  labelName?: string;
+  showLabel?: boolean;
+  kind?: "label" | "point";
+};
+
+export type HistoryShapeStyle = {
+  strokeColor: string;
+  strokeWidth: number;
+  fillColor: string;
+  fillOpacity: number;
+  textColor: string;
+  textSize: number;
+  fontFamily: string;
+};
+
+export type HistoryShapeSnapshot = {
+  objectKind: "shape";
+  id: string;
+  layerId: string;
+  type: "line" | "area" | "text" | "arrow";
+  displayName?: string;
+  longitude: number;
+  latitude: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  text?: string;
+  style: HistoryShapeStyle;
+};
+
+export type HistoryObjectSnapshot =
+  | HistoryMarkerSnapshot
+  | HistoryShapeSnapshot;
+
+export type StoredHistoryFieldValue =
+  | { present: false }
+  | { present: true; value: string | number | boolean };
+
+export type SerializedEditorFieldChange = {
+  path: [string] | ["style", string];
+  before: StoredHistoryFieldValue;
+  after: StoredHistoryFieldValue;
+};
+
+export type SerializedEditorCommand =
+  | {
+      type: "add-object";
+      object: HistoryObjectSnapshot;
+      objectIndex: number;
+      listOrderIndex: number;
+      displayOrderIndex: number;
+    }
+  | {
+      type: "remove-object";
+      object: HistoryObjectSnapshot;
+      objectIndex: number;
+      listOrderIndex: number;
+      displayOrderIndex: number;
+    }
+  | {
+      type: "update-object";
+      objectId: string;
+      objectKind: HistoryObjectSnapshot["objectKind"];
+      changes: SerializedEditorFieldChange[];
+    }
+  | {
+      type: "reorder-objects";
+      mode: "list" | "display";
+      before: string[];
+      after: string[];
+    }
+  | {
+      type: "clear-objects";
+      objects: HistoryObjectSnapshot[];
+      listOrderKeys: string[];
+      displayOrderKeys: string[];
+    }
+  | {
+      type: "batch";
+      commands: SerializedEditorCommand[];
+    };
+
+export type HistoryVersion = 1;
+
 export type ProjectHistory = {
-  undo: unknown[];
-  redo: unknown[];
+  historyVersion: HistoryVersion;
+  undo: SerializedEditorCommand[];
+  redo: SerializedEditorCommand[];
 };
 
 export type MapProject = {

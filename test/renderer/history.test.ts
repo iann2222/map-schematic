@@ -9,6 +9,7 @@ import {
 } from "../../src/renderer/editor/commands.js";
 import { EditorCore } from "../../src/renderer/editor/editor-core.js";
 import { cloneEditorObject } from "../../src/renderer/editor/document.js";
+import { validateProjectHistory } from "../../src/shared/schema/history.js";
 import type {
   EditorDocument,
   Marker,
@@ -78,6 +79,16 @@ function markerFrom(core: EditorCore): Marker {
 }
 
 describe("EditorCore history", () => {
+  it("exports commands that satisfy the shared history contract", () => {
+    const core = new EditorCore(createDocument([createMarker(), createShape()]));
+    core.dispatch(createClearObjectsCommand(core.document));
+
+    expect(validateProjectHistory(core.exportHistory())).toEqual({
+      valid: true,
+      errors: [],
+    });
+  });
+
   it("adds an object and restores its order entries through undo and redo", () => {
     const core = new EditorCore(createDocument());
 
@@ -259,6 +270,25 @@ describe("EditorCore history", () => {
     expect(markerFrom(restored).name).toBe("B");
     restored.undo();
     expect(markerFrom(restored).name).toBe("A");
+  });
+
+  it("exports history version 1 and rejects snapshots without that contract", () => {
+    const source = new EditorCore(createDocument());
+    source.dispatch(createAddObjectCommand(source.document, createMarker()));
+    const history = source.exportHistory();
+
+    expect(history.historyVersion).toBe(1);
+    const restored = new EditorCore(createDocument([createMarker()]));
+    expect(
+      restored.restoreHistory({ undo: history.undo, redo: history.redo }),
+    ).toBe(false);
+    expect(
+      restored.restoreHistory({
+        historyVersion: 2,
+        undo: history.undo,
+        redo: history.redo,
+      }),
+    ).toBe(false);
   });
 
   it("rejects saved history that cannot be applied to the current document", () => {

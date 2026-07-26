@@ -4112,7 +4112,7 @@ function buildProject(): MapProject | null {
   ];
   return {
     ...(currentProject ?? {}),
-    schemaVersion: "0.6",
+    schemaVersion: "0.7",
     createdAt: base,
     updatedAt: now,
     dataPackVersion: currentPackVersion,

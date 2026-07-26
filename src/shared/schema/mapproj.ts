@@ -5,10 +5,11 @@ import type {
   SchemaVersion,
   Viewport
 } from "./mapproj-contract";
+import { createEmptyProjectHistory } from "./history";
 
 export type * from "./mapproj-contract";
 
-export const CURRENT_SCHEMA_VERSION = "0.6" as const satisfies SchemaVersion;
+export const CURRENT_SCHEMA_VERSION = "0.7" as const satisfies SchemaVersion;
 
 export function createEmptyProject(params: {
   dataPackVersion: string;
@@ -50,7 +51,7 @@ export function createEmptyProject(params: {
       }
     ],
     objects: [],
-    history: { undo: [], redo: [] },
+    history: createEmptyProjectHistory(),
     ui: {}
   };
 }

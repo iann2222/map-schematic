@@ -1,53 +1,14 @@
 import { cloneEditorDocument, cloneEditorObject } from "./document.js";
 import type { EditorDocument, EditorObject } from "./types.js";
+import type {
+  SerializedEditorCommand,
+  SerializedEditorFieldChange,
+  StoredHistoryFieldValue,
+} from "../../shared/schema/mapproj-contract.js";
 
-export type StoredFieldValue =
-  | { present: false }
-  | { present: true; value: string | number | boolean };
-
-export type EditorFieldChange = {
-  path: [string] | ["style", string];
-  before: StoredFieldValue;
-  after: StoredFieldValue;
-};
-
-export type EditorCommand =
-  | {
-      type: "add-object";
-      object: EditorObject;
-      objectIndex: number;
-      listOrderIndex: number;
-      displayOrderIndex: number;
-    }
-  | {
-      type: "remove-object";
-      object: EditorObject;
-      objectIndex: number;
-      listOrderIndex: number;
-      displayOrderIndex: number;
-    }
-  | {
-      type: "update-object";
-      objectId: string;
-      objectKind: EditorObject["objectKind"];
-      changes: EditorFieldChange[];
-    }
-  | {
-      type: "reorder-objects";
-      mode: "list" | "display";
-      before: string[];
-      after: string[];
-    }
-  | {
-      type: "clear-objects";
-      objects: EditorObject[];
-      listOrderKeys: string[];
-      displayOrderKeys: string[];
-    }
-  | {
-      type: "batch";
-      commands: EditorCommand[];
-    };
+export type StoredFieldValue = StoredHistoryFieldValue;
+export type EditorFieldChange = SerializedEditorFieldChange;
+export type EditorCommand = SerializedEditorCommand;
 
 export type EditorCommandDirection = "forward" | "backward";
 

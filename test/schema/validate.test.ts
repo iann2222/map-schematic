@@ -3,6 +3,21 @@ import { describe, expect, it } from "vitest";
 import { validateProject } from "../../src/shared/schema/validate";
 import { createTestPointObject, createTestProject } from "../fixtures/projects";
 
+function createHistoryCommand(): Record<string, unknown> {
+  return {
+    type: "update-object",
+    objectId: "point-1",
+    objectKind: "marker",
+    changes: [
+      {
+        path: ["name"],
+        before: { present: true, value: "Taipei" },
+        after: { present: true, value: "Taipei City" }
+      }
+    ]
+  };
+}
+
 describe("validateProject", () => {
   it("accepts a complete project", () => {
     expect(validateProject(createTestProject())).toEqual({
@@ -212,13 +227,18 @@ describe("validateProject", () => {
 
   it("rejects malformed or oversized saved history", () => {
     const malformed = createTestProject() as unknown as Record<string, unknown>;
-    malformed.history = { undo: "not-an-array", redo: [] };
+    malformed.history = { historyVersion: 1, undo: "not-an-array", redo: [] };
     const oversized = createTestProject() as unknown as Record<string, unknown>;
-    oversized.history = { undo: Array.from({ length: 301 }, () => ({})), redo: [] };
+    oversized.history = {
+      historyVersion: 1,
+      undo: Array.from({ length: 301 }, createHistoryCommand),
+      redo: []
+    };
     const splitOversized = createTestProject() as unknown as Record<string, unknown>;
     splitOversized.history = {
-      undo: Array.from({ length: 151 }, () => ({})),
-      redo: Array.from({ length: 150 }, () => ({}))
+      historyVersion: 1,
+      undo: Array.from({ length: 151 }, createHistoryCommand),
+      redo: Array.from({ length: 150 }, createHistoryCommand)
     };
 
     expect(validateProject(malformed).errors).toEqual(
@@ -232,6 +252,45 @@ describe("validateProject", () => {
     expect(validateProject(splitOversized).errors).toEqual(
       expect.arrayContaining([
         { path: "history", message: "must contain at most 300 commands in total" }
+      ])
+    );
+  });
+
+  it("rejects unsupported and malformed history commands", () => {
+    const unsupportedVersion = createTestProject() as unknown as Record<
+      string,
+      unknown
+    >;
+    unsupportedVersion.history = {
+      historyVersion: 2,
+      undo: [],
+      redo: []
+    };
+    const malformedCommand = createTestProject() as unknown as Record<
+      string,
+      unknown
+    >;
+    malformedCommand.history = {
+      historyVersion: 1,
+      undo: [{ type: "update-object", objectId: "point-1", changes: [] }],
+      redo: []
+    };
+
+    expect(validateProject(unsupportedVersion).errors).toEqual(
+      expect.arrayContaining([
+        { path: "history.historyVersion", message: "must be 1" }
+      ])
+    );
+    expect(validateProject(malformedCommand).errors).toEqual(
+      expect.arrayContaining([
+        {
+          path: "history.undo[0].objectKind",
+          message: "must be marker or shape"
+        },
+        {
+          path: "history.undo[0].changes",
+          message: "must contain 1 to 1000 field changes"
+        }
       ])
     );
   });

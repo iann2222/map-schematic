@@ -1,4 +1,8 @@
 import { CURRENT_SCHEMA_VERSION, MapProject } from "./mapproj";
+import {
+  createEmptyProjectHistory,
+  migrateLegacyProjectHistory
+} from "./history";
 
 export type ProjectMigrationResult = {
   project: MapProject;
@@ -151,6 +155,17 @@ const migrations: Record<string, MigrationStep> = {
       schemaVersion: "0.6",
       canvas: migrateCanvasToCropRatio(project.canvas, project.ui),
       layers: migrateSingleLayer(project.layers)
+    })
+  },
+  "0.6": {
+    toVersion: "0.7",
+    migrate: (project) => ({
+      ...project,
+      schemaVersion: "0.7",
+      history:
+        project.history === undefined
+          ? createEmptyProjectHistory()
+          : migrateLegacyProjectHistory(project.history)
     })
   }
 };

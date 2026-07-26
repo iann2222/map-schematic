@@ -6,6 +6,7 @@ import {
 import type { EditorCommand } from "./commands.js";
 import { cloneEditorDocument } from "./document.js";
 import type { EditorDocument } from "./types.js";
+import type { ProjectHistory } from "../../shared/schema/mapproj-contract.js";
 
 export type EditorCoreChange = {
   kind: "execute" | "undo" | "redo" | "reset";
@@ -17,10 +18,9 @@ export type EditorCoreRecordOptions = {
   timestamp?: number;
 };
 
-export type EditorHistorySnapshot = {
-  undo: EditorCommand[];
-  redo: EditorCommand[];
-};
+export type EditorHistorySnapshot = ProjectHistory;
+
+const EDITOR_HISTORY_VERSION = 1 satisfies ProjectHistory["historyVersion"];
 
 type HistoryEntry = {
   command: EditorCommand;
@@ -201,6 +201,7 @@ export class EditorCore {
 
   exportHistory(): EditorHistorySnapshot {
     return {
+      historyVersion: EDITOR_HISTORY_VERSION,
       undo: this.past.map((entry) => cloneCommand(entry.command)),
       redo: this.future.map((entry) => cloneCommand(entry.command)),
     };
@@ -214,7 +215,14 @@ export class EditorCore {
     ) {
       return false;
     }
-    const record = snapshot as { undo?: unknown; redo?: unknown };
+    const record = snapshot as {
+      historyVersion?: unknown;
+      undo?: unknown;
+      redo?: unknown;
+    };
+    if (record.historyVersion !== EDITOR_HISTORY_VERSION) {
+      return false;
+    }
     const undo = cloneHistoryCommands(record.undo, this.limit);
     const redo = cloneHistoryCommands(record.redo, this.limit);
     if (!undo || !redo || undo.length + redo.length > this.limit) {

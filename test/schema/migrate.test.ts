@@ -26,18 +26,33 @@ function createLegacyProject(): Record<string, unknown> {
   return legacy;
 }
 
+function createLegacyHistoryCommand(): Record<string, unknown> {
+  return {
+    type: "update-object",
+    objectId: "point-1",
+    objectKind: "marker",
+    changes: [
+      {
+        path: ["name"],
+        before: { present: true, value: "Taipei" },
+        after: { present: true, value: "Taipei City" }
+      }
+    ]
+  };
+}
+
 describe("migrateProject", () => {
-  it("migrates a 0.1 project to 0.6 and adds required containers", () => {
+  it("migrates a 0.1 project to 0.7 and adds required containers", () => {
     const legacy = createLegacyProject();
     const result = migrateProject(legacy);
 
     expect(result).toMatchObject({
       fromVersion: "0.1",
-      toVersion: "0.6",
+      toVersion: "0.7",
       migrated: true,
-      appliedVersions: ["0.2", "0.3", "0.4", "0.5", "0.6"]
+      appliedVersions: ["0.2", "0.3", "0.4", "0.5", "0.6", "0.7"]
     });
-    expect(result.project.schemaVersion).toBe("0.6");
+    expect(result.project.schemaVersion).toBe("0.7");
     expect(result.project.viewport.bbox).toEqual({
       west: -180,
       south: -85,
@@ -46,7 +61,11 @@ describe("migrateProject", () => {
       crossesAntimeridian: false
     });
     expect(result.project.ui).toEqual({});
-    expect(result.project.history).toEqual({ undo: [], redo: [] });
+    expect(result.project.history).toEqual({
+      historyVersion: 1,
+      undo: [],
+      redo: []
+    });
     expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
     expect(legacy).not.toHaveProperty("ui");
   });
@@ -74,7 +93,13 @@ describe("migrateProject", () => {
     const result = migrateProject(legacy);
 
     expect(result.project.viewport.projection).toBe("EPSG:4326");
-    expect(result.appliedVersions).toEqual(["0.3", "0.4", "0.5", "0.6"]);
+    expect(result.appliedVersions).toEqual([
+      "0.3",
+      "0.4",
+      "0.5",
+      "0.6",
+      "0.7"
+    ]);
     expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
   });
 
@@ -85,8 +110,12 @@ describe("migrateProject", () => {
 
     const result = migrateProject(legacy);
 
-    expect(result.project.history).toEqual({ undo: [], redo: [] });
-    expect(result.appliedVersions).toEqual(["0.4", "0.5", "0.6"]);
+    expect(result.project.history).toEqual({
+      historyVersion: 1,
+      undo: [],
+      redo: []
+    });
+    expect(result.appliedVersions).toEqual(["0.4", "0.5", "0.6", "0.7"]);
   });
 
   it("converts a 0.4 bbox to the explicit antimeridian contract", () => {
@@ -94,13 +123,13 @@ describe("migrateProject", () => {
     legacy.schemaVersion = "0.4";
     legacy.ui = {};
     legacy.history = {
-      undo: [{ type: "test-command" }],
+      undo: [createLegacyHistoryCommand()],
       redo: []
     };
 
     const result = migrateProject(legacy);
 
-    expect(result.appliedVersions).toEqual(["0.5", "0.6"]);
+    expect(result.appliedVersions).toEqual(["0.5", "0.6", "0.7"]);
     expect(result.project.viewport.bbox).toEqual({
       west: -180,
       south: -85,
@@ -109,7 +138,8 @@ describe("migrateProject", () => {
       crossesAntimeridian: false
     });
     expect(result.project.history).toEqual({
-      undo: [{ type: "test-command" }],
+      historyVersion: 1,
+      undo: [createLegacyHistoryCommand()],
       redo: []
     });
     expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
@@ -133,7 +163,7 @@ describe("migrateProject", () => {
 
     const result = migrateProject(legacy);
 
-    expect(result.appliedVersions).toEqual(["0.6"]);
+    expect(result.appliedVersions).toEqual(["0.6", "0.7"]);
     expect(result.project.canvas).toEqual({
       width: 1200,
       height: 1200,
@@ -142,6 +172,44 @@ describe("migrateProject", () => {
     expect(result.project.layers).toEqual([
       { id: "layer-1", name: "Default" }
     ]);
+    expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("adds historyVersion while preserving valid 0.6 commands", () => {
+    const legacy = createTestProject() as unknown as Record<string, unknown>;
+    legacy.schemaVersion = "0.6";
+    legacy.history = {
+      undo: [createLegacyHistoryCommand()],
+      redo: []
+    };
+
+    const result = migrateProject(legacy);
+
+    expect(result.appliedVersions).toEqual(["0.7"]);
+    expect(result.project.history).toEqual({
+      historyVersion: 1,
+      undo: [createLegacyHistoryCommand()],
+      redo: []
+    });
+    expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("drops malformed legacy commands without losing project content", () => {
+    const legacy = createTestProject() as unknown as Record<string, unknown>;
+    legacy.schemaVersion = "0.6";
+    legacy.history = {
+      undo: [{ type: "unknown-command", payload: "legacy" }],
+      redo: []
+    };
+
+    const result = migrateProject(legacy);
+
+    expect(result.project.objects).toEqual(legacy.objects);
+    expect(result.project.history).toEqual({
+      historyVersion: 1,
+      undo: [],
+      redo: []
+    });
     expect(validateProject(result.project)).toEqual({ valid: true, errors: [] });
   });
 

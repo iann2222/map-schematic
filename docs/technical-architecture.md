@@ -146,7 +146,7 @@
 - 若 `dataPackVersion` 不一致：
   - 提示專案與本機資料包版本差異；
   - 由使用者確認是否仍要載入，不在背景自動下載或替換資料包。
-- 目前 schema 版本為 `0.6`，載入時會依明確 migration chain 逐版轉換；目前支援 `0.1 → 0.2 → 0.3 → 0.4 → 0.5 → 0.6`，未知與較新版本會停止載入。
+- 目前 schema 版本為 `0.7`，載入時會依明確 migration chain 逐版轉換；目前支援 `0.1 → 0.2 → 0.3 → 0.4 → 0.5 → 0.6 → 0.7`，未知與較新版本會停止載入。
 - 更新資料包時需下載完成並通過 SHA-256 與內容驗證後才切換。
 - `pack-release.json` 是 App 目標資料包 id／version 的唯一設定來源，避免 runtime 常數與 release 設定不一致。
 
@@ -392,11 +392,11 @@ Natural Earth 為公開可自由使用資料集，適合製圖用途。
 - 標示物件
 - 樣式設定
 
-## 9.3 `.mapproj` v0.6 最小欄位
+## 9.3 `.mapproj` v0.7 最小欄位
 
 File header：
 
-- schemaVersion（目前為 "0.6"）
+- schemaVersion（目前為 "0.7"）
 - createdAt, updatedAt
 - appVersion（可選）
 
@@ -433,7 +433,10 @@ Objects：
 
 History：
 
-- history: undo, redo（合計最多 300 筆可序列化編輯命令）
+- history: historyVersion, undo, redo
+- historyVersion 目前為 1，獨立描述可序列化 EditorCommand 的資料格式
+- undo 與 redo 合計最多 300 筆頂層命令；batch 另限制遞迴深度與命令節點總數
+- shared schema 會驗證命令種類、必要欄位、物件快照及欄位變更路徑
 - 載入時會檢查命令與目前 objects 是否一致；不一致時不套用歷史。
 
 UI state：
@@ -446,9 +449,10 @@ UI state：
 - 每個專案檔包含資料包版本號
 - 載入前先驗證 schema 與必要欄位；格式無效時停止載入並顯示錯誤
 - 若資料包 id 或版本不一致，提示風險並由使用者決定是否繼續
-- 目前寫入 schema `0.6`，並可將 `0.1`、`0.2`、`0.3`、`0.4`、`0.5` 逐版遷移至目前格式
+- 目前寫入 schema `0.7`，並可將 `0.1`、`0.2`、`0.3`、`0.4`、`0.5`、`0.6` 逐版遷移至目前格式
 - v0.1 至 v0.3 專案遷移後以空白歷史開始；v0.4 的既有歷史會保留，舊 bbox 會轉為 v0.5 的明確日期變更線格式
 - v0.5 升級至 v0.6 時，canvas 會同步為已保存的實際裁切比例，並移除尚未支援的圖層外觀欄位
+- v0.6 升級至 v0.7 時加入 historyVersion；合法舊命令會保留，不符合 history v1 契約時只清空歷史，不丟失專案內容
 - migration 只處理明確定義的結構變更；缺少版本、未知舊版與較新版本一律不猜測轉換
 
 ## 9.5 原子儲存與恢復
