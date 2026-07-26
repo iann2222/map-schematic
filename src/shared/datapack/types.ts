@@ -15,8 +15,12 @@ export type DataPackManifest = DataPackRef & {
   buildEnvironment?: {
     python: string;
     geopandas: string;
+    pyogrio: string;
+    pyproj: string;
     pillow: string;
     gdal: string;
+    condaPlatform: "win-64";
+    condaLockSha256: string;
   };
   basemap: {
     format: "geojson";

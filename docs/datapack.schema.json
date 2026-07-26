@@ -37,12 +37,28 @@
     "projection": { "type": "string", "enum": ["EPSG:4326"] },
     "buildEnvironment": {
       "type": "object",
-      "required": ["python", "geopandas", "pillow", "gdal"],
+      "required": [
+        "python",
+        "geopandas",
+        "pyogrio",
+        "pyproj",
+        "pillow",
+        "gdal",
+        "condaPlatform",
+        "condaLockSha256"
+      ],
       "properties": {
         "python": { "type": "string", "minLength": 1 },
         "geopandas": { "type": "string", "minLength": 1 },
+        "pyogrio": { "type": "string", "minLength": 1 },
+        "pyproj": { "type": "string", "minLength": 1 },
         "pillow": { "type": "string", "minLength": 1 },
-        "gdal": { "type": "string", "minLength": 1 }
+        "gdal": { "type": "string", "minLength": 1 },
+        "condaPlatform": { "type": "string", "enum": ["win-64"] },
+        "condaLockSha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        }
       }
     },
     "basemap": {

@@ -57,6 +57,7 @@ https://conda.anaconda.org/conda-forge/win-64/xorg-libxdmcp-1.1.5-hba3369d_1.con
 https://conda.anaconda.org/conda-forge/win-64/zlib-1.3.2-hfd05255_2.conda#5187ecf958be3c39110fe691cbd6873e
 https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_6.conda#053b84beec00b71ea8ff7a4f84b55207
 https://conda.anaconda.org/conda-forge/win-64/blosc-1.21.6-hfd34d9b_1.conda#357d7be4146d5fec543bfaa96a8a40de
+https://conda.anaconda.org/conda-forge/noarch/certifi-2026.7.22-pyhd8ed1ab_0.conda#37e13edbe3b48f1095a9d085ef9cd83b
 https://conda.anaconda.org/conda-forge/win-64/libcurl-8.21.0-h51a1c48_2.conda#88c875a8f34785d6f6185ceb646154fa
 https://conda.anaconda.org/conda-forge/win-64/libfreetype6-2.14.3-hdbac1cb_1.conda#4e4d54f9f98383d977ba56ef39ebf46d
 https://conda.anaconda.org/conda-forge/win-64/libjxl-0.11.2-h932607e_1.conda#327bce3eb1ef1875c7145e915d25bcd3
@@ -81,6 +82,7 @@ https://conda.anaconda.org/conda-forge/noarch/wheel-0.47.0-pyhd8ed1ab_0.conda#d0
 https://conda.anaconda.org/conda-forge/win-64/libspatialite-5.1.0-gpl_h0cd62ae_119.conda#c0eeff876d19f52efddccbd4887bb66f
 https://conda.anaconda.org/conda-forge/win-64/pillow-12.1.0-py311h17b8079_0.conda#da30e4de83b61f936f73660eb4fa3cd5
 https://conda.anaconda.org/conda-forge/noarch/pip-26.1.2-pyh8b19718_0.conda#511fbc2c63d2c73650ad1755e4d357ba
+https://conda.anaconda.org/conda-forge/win-64/pyproj-3.7.2-py311h7fabd05_3.conda#9ecebb51832bd902176abe1b1a912773
 https://conda.anaconda.org/conda-forge/win-64/tbb-2023.0.0-hd3d4ead_2.conda#8ee01a693aecff5432069eaaf1183c45
 https://conda.anaconda.org/conda-forge/win-64/libgdal-core-3.11.4-h9732b15_9.conda#241adf9061952fa9991913a33f4c1653
 https://conda.anaconda.org/conda-forge/win-64/mkl-2026.1.0-hac47afa_233.conda#5afbf28c4ca3e05b5469dbbd78c8e704
@@ -90,5 +92,6 @@ https://conda.anaconda.org/conda-forge/win-64/liblapack-3.11.0-8_hf9ab0e9_mkl.co
 https://conda.anaconda.org/conda-forge/win-64/numpy-2.4.6-py311h65cb7f3_0.conda#ef5c1dedd943abfb0b80112ba46d4ab8
 https://conda.anaconda.org/conda-forge/win-64/gdal-3.11.4-py311ha7b5f94_9.conda#68d9fd9f54c90ea02cc5c6a1a598c396
 https://conda.anaconda.org/conda-forge/win-64/pandas-3.0.3-py311h0610301_0.conda#9656a201c2120159036ee645e5ceae59
+https://conda.anaconda.org/conda-forge/win-64/pyogrio-0.11.1-py311h7e344e2_1.conda#5041a82b8d985a66985a87101806391d
 https://conda.anaconda.org/conda-forge/win-64/shapely-2.1.2-py311h362461e_2.conda#fe3ffdb05c2c887a7423ed5d320fd300
 https://conda.anaconda.org/conda-forge/noarch/geopandas-base-1.1.2-pyha770c72_0.conda#ca79e96c1fd39ab6d12c8f99968111b1

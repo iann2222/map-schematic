@@ -22,9 +22,19 @@ from pathlib import Path
 from typing import Dict, Iterable
 
 try:
-    from .datapack_common import EXPECTED_BUILD_ENVIRONMENT, is_safe_pack_segment
+    from .datapack_common import (
+        CONDA_LOCK_FILE_NAME,
+        EXPECTED_BUILD_ENVIRONMENT,
+        is_safe_pack_segment,
+        read_conda_lock_contract,
+    )
 except ImportError:
-    from datapack_common import EXPECTED_BUILD_ENVIRONMENT, is_safe_pack_segment
+    from datapack_common import (
+        CONDA_LOCK_FILE_NAME,
+        EXPECTED_BUILD_ENVIRONMENT,
+        is_safe_pack_segment,
+        read_conda_lock_contract,
+    )
 
 
 EXCLUDE_NAMES = {
@@ -34,6 +44,8 @@ EXCLUDE_NAMES = {
 EXCLUDE_SUFFIXES = {
     ".aux.xml",
 }
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CONDA_LOCK = REPO_ROOT / CONDA_LOCK_FILE_NAME
 
 
 def sha256_file(path: Path) -> str:
@@ -72,6 +84,14 @@ def validate_relative_path(value: object) -> str:
     return value
 
 
+def expected_official_build_environment() -> Dict[str, str]:
+    try:
+        lock_contract = read_conda_lock_contract(DEFAULT_CONDA_LOCK)
+    except RuntimeError as error:
+        raise SystemExit(str(error)) from error
+    return {**EXPECTED_BUILD_ENVIRONMENT, **lock_contract}
+
+
 def read_and_validate_archive(zip_path: Path) -> Dict[str, object]:
     with zipfile.ZipFile(zip_path, "r") as archive:
         archive_names = [name for name in archive.namelist() if name]
@@ -104,7 +124,7 @@ def read_and_validate_archive(zip_path: Path) -> Dict[str, object]:
             raise SystemExit("datapack.json id and version must be safe path segments")
         if manifest.get("projection") != "EPSG:4326":
             raise SystemExit("datapack.json projection must be EPSG:4326")
-        if manifest.get("buildEnvironment") != EXPECTED_BUILD_ENVIRONMENT:
+        if manifest.get("buildEnvironment") != expected_official_build_environment():
             raise SystemExit(
                 "datapack.json buildEnvironment must match the pinned official toolchain"
             )

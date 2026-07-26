@@ -73,7 +73,7 @@ geodata/
 - 開發、測試或封裝 Electron 應用程式：只需要 README 指定的 Node.js 與 npm。
 - 重新製作官方資料包：才需要本節的 Conda 環境與 `geodata_source/` 官方原始資料。
 
-Conda 環境只用於把 Natural Earth、GeoNames 與地形來源轉換成官方資料包，不是應用程式 runtime。封裝版會直接讀取已完成的資料包，不會在使用時執行 Python、GeoPandas 或 GDAL。
+Conda 環境只用於把 Natural Earth、GeoNames 與地形來源轉換成官方資料包，不是應用程式 runtime。封裝版會直接讀取已完成的資料包，不會在使用時執行 Python、GeoPandas、Pyogrio、Pyproj 或 GDAL。
 
 ### 環境契約
 
@@ -83,6 +83,8 @@ Conda 環境只用於把 Natural Earth、GeoNames 與地形來源轉換成官方
 - `environment-win-64.lock.txt`：正式建置使用的完整 win-64 鎖定檔，包含所有間接相依、來源 URL 與 MD5。
 
 `environment.yml` 交給 Conda 重新解析時，間接相依可能因套件庫更新而改變，因此不作為跨設備完全重現正式環境的入口。`requirements.txt` 也不再作為另一套安裝入口。
+
+正式環境檢查不只比較 Python、GeoPandas、Pyogrio、Pyproj、Pillow 與 GDAL。腳本會取得目前環境的 Conda explicit 清單，逐項核對鎖定檔中的套件 URL、版本、build 與 MD5，確認平台為 win-64，並拒絕鎖定檔外的 Conda 或 pip 套件。標準化後的鎖定檔 SHA-256 會寫入 manifest。
 
 ### 新設備建立相同環境
 
@@ -96,18 +98,20 @@ python scripts/build_datapack.py --check-environment
 python -m unittest discover -s test/python -p "test_*.py"
 ```
 
-環境檢查應顯示 Python 3.11.14、GeoPandas 1.1.2、Pillow 12.1.0 與 GDAL 3.11.4。若 `mapschem` 名稱已存在，可用另一個名稱建立，不要在未確認用途前覆蓋既有環境：
+環境檢查應顯示 Python 3.11.14、GeoPandas 1.1.2、Pyogrio 0.11.1、Pyproj 3.7.2、Pillow 12.1.0 與 GDAL 3.11.4。若 `mapschem` 名稱已存在，可用另一個名稱建立，不要在未確認用途前覆蓋既有環境：
 
 ```powershell
 conda create -n mapschem-build --file environment-win-64.lock.txt
 conda activate mapschem-build
 ```
 
+既有環境即使六個核心版本相同，只要間接相依、來源、build、MD5 或額外套件不同，仍會被拒絕。這代表它不等同於正式鎖定環境，不應用來製作發布資料包。
+
 Conda 環境只包含建置工具，不包含 `geodata_source/`。要真正產生資料包，仍需另外準備本文件「原始資料」列出的官方來源檔案。
 
 ### 更新建置版本
 
-只有維護者決定升級 Python、GeoPandas、Pillow 或 GDAL 時，才修改 `environment.yml`。可先建立試驗環境：
+只有維護者決定升級 Python、GeoPandas、Pyogrio、Pyproj、Pillow 或 GDAL 時，才修改 `environment.yml`。可先建立試驗環境：
 
 ```powershell
 conda env create -n mapschem-next -f environment.yml
@@ -155,7 +159,7 @@ geodata/packs/standard/<version>/geonames/geonames.sqlite
 geodata/packs/standard/<version>/relief/hillshade_3857.png  # 可選
 ```
 
-`datapack.json` 保存資料包 id、version、資料入口、固定工具鏈的 `buildEnvironment`，以及每個內容檔的 size／SHA-256。manifest 不將自己列入 `files`。
+`datapack.json` 保存資料包 id、version、資料入口、固定工具鏈的 `buildEnvironment`，以及每個內容檔的 size／SHA-256。`buildEnvironment` 包含六個核心版本、`condaPlatform` 與標準化的 `condaLockSha256`；manifest 不將自己列入 `files`。
 
 ## 發布設定
 

@@ -75,7 +75,7 @@ npm run package:win
 
 - [ ] `scripts/build_datapack.py` 完整成功。
 - [ ] `datapack.json` 的 id／version 正確。
-- [ ] `datapack.json.buildEnvironment` 記錄固定的 Python、GeoPandas、Pillow 與 GDAL 版本。
+- [ ] `datapack.json.buildEnvironment` 記錄固定的核心版本、win-64 平台與標準化鎖定內容 SHA-256。
 - [ ] 所有必要底圖與 GeoNames SQLite 存在。
 - [ ] 地形陰影存在時使用 `EPSG:3857`。
 - [ ] manifest 的每個 path、size 與 SHA-256 均通過驗證。

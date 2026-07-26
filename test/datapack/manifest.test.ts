@@ -45,6 +45,22 @@ describe("datapack manifest contract", () => {
     expect(validateManifest(validManifest())).toEqual([]);
   });
 
+  it("accepts the current official build environment identity", () => {
+    const manifest = validManifest() as unknown as Record<string, unknown>;
+    manifest.buildEnvironment = {
+      python: "3.11.14",
+      geopandas: "1.1.2",
+      pyogrio: "0.11.1",
+      pyproj: "3.7.2",
+      pillow: "12.1.0",
+      gdal: "3.11.4",
+      condaPlatform: "win-64",
+      condaLockSha256: "a".repeat(64)
+    };
+
+    expect(validateManifest(manifest)).toEqual([]);
+  });
+
   it("accepts only portable bounded pack identifiers", () => {
     expect(isSafePackSegment("standard")).toBe(true);
     expect(isSafePackSegment("2026.03-beta_1")).toBe(true);
@@ -89,12 +105,37 @@ describe("datapack manifest contract", () => {
     manifest.buildEnvironment = {
       python: "3.11.14",
       geopandas: "1.1.2",
+      pyogrio: "0.11.1",
+      pyproj: "3.7.2",
       pillow: "",
-      gdal: "3.11.4"
+      gdal: "3.11.4",
+      condaPlatform: "win-64",
+      condaLockSha256: "a".repeat(64)
     };
 
     expect(validateManifest(manifest)).toContain(
       "buildEnvironment.pillow must be a non-empty string"
+    );
+  });
+
+  it("validates the Conda lock identity", () => {
+    const manifest = validManifest() as unknown as Record<string, unknown>;
+    manifest.buildEnvironment = {
+      python: "3.11.14",
+      geopandas: "1.1.2",
+      pyogrio: "0.11.1",
+      pyproj: "3.7.2",
+      pillow: "12.1.0",
+      gdal: "3.11.4",
+      condaPlatform: "linux-64",
+      condaLockSha256: "invalid"
+    };
+
+    expect(validateManifest(manifest)).toEqual(
+      expect.arrayContaining([
+        "buildEnvironment.condaPlatform must be win-64",
+        "buildEnvironment.condaLockSha256 must be a SHA-256 checksum"
+      ])
     );
   });
 

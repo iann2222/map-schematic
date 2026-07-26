@@ -124,10 +124,23 @@ export function validateManifest(input: unknown): string[] {
     if (!isRecord(input.buildEnvironment)) {
       errors.push("buildEnvironment must be an object");
     } else {
-      for (const field of ["python", "geopandas", "pillow", "gdal"]) {
+      for (const field of [
+        "python",
+        "geopandas",
+        "pyogrio",
+        "pyproj",
+        "pillow",
+        "gdal"
+      ]) {
         if (!isNonEmptyString(input.buildEnvironment[field])) {
           errors.push(`buildEnvironment.${field} must be a non-empty string`);
         }
+      }
+      if (input.buildEnvironment.condaPlatform !== "win-64") {
+        errors.push("buildEnvironment.condaPlatform must be win-64");
+      }
+      if (!isSha256(input.buildEnvironment.condaLockSha256)) {
+        errors.push("buildEnvironment.condaLockSha256 must be a SHA-256 checksum");
       }
     }
   }

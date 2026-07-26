@@ -57,7 +57,7 @@
 - `npm run test:typecheck`
   - 只執行測試程式與相關原始碼的 TypeScript 型別檢查，不執行測試案例。
 - `npm run test:datapack-tools`
-  - 使用 Python 內建 unittest 驗證資料包安全路徑、GDAL 版本解析、建置環境契約與 win-64 鎖定檔。
+  - 使用 Python 內建 unittest 驗證資料包安全路徑、GDAL 版本解析、完整 Conda 環境比對與 win-64 鎖定檔。
 
 測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj`、資料包 manifest、manager、初始化、更新、修復、fallback、Python 建置工具，以及 renderer Editor Core 的命令、歷史、專案操作排程、App State 與座標解析。
 

@@ -5,6 +5,11 @@ import platform
 import subprocess
 import tempfile
 
+try:
+    from .datapack_common import parse_conda_explicit_lock
+except ImportError:
+    from datapack_common import parse_conda_explicit_lock
+
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_ENVIRONMENT = REPO_ROOT / "environment.yml"
@@ -20,6 +25,10 @@ def run(command: list[str]) -> subprocess.CompletedProcess[str]:
             text=True,
             capture_output=True,
         )
+    except FileNotFoundError as error:
+        raise RuntimeError(
+            f"Command not found: {command[0]}; install Conda and ensure it is on PATH"
+        ) from error
     except subprocess.CalledProcessError as error:
         detail = (error.stderr or error.stdout or str(error)).strip()
         raise RuntimeError(
@@ -76,8 +85,10 @@ def main() -> None:
             ]
         ).stdout
 
-    if "# platform: win-64" not in explicit or "@EXPLICIT" not in explicit:
-        raise SystemExit("Conda did not produce a valid win-64 explicit lock")
+    try:
+        parse_conda_explicit_lock(explicit)
+    except ValueError as error:
+        raise SystemExit(f"Conda did not produce a valid win-64 explicit lock: {error}") from error
     output_path = args.out.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temp_output = output_path.with_name(f".{output_path.name}.writing")
@@ -87,4 +98,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as error:
+        raise SystemExit(str(error)) from error

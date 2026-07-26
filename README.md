@@ -73,7 +73,9 @@ python scripts/build_datapack.py --check-environment
 python -m unittest discover -s test/python -p "test_*.py"
 ```
 
-`environment.yml` 是維護核心套件版本的來源，不保證間接相依永遠相同；跨設備重建正式環境時應使用鎖定檔。資料包原始地理資料不在 Git repository，實際建置前仍須依 `docs/datapack.md` 準備官方來源檔案。
+環境檢查會確認目前 Conda 環境的完整套件 URL、版本、build、MD5 與 win-64 平台都符合鎖定檔，並拒絕額外的 Conda 或 pip 套件。只有六個核心套件版本相同仍不算通過。
+
+`environment.yml` 是維護核心套件版本的來源，不保證間接相依永遠相同；跨設備重建正式環境時應使用鎖定檔。既有同名環境不符合時，應依 `docs/datapack.md` 以其他名稱建立乾淨環境。資料包原始地理資料不在 Git repository，實際建置前仍須另外準備官方來源檔案。
 
 ## 測試與建置
 
