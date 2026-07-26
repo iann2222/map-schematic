@@ -5,6 +5,7 @@ import type {
   ShapeItem
 } from "../editor/types.js";
 import { isMarker, isShape } from "../editor/types.js";
+import { normalizeLongitude } from "../map/geometry.js";
 import { partitionProjectObjects } from "./project-state.js";
 
 export type V02EditorLoadResult = {
@@ -124,7 +125,7 @@ export function editorDocumentToV02Objects(
     },
     geometry: {
       kind: "point",
-      lon: marker.longitude,
+      lon: normalizeLongitude(marker.longitude),
       lat: marker.latitude
     },
     text: markerLabelText(marker),
@@ -154,7 +155,11 @@ export function editorDocumentToV02Objects(
       textSize: shape.style.textSize,
       fontFamily: shape.style.fontFamily
     },
-    geometry: { kind: "point", lon: shape.longitude, lat: shape.latitude },
+    geometry: {
+      kind: "point",
+      lon: normalizeLongitude(shape.longitude),
+      lat: shape.latitude
+    },
     text: shape.text,
     provenance: { source: "manual", query: `shape:${shape.type}` }
   }));
@@ -201,7 +206,7 @@ export function mapProjectToEditorDocument(project: MapProject): V02EditorLoadRe
               : undefined,
         displayName: typeof style.displayName === "string" ? style.displayName : undefined,
         latitude: lat,
-        longitude: lon,
+        longitude: normalizeLongitude(lon),
         sourceId: object.provenance?.sourceId,
         style: {
           dotColor: String(style.dotColor ?? "#f97316"),
@@ -235,7 +240,7 @@ export function mapProjectToEditorDocument(project: MapProject): V02EditorLoadRe
       layerId: object.layerId,
       type: shapeType,
       displayName: typeof style.displayName === "string" ? style.displayName : undefined,
-      longitude: lon,
+      longitude: normalizeLongitude(lon),
       latitude: lat,
       width: Number(style.width ?? (shapeType === "line" ? 140 : 80)),
       height: Number(style.height ?? (shapeType === "line" ? 0 : 70)),

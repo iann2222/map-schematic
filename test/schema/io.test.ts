@@ -30,7 +30,7 @@ describe("project schema IO", () => {
     const project = createTestProject();
     const serialized = serializeProject(project);
 
-    expect(serialized).toContain('\n  "schemaVersion": "0.4"');
+    expect(serialized).toContain('\n  "schemaVersion": "0.5"');
     expect(JSON.parse(serialized)).toEqual(project);
   });
 
@@ -45,6 +45,24 @@ describe("project schema IO", () => {
     expect(loaded.validation).toEqual({ valid: true, errors: [] });
     expect(loaded.migration.migrated).toBe(false);
     await expect(fs.access(projectBackupPath(filePath))).rejects.toThrow();
+  });
+
+  it("round-trips a viewport crossing the antimeridian", async () => {
+    const filePath = path.join(tempDir, "antimeridian.mapproj");
+    const project = createTestProject();
+    project.viewport.bbox = {
+      west: 165,
+      south: -20,
+      east: -165,
+      north: 30,
+      crossesAntimeridian: true
+    };
+
+    await saveProjectToFile(filePath, project);
+    const loaded = await loadProjectFromFile(filePath);
+
+    expect(loaded.project.viewport.bbox).toEqual(project.viewport.bbox);
+    expect(loaded.validation).toEqual({ valid: true, errors: [] });
   });
 
   it("keeps the previous valid project as a backup", async () => {
@@ -176,18 +194,22 @@ describe("project schema IO", () => {
     const filePath = path.join(tempDir, "legacy.mapproj");
     const legacy = createTestProject() as unknown as Record<string, unknown>;
     legacy.schemaVersion = "0.1";
+    legacy.viewport = {
+      projection: "EPSG:4326",
+      bbox: { minLon: -180, minLat: -85, maxLon: 180, maxLat: 85 }
+    };
     delete legacy.ui;
     await fs.writeFile(filePath, JSON.stringify(legacy), "utf8");
 
     const loaded = await loadProjectFromFile(filePath);
-    expect(loaded.project.schemaVersion).toBe("0.4");
+    expect(loaded.project.schemaVersion).toBe("0.5");
     expect(loaded.project.ui).toEqual({});
     expect(loaded.validation.valid).toBe(true);
     expect(loaded.migration).toMatchObject({
       migrated: true,
       fromVersion: "0.1",
-      toVersion: "0.4",
-      appliedVersions: ["0.2", "0.3", "0.4"]
+      toVersion: "0.5",
+      appliedVersions: ["0.2", "0.3", "0.4", "0.5"]
     });
   });
 
@@ -196,7 +218,7 @@ describe("project schema IO", () => {
     await fs.writeFile(
       filePath,
       JSON.stringify({
-        schemaVersion: "0.4",
+        schemaVersion: "0.5",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         dataPackVersion: "2026.02",

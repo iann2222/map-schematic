@@ -8,14 +8,20 @@ import {
 
 function createProject(): MapProject {
   return {
-    schemaVersion: "0.4",
+    schemaVersion: "0.5",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     dataPackVersion: "2026.02",
     dataPackId: "standard",
     canvas: { width: 1200, height: 800, unit: "px" },
     viewport: {
-      bbox: { minLon: 120, minLat: 20, maxLon: 122, maxLat: 26 },
+      bbox: {
+        west: 120,
+        south: 20,
+        east: 122,
+        north: 26,
+        crossesAntimeridian: false
+      },
       projection: "EPSG:4326"
     },
     layers: [
@@ -163,5 +169,16 @@ describe("mapproj v0.2 editor adapter", () => {
     );
 
     expect(arrow?.objectKind === "shape" ? arrow.rotation : undefined).toBe(270);
+  });
+
+  it("normalizes editable object longitude before saving", () => {
+    const loaded = mapProjectToEditorDocument(createProject());
+    loaded.document.objects[0].longitude = 360;
+    loaded.document.objects[1].longitude = 181;
+
+    const saved = editorDocumentToV02Objects(loaded.document);
+
+    expect(saved[0].geometry).toEqual({ kind: "point", lon: 0, lat: 25.033 });
+    expect(saved[1].geometry).toEqual({ kind: "point", lon: -179, lat: 24 });
   });
 });

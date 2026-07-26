@@ -1,4 +1,4 @@
-export type SchemaVersion = "0.4";
+export type SchemaVersion = "0.5";
 
 // Viewport bbox values are always longitude/latitude degrees.
 export type Projection = "EPSG:4326";
@@ -6,10 +6,11 @@ export type Projection = "EPSG:4326";
 export type CanvasUnit = "px" | "mm";
 
 export type BBox = {
-  minLon: number;
-  minLat: number;
-  maxLon: number;
-  maxLat: number;
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+  crossesAntimeridian: boolean;
 };
 
 export type Canvas = {

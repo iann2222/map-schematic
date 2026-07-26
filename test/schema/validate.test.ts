@@ -115,6 +115,39 @@ describe("validateProject", () => {
     });
   });
 
+  it("accepts a viewport crossing the antimeridian", () => {
+    const project = createTestProject();
+    project.viewport.bbox = {
+      west: 165,
+      south: -20,
+      east: -165,
+      north: 30,
+      crossesAntimeridian: true
+    };
+
+    expect(validateProject(project)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("rejects a bbox whose ordering disagrees with its antimeridian flag", () => {
+    const project = createTestProject();
+    project.viewport.bbox = {
+      west: 165,
+      south: -20,
+      east: -165,
+      north: 30,
+      crossesAntimeridian: false
+    };
+
+    expect(validateProject(project).errors).toEqual(
+      expect.arrayContaining([
+        {
+          path: "viewport.bbox",
+          message: "west must be less than east when not crossing the antimeridian"
+        }
+      ])
+    );
+  });
+
   it("rejects malformed ordering and ratio settings", () => {
     const project = createTestProject() as unknown as Record<string, unknown>;
     project.ui = {

@@ -26,6 +26,31 @@ function isRecord(value: unknown): value is ProjectRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function migrateViewportBBox(viewport: unknown): unknown {
+  if (!isRecord(viewport) || !isRecord(viewport.bbox)) {
+    return viewport;
+  }
+  const bbox = viewport.bbox;
+  if (
+    typeof bbox.minLon !== "number" ||
+    typeof bbox.minLat !== "number" ||
+    typeof bbox.maxLon !== "number" ||
+    typeof bbox.maxLat !== "number"
+  ) {
+    return viewport;
+  }
+  return {
+    ...viewport,
+    bbox: {
+      west: bbox.minLon,
+      south: bbox.minLat,
+      east: bbox.maxLon,
+      north: bbox.maxLat,
+      crossesAntimeridian: false
+    }
+  };
+}
+
 const migrations: Record<string, MigrationStep> = {
   "0.1": {
     toVersion: "0.2",
@@ -63,6 +88,14 @@ const migrations: Record<string, MigrationStep> = {
         project.history === undefined
           ? { undo: [], redo: [] }
           : project.history
+    })
+  },
+  "0.4": {
+    toVersion: "0.5",
+    migrate: (project) => ({
+      ...project,
+      schemaVersion: "0.5",
+      viewport: migrateViewportBBox(project.viewport)
     })
   }
 };

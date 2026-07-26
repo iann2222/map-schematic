@@ -16,9 +16,12 @@ import { isMarker, isShape } from "./editor/types.js";
 import {
   EARTH_RADIUS,
   WORLD_BBOX,
+  geographicBBoxFromUnwrappedBounds,
   geometryToPath,
+  normalizeLongitude,
   project,
   unproject,
+  unwrappedLongitudeBounds,
 } from "./map/geometry.js";
 import {
   buildHillshadeTexture,
@@ -62,12 +65,7 @@ import {
 } from "./ui/app-dialog.js";
 import { initializeThemePreferences } from "./ui/theme-preferences.js";
 
-type BBox = {
-  minLon: number;
-  minLat: number;
-  maxLon: number;
-  maxLat: number;
-};
+type BBox = MapProject["viewport"]["bbox"];
 
 type ViewTransform = {
   scale: number;
@@ -2726,7 +2724,7 @@ function buildManualMarkerAt(center: { lon: number; lat: number }): Marker {
     layerId: defaultObjectLayerId(),
     name: `點標示${manualMarkerCount}`,
     latitude: center.lat,
-    longitude: center.lon,
+    longitude: normalizeLongitude(center.lon),
     style: defaultMarkerStyle(),
     sourceType: "manual",
     labelMode: "name",
@@ -2742,7 +2740,7 @@ function buildPreviewMarkerAt(center: { lon: number; lat: number }): Marker {
     layerId: defaultObjectLayerId(),
     name: "點標示",
     latitude: center.lat,
-    longitude: center.lon,
+    longitude: normalizeLongitude(center.lon),
     style: defaultMarkerStyle(),
     sourceType: "manual",
     labelMode: "name",
@@ -2762,7 +2760,7 @@ function buildShapeAt(
     id: `shape-${type}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     layerId: defaultObjectLayerId(),
     type,
-    longitude: center.lon,
+    longitude: normalizeLongitude(center.lon),
     latitude: center.lat,
     width: size,
     height,
@@ -4060,12 +4058,12 @@ function unprojectBBox(box: {
     MAP_WIDTH,
     MAP_HEIGHT,
   );
-  return {
-    minLon: Math.min(minLon, maxLon),
-    minLat: Math.min(minLat, maxLat),
-    maxLon: Math.max(minLon, maxLon),
-    maxLat: Math.max(minLat, maxLat),
-  };
+  return geographicBBoxFromUnwrappedBounds(
+    Math.min(minLon, maxLon),
+    Math.min(minLat, maxLat),
+    Math.max(minLon, maxLon),
+    Math.max(minLat, maxLat),
+  );
 }
 
 function currentSelectionBBox(): BBox {
@@ -4075,7 +4073,13 @@ function currentSelectionBBox(): BBox {
   if (cropBBox) {
     return unprojectBBox(cropBBox);
   }
-  return { ...WORLD_BBOX };
+  return {
+    west: WORLD_BBOX.minLon,
+    south: WORLD_BBOX.minLat,
+    east: WORLD_BBOX.maxLon,
+    north: WORLD_BBOX.maxLat,
+    crossesAntimeridian: false,
+  };
 }
 
 function defaultObjectLayerId(): string {
@@ -4108,7 +4112,7 @@ function buildProject(): MapProject | null {
       ];
   return {
     ...(currentProject ?? {}),
-    schemaVersion: "0.4",
+    schemaVersion: "0.5",
     createdAt: base,
     updatedAt: now,
     dataPackVersion: currentPackVersion,
@@ -4370,8 +4374,19 @@ async function performLoad(): Promise<void> {
   );
   if (loadedProject.viewport?.bbox) {
     const bbox = loadedProject.viewport.bbox;
-    const min = project(bbox.minLon, bbox.minLat, MAP_WIDTH, MAP_HEIGHT);
-    const max = project(bbox.maxLon, bbox.maxLat, MAP_WIDTH, MAP_HEIGHT);
+    const longitudeBounds = unwrappedLongitudeBounds(bbox);
+    const min = project(
+      longitudeBounds.west,
+      bbox.south,
+      MAP_WIDTH,
+      MAP_HEIGHT,
+    );
+    const max = project(
+      longitudeBounds.east,
+      bbox.north,
+      MAP_WIDTH,
+      MAP_HEIGHT,
+    );
     cropBBox = {
       x: Math.min(min[0], max[0]),
       y: Math.min(min[1], max[1]),
@@ -5370,7 +5385,7 @@ function onMouseMove(event: MouseEvent): void {
       const nextX = startX + dx;
       const nextY = startY + dy;
       const [lon, lat] = unproject(nextX, nextY, width, height);
-      marker.longitude = lon;
+      marker.longitude = normalizeLongitude(lon);
       marker.latitude = lat;
       renderMarkers();
     }
@@ -5393,7 +5408,7 @@ function onMouseMove(event: MouseEvent): void {
       const nextX = startX + dx;
       const nextY = startY + dy;
       const [lon, lat] = unproject(nextX, nextY, width, height);
-      shape.longitude = lon;
+      shape.longitude = normalizeLongitude(lon);
       shape.latitude = lat;
       renderMarkers();
     }
@@ -5899,7 +5914,7 @@ function nudgeSelectedObject(event: KeyboardEvent): boolean {
       height,
     );
     return [
-      Math.max(WORLD_BBOX.minLon, Math.min(WORLD_BBOX.maxLon, nextLongitude)),
+      normalizeLongitude(nextLongitude),
       Math.max(WORLD_BBOX.minLat, Math.min(WORLD_BBOX.maxLat, nextLatitude)),
     ];
   };

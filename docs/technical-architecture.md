@@ -146,7 +146,7 @@
 - 若 `dataPackVersion` 不一致：
   - 提示專案與本機資料包版本差異；
   - 由使用者確認是否仍要載入，不在背景自動下載或替換資料包。
-- 目前 schema 版本為 `0.4`，載入時會依明確 migration chain 逐版轉換；目前支援 `0.1 → 0.2 → 0.3 → 0.4`，未知與較新版本會停止載入。
+- 目前 schema 版本為 `0.5`，載入時會依明確 migration chain 逐版轉換；目前支援 `0.1 → 0.2 → 0.3 → 0.4 → 0.5`，未知與較新版本會停止載入。
 - 更新資料包時需下載完成並通過 SHA-256 與內容驗證後才切換。
 - `pack-release.json` 是 App 目標資料包 id／version 的唯一設定來源，避免 runtime 常數與 release 設定不一致。
 
@@ -392,11 +392,11 @@ Natural Earth 為公開可自由使用資料集，適合製圖用途。
 - 標示物件
 - 樣式設定
 
-## 9.3 `.mapproj` v0.4 最小欄位
+## 9.3 `.mapproj` v0.5 最小欄位
 
 File header：
 
-- schemaVersion（目前為 "0.4"）
+- schemaVersion（目前為 "0.5"）
 - createdAt, updatedAt
 - appVersion（可選）
 
@@ -408,8 +408,11 @@ Data dependency：
 Document / Canvas：
 
 - canvas: width, height, unit（px/mm）
-- viewport: bbox（minLon/minLat/maxLon/maxLat）
+- viewport: bbox（west/south/east/north/crossesAntimeridian）
 - projection（固定為 "EPSG:4326"；bbox 使用經緯度座標）
+- 一般範圍為 west < east；跨越日期變更線時為 west > east，並將 crossesAntimeridian 設為 true
+- 物件經度保存於 -180 至 180 度；水平循環副本只存在 renderer 的畫布座標，不重複寫入專案資料
+- 框選寬度達到或超過完整 360 度時保存為全世界範圍，不在 bbox 中保存重複世界
 
 Layers：
 
@@ -438,7 +441,8 @@ UI state：
 - 每個專案檔包含資料包版本號
 - 載入前先驗證 schema 與必要欄位；格式無效時停止載入並顯示錯誤
 - 若資料包 id 或版本不一致，提示風險並由使用者決定是否繼續
-- 目前寫入 schema `0.4`，並可將 `0.1`、`0.2`、`0.3` 逐版遷移至目前格式；舊專案遷移後以空白歷史開始
+- 目前寫入 schema `0.5`，並可將 `0.1`、`0.2`、`0.3`、`0.4` 逐版遷移至目前格式
+- v0.1 至 v0.3 專案遷移後以空白歷史開始；v0.4 的既有歷史會保留，舊 bbox 會轉為 v0.5 的明確日期變更線格式
 - migration 只處理明確定義的結構變更；缺少版本、未知舊版與較新版本一律不猜測轉換
 
 ## 9.5 原子儲存與恢復

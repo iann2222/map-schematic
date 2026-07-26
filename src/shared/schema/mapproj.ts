@@ -8,7 +8,7 @@ import type {
 
 export type * from "./mapproj-contract";
 
-export const CURRENT_SCHEMA_VERSION = "0.4" as const satisfies SchemaVersion;
+export const CURRENT_SCHEMA_VERSION = "0.5" as const satisfies SchemaVersion;
 
 export function createEmptyProject(params: {
   dataPackVersion: string;
@@ -26,10 +26,11 @@ export function createEmptyProject(params: {
   };
   const viewport: Viewport = {
     bbox: params.viewport?.bbox ?? {
-      minLon: -180,
-      minLat: -85,
-      maxLon: 180,
-      maxLat: 85
+      west: -180,
+      south: -85,
+      east: 180,
+      north: 85,
+      crossesAntimeridian: false
     },
     projection
   };

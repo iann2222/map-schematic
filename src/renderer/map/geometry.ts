@@ -26,6 +26,56 @@ export type RenderGeometry =
   | null
   | undefined;
 
+export type GeographicBBox = {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+  crossesAntimeridian: boolean;
+};
+
+export function normalizeLongitude(longitude: number): number {
+  const normalized = ((longitude + 180) % 360 + 360) % 360 - 180;
+  return Math.abs(normalized) < 1e-12 ? 0 : normalized;
+}
+
+export function geographicBBoxFromUnwrappedBounds(
+  west: number,
+  south: number,
+  east: number,
+  north: number,
+): GeographicBBox {
+  const longitudeSpan = Math.max(0, east - west);
+  if (longitudeSpan >= 360 - 1e-9) {
+    return {
+      west: -180,
+      south: Math.min(south, north),
+      east: 180,
+      north: Math.max(south, north),
+      crossesAntimeridian: false,
+    };
+  }
+  const normalizedWest = normalizeLongitude(west);
+  const normalizedEast = normalizeLongitude(east);
+  return {
+    west: normalizedWest,
+    south: Math.min(south, north),
+    east: normalizedEast,
+    north: Math.max(south, north),
+    crossesAntimeridian: normalizedWest > normalizedEast,
+  };
+}
+
+export function unwrappedLongitudeBounds(bbox: GeographicBBox): {
+  west: number;
+  east: number;
+} {
+  return {
+    west: bbox.west,
+    east: bbox.crossesAntimeridian ? bbox.east + 360 : bbox.east,
+  };
+}
+
 function mercatorX(longitude: number): number {
   return (EARTH_RADIUS * longitude * Math.PI) / 180;
 }

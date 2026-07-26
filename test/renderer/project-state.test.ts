@@ -8,14 +8,20 @@ import type { MapProject } from "../../src/renderer/bridge.js";
 
 function createProject(): MapProject {
   return {
-    schemaVersion: "0.4",
+    schemaVersion: "0.5",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     dataPackVersion: "2026.02",
     dataPackId: "standard",
     canvas: { width: 1200, height: 800, unit: "px" },
     viewport: {
-      bbox: { minLon: 120, minLat: 20, maxLon: 122, maxLat: 26 },
+      bbox: {
+        west: 120,
+        south: 20,
+        east: 122,
+        north: 26,
+        crossesAntimeridian: false
+      },
       projection: "EPSG:4326"
     },
     layers: [

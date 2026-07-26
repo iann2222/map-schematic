@@ -93,37 +93,61 @@ function validateBBox(
     errors.push({ path, message: "must be an object" });
     return false;
   }
-  const fields = ["minLon", "minLat", "maxLon", "maxLat"] as const;
+  const fields = ["west", "south", "east", "north"] as const;
   for (const field of fields) {
     if (!isFiniteNumber(bbox[field])) {
       errors.push({ path: `${path}.${field}`, message: "must be a finite number" });
     }
   }
-  for (const field of ["minLon", "maxLon"] as const) {
+  for (const field of ["west", "east"] as const) {
     if (isFiniteNumber(bbox[field]) && (bbox[field] < -180 || bbox[field] > 180)) {
       errors.push({ path: `${path}.${field}`, message: "must be between -180 and 180" });
     }
   }
-  for (const field of ["minLat", "maxLat"] as const) {
+  for (const field of ["south", "north"] as const) {
     if (isFiniteNumber(bbox[field]) && (bbox[field] < -90 || bbox[field] > 90)) {
       errors.push({ path: `${path}.${field}`, message: "must be between -90 and 90" });
     }
   }
-  if (
-    isFiniteNumber(bbox.minLon) &&
-    isFiniteNumber(bbox.maxLon) &&
-    bbox.minLon >= bbox.maxLon
-  ) {
-    errors.push({ path, message: "minLon must be less than maxLon" });
+  if (typeof bbox.crossesAntimeridian !== "boolean") {
+    errors.push({
+      path: `${path}.crossesAntimeridian`,
+      message: "must be a boolean"
+    });
+  } else if (isFiniteNumber(bbox.west) && isFiniteNumber(bbox.east)) {
+    if (bbox.crossesAntimeridian && bbox.west <= bbox.east) {
+      errors.push({
+        path,
+        message: "west must be greater than east when crossing the antimeridian"
+      });
+    }
+    if (!bbox.crossesAntimeridian && bbox.west >= bbox.east) {
+      errors.push({
+        path,
+        message: "west must be less than east when not crossing the antimeridian"
+      });
+    }
+    const longitudeSpan = bbox.crossesAntimeridian
+      ? bbox.east + 360 - bbox.west
+      : bbox.east - bbox.west;
+    if (longitudeSpan <= 0 || longitudeSpan > 360) {
+      errors.push({
+        path,
+        message: "longitude span must be greater than 0 and at most 360 degrees"
+      });
+    }
   }
   if (
-    isFiniteNumber(bbox.minLat) &&
-    isFiniteNumber(bbox.maxLat) &&
-    bbox.minLat >= bbox.maxLat
+    isFiniteNumber(bbox.south) &&
+    isFiniteNumber(bbox.north) &&
+    bbox.south >= bbox.north
   ) {
-    errors.push({ path, message: "minLat must be less than maxLat" });
+    errors.push({ path, message: "south must be less than north" });
   }
-  return fields.every((field) => isFiniteNumber(bbox[field]));
+  return (
+    fields.every((field) => isFiniteNumber(bbox[field])) &&
+    typeof bbox.crossesAntimeridian === "boolean"
+  );
 }
 
 export function validateProject(input: unknown): ValidationResult {
