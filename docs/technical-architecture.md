@@ -28,10 +28,11 @@
 
 補充：
 
-- 目前 renderer 使用原生 HTML、CSS 與 TypeScript，尚未引入 React 或 Vue；bridge、編輯模型、Editor Core、編輯命令、專案 adapter、投影幾何與共用控制已由入口檔拆成獨立模組。
+- 目前 renderer 使用原生 HTML、CSS 與 TypeScript，尚未引入 React 或 Vue；入口檔作為 composition root，工作流程、專案生命週期、搜尋、匯出與全域命令已分別由 controller 管理，並共用明確的 `AppState`。
+- renderer CSS 不再置於 HTML inline style；基礎樣式與元件樣式分別位於 `foundation`、`components` cascade layer，元件規則依功能區段組織。
 - Step 3 以單一 `EditorDocument.objects` 管理點標示與形狀；所有持久編輯由 command-based Editor Core 統一套用與驗證，Undo/Redo 保存欄位差異而非完整 document 快照。
 - 編輯歷史最多保留 300 筆可序列化命令，隨 `.mapproj` 保存；連續文字與滑桿輸入會合併，拖曳記為單一交易。載入時會驗證歷史可從基底狀態重建目前文件，失敗時略過歷史但保留專案內容；不將單純選取或地圖縮放記入歷史。
-- `.mapproj` 契約由 shared schema 集中定義；renderer 透過專案 adapter 載入與輸出，不另外維護專案資料型別。可編輯物件會保留其 `layerId`，避免多圖層專案在再次儲存時被改寫。
+- `.mapproj` 契約由 shared schema 集中定義；renderer 透過中性命名的專案 adapter 載入與輸出，不另外維護專案資料型別。v0.7 仍維持既有 JSON 相容性，但 style 內的標記資料、圖形結構資料與視覺屬性已有明確型別，下一次格式調整可據此分離儲存位置。可編輯物件會保留其 `layerId`，避免多圖層專案在再次儲存時被改寫。
 
 ## 2.2 渲染層策略
 

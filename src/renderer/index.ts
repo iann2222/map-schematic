@@ -14,7 +14,6 @@ import { cloneEditorObject } from "./editor/document.js";
 import type { EditorDocument, Marker, ShapeItem } from "./editor/types.js";
 import { isMarker, isShape } from "./editor/types.js";
 import {
-  EARTH_RADIUS,
   WORLD_BBOX,
   geographicBBoxFromUnwrappedBounds,
   geometryToPath,
@@ -34,15 +33,6 @@ import {
   loadHillshadeTexture,
 } from "./map/rendering-utils.js";
 import {
-  applyExportFrame,
-  type ExportFrameStyle,
-} from "./export/export-frame.js";
-import {
-  projectDatapackMismatchMessage,
-  projectValidationMessage,
-} from "./project/project-messages.js";
-import { ProjectOperationCoordinator } from "./project/operation-coordinator.js";
-import {
   DEFAULT_PROJECT_CANVAS,
   canvasPixelDimensions,
   fitCanvasToAspectRatio,
@@ -57,11 +47,10 @@ import {
 import { renderObjectList } from "./overlay/object-list.js";
 import { createOverlayRenderer } from "./overlay/overlay-renderer.js";
 import { updateMarkerStyles as updateOverlayMarkerStyles } from "./overlay/marker-style-updater.js";
-import { projectFingerprint } from "./project/project-state.js";
 import {
-  editorDocumentToV02Objects,
+  editorDocumentToProjectObjects,
   mapProjectToEditorDocument,
-} from "./project/v02-adapter.js";
+} from "./project/project-adapter.js";
 import { initSlider, setSliderValue, updateSliderUI } from "./ui/slider.js";
 import type { SliderControl } from "./ui/slider.js";
 import {
@@ -69,8 +58,25 @@ import {
   type AppDialogOptions,
 } from "./ui/app-dialog.js";
 import { initializeThemePreferences } from "./ui/theme-preferences.js";
+import { createAppState, type WorkflowStep } from "./app-state.js";
+import { WorkflowController } from "./controllers/workflow-controller.js";
+import {
+  ProjectController,
+  type AppliedProjectSummary,
+  type ProjectSaveResult,
+} from "./controllers/project-controller.js";
+import {
+  SearchController,
+  type ParsedCoordinates,
+} from "./controllers/search-controller.js";
+import {
+  ExportController,
+  type ExportFormat,
+} from "./controllers/export-controller.js";
+import { AppCommandController } from "./controllers/app-command-controller.js";
 
 type BBox = MapProject["viewport"]["bbox"];
+const appState = createAppState();
 
 type ViewTransform = {
   scale: number;
@@ -390,10 +396,6 @@ let shapeAreaOpacitySlider: SliderControl | null = null;
 let shapeAreaStrokeWidthSlider: SliderControl | null = null;
 let appToastTimer: number | null = null;
 let preferencesPreviousFocus: HTMLElement | null = null;
-let selectedExportFrame: ExportFrameStyle = "none";
-let exportFrameResolver: ((value: ExportFrameStyle | null) => void) | null =
-  null;
-let exportInProgress = false;
 const toolZoomIn = document.getElementById(
   "toolZoomIn",
 ) as HTMLButtonElement | null;
@@ -522,7 +524,6 @@ const PNG_EXPORT_SCALE = 2;
 const EDITOR_HISTORY_LIMIT = 300;
 let cropRatio = MAP_WIDTH / MAP_HEIGHT;
 let projectCanvas = { ...DEFAULT_PROJECT_CANVAS };
-let activeStep = "0";
 let ratioMode: "free" | "fixed" = "fixed";
 let originalRatio = MAP_WIDTH / MAP_HEIGHT;
 let activeRatioId: string | undefined = undefined;
@@ -596,16 +597,10 @@ let hasActiveToolSelection = false;
 let manualMarkerCount = 0;
 let previewToolMarker: Marker | null = null;
 let previewShape: ShapeItem | null = null;
-let currentProjectPath: string | null = null;
 let lastStageRect: { width: number; height: number } | null = null;
 let lastScaleFit = 1;
 let currentPackVersion = "";
 let currentPackId = "";
-let currentProject: MapProject | null = null;
-let savedProjectFingerprint: string | null = null;
-let projectDirty = false;
-let reportedProjectDirty: boolean | null = null;
-let dirtyCheckPending = false;
 
 const view: ViewTransform = { scale: 1, tx: 0, ty: 0 };
 let isDragging = false;
@@ -747,7 +742,7 @@ function applyViewTransform(): void {
   );
   updateZoomIndicator();
   updateMarkerStyles();
-  if (activeStep === "1" && cropBox) {
+  if (appState.workflow.activeStep === "1" && cropBox) {
     updateCropBBox();
   }
   requestBasemapDraw();
@@ -797,8 +792,10 @@ function restoreStepOneCropSnapshot(): void {
   updateWrapTransforms(true);
 }
 
-function setActiveStep(stepId: string): void {
-  const previousStep = activeStep;
+function beforeWorkflowStepChange(
+  previousStep: WorkflowStep,
+  stepId: WorkflowStep,
+): void {
   hideMapStylePreview();
   if (previousStep === "1" && (stepId === "2" || stepId === "3")) {
     saveStepOneCropSnapshot();
@@ -814,35 +811,12 @@ function setActiveStep(stepId: string): void {
     cropBBox = null;
     stepOneCropSnapshot = null;
   }
-  activeStep = stepId;
-  stepPanels.forEach((panel) => {
-    panel.classList.toggle("active", panel.dataset.stepPanel === stepId);
-  });
-  if (layoutEl) {
-    layoutEl.classList.toggle("step-3", stepId === "3");
-  }
-  syncWorkflowNavigation(stepId);
-  if (stepProgress) {
-    stepProgress.textContent = `步驟 ${stepId} / 3`;
-  }
-  if (stepTitle) {
-    const titles: Record<string, string> = {
-      "0": "大致定位",
-      "1": "範圍與比例",
-      "2": "底圖樣式",
-      "3": "標示與繪製",
-    };
-    stepTitle.textContent = titles[stepId] ?? "";
-  }
-  if (stepSubtitle) {
-    const subtitles: Record<string, string> = {
-      "0": "搜尋地名或座標，先將地圖移至預計製作的區域。",
-      "1": "使用右鍵拖曳框選範圍，確定示意圖的視窗。",
-      "2": "決定底圖樣式結果。",
-      "3": "搜尋或新增標示與圖形，並調整項目屬性。",
-    };
-    stepSubtitle.textContent = subtitles[stepId] ?? "";
-  }
+}
+
+function afterWorkflowStepChange(
+  previousStep: WorkflowStep,
+  stepId: WorkflowStep,
+): void {
   if (cropFrame) {
     cropFrame.classList.toggle("hidden", stepId !== "1");
     cropFrame.classList.toggle("interactive", stepId === "1");
@@ -899,18 +873,29 @@ function setActiveStep(stepId: string): void {
   if (previousStep !== stepId && (previousStep === "3" || stepId === "3")) {
     renderMarkers();
   }
-  if (nextStepButton) {
-    const nextLabel = stepId === "3" ? "完成" : "下一步";
-    const label = nextStepButton.querySelector("span");
-    if (label) {
-      label.textContent = nextLabel;
-    } else {
-      nextStepButton.textContent = nextLabel;
-    }
-  }
-  if (prevStepButton) {
-    prevStepButton.toggleAttribute("disabled", stepId === "0");
-  }
+}
+
+const workflowController = new WorkflowController({
+  state: appState.workflow,
+  elements: {
+    layout: layoutEl,
+    stepButtons: workflowStepButtons,
+    stepPanels,
+    progress: stepProgress,
+    title: stepTitle,
+    subtitle: stepSubtitle,
+    previousButton: prevStepButton,
+    nextButton: nextStepButton,
+    editorTabs: editorWorkspaceTabs,
+    editorPanels: editorTabPanels,
+  },
+  beforeStepChange: beforeWorkflowStepChange,
+  afterStepChange: afterWorkflowStepChange,
+  onComplete: openCompleteDialog,
+});
+
+function setActiveStep(stepId: WorkflowStep): void {
+  workflowController.setActiveStep(stepId);
 }
 
 function setActiveRatioButton(targetId?: string): void {
@@ -1115,7 +1100,10 @@ function zoomToCropBounds(): void {
     stageHeight / (cropBBox.height * scaleFit),
   );
   const scaleCap =
-    activeStep === "2" || activeStep === "3" ? MAX_SCALE_CROP : MAX_SCALE;
+    appState.workflow.activeStep === "2" ||
+    appState.workflow.activeStep === "3"
+      ? MAX_SCALE_CROP
+      : MAX_SCALE;
   view.scale = Math.max(MIN_SCALE, Math.min(scaleCap, nextScale));
   const cropScreenWidth = cropBBox.width * view.scale * scaleFit;
   const cropScreenHeight = cropBBox.height * view.scale * scaleFit;
@@ -1163,7 +1151,11 @@ function updateCropOverlay(): void {
   if (!mapStage || !cropOverlay) {
     return;
   }
-  if ((activeStep !== "2" && activeStep !== "3") || (!cropBox && !cropBBox)) {
+  if (
+    (appState.workflow.activeStep !== "2" &&
+      appState.workflow.activeStep !== "3") ||
+    (!cropBox && !cropBBox)
+  ) {
     cropOverlay.classList.add("hidden");
     return;
   }
@@ -1315,7 +1307,7 @@ function attachCropInteractions(): void {
   }
   cropFrame.addEventListener("wheel", onWheel, { passive: false });
   cropFrame.addEventListener("pointerdown", (event) => {
-    if (activeStep !== "1") {
+    if (appState.workflow.activeStep !== "1") {
       return;
     }
     const target = event.target as HTMLElement;
@@ -1456,121 +1448,28 @@ function positionZoomIndicator(): void {
   return;
 }
 
-function syncWorkflowNavigation(stepId: string): void {
-  const activeIndex = Number(stepId);
-  workflowStepButtons.forEach((button) => {
-    const buttonStep = button.dataset.stepJump ?? "0";
-    const buttonIndex = Number(buttonStep);
-    const active = buttonStep === stepId;
-    button.classList.toggle("active", active);
-    button.classList.toggle(
-      "completed",
-      Number.isFinite(activeIndex) && buttonIndex < activeIndex,
-    );
-    button.setAttribute("aria-current", active ? "step" : "false");
-  });
-}
-
-function setEditorWorkspaceTab(tabId: string): void {
-  editorWorkspaceTabs.forEach((button) => {
-    const active = button.dataset.editorTab === tabId;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-selected", String(active));
-    button.tabIndex = active ? 0 : -1;
-  });
-  editorTabPanels.forEach((panel) => {
-    panel.classList.toggle("active", panel.dataset.editorTabPanel === tabId);
-  });
-}
-
-function hookTabArrowNavigation(
-  buttons: HTMLButtonElement[],
-  activate: (button: HTMLButtonElement) => void,
-): void {
-  buttons.forEach((button, index) => {
-    button.addEventListener("keydown", (event) => {
-      let targetIndex: number | null = null;
-      if (event.key === "ArrowLeft") {
-        targetIndex = (index - 1 + buttons.length) % buttons.length;
-      } else if (event.key === "ArrowRight") {
-        targetIndex = (index + 1) % buttons.length;
-      } else if (event.key === "Home") {
-        targetIndex = 0;
-      } else if (event.key === "End") {
-        targetIndex = buttons.length - 1;
-      }
-      if (targetIndex == null) {
-        return;
-      }
-      event.preventDefault();
-      const target = buttons[targetIndex];
-      target.focus();
-      activate(target);
-    });
-  });
-}
-
-function hookSearchModeSwitches(): void {
-  document
-    .querySelectorAll<HTMLElement>("[data-search-switch]")
-    .forEach((container) => {
-      const group = container.dataset.searchSwitch;
-      if (!group) {
-        return;
-      }
-      const buttons = Array.from(
-        container.querySelectorAll<HTMLButtonElement>("[data-search-mode]"),
-      );
-      const activate = (mode: string) => {
-        buttons.forEach((button) => {
-          const active = button.dataset.searchMode === mode;
-          button.classList.toggle("active", active);
-          button.setAttribute("aria-selected", String(active));
-          button.tabIndex = active ? 0 : -1;
-        });
-        document
-          .querySelectorAll<HTMLElement>(`[data-search-panel^="${group}:"]`)
-          .forEach((panel) => {
-            panel.classList.toggle(
-              "active",
-              panel.dataset.searchPanel === `${group}:${mode}`,
-            );
-          });
-      };
-      buttons.forEach((button) => {
-        button.addEventListener("click", () => {
-          activate(button.dataset.searchMode ?? "place");
-        });
-      });
-      hookTabArrowNavigation(buttons, (button) => {
-        activate(button.dataset.searchMode ?? "place");
-      });
-      activate(
-        buttons.find((button) => button.classList.contains("active"))?.dataset
-          .searchMode ?? "place",
-      );
-    });
-}
-
-function projectDisplayName(): string {
-  if (!currentProjectPath) {
+function projectDisplayName(path: string | null): string {
+  if (!path) {
     return "未命名地圖";
   }
-  const parts = currentProjectPath.split(/[\\/]/);
+  const parts = path.split(/[\\/]/);
   return parts[parts.length - 1] || "未命名地圖";
 }
 
-function syncProjectHeader(): void {
-  const hasProjectPath = Boolean(currentProjectPath);
+function renderProjectHeader(state: {
+  path: string | null;
+  dirty: boolean;
+}): void {
+  const hasProjectPath = Boolean(state.path);
   if (projectNameEl) {
-    projectNameEl.textContent = projectDisplayName();
-    projectNameEl.setAttribute("title", currentProjectPath ?? "未命名地圖");
+    projectNameEl.textContent = projectDisplayName(state.path);
+    projectNameEl.setAttribute("title", state.path ?? "未命名地圖");
   }
-  projectStateEl?.classList.toggle("dirty", projectDirty);
-  projectStateEl?.classList.toggle("new", !hasProjectPath && !projectDirty);
+  projectStateEl?.classList.toggle("dirty", state.dirty);
+  projectStateEl?.classList.toggle("new", !hasProjectPath && !state.dirty);
   if (projectStateTextEl) {
     projectStateTextEl.textContent =
-      projectDirty || !hasProjectPath ? "尚未儲存" : "已儲存";
+      state.dirty || !hasProjectPath ? "尚未儲存" : "已儲存";
   }
 }
 
@@ -1750,43 +1649,7 @@ function closePreferencesDialog(): void {
 }
 
 function hookSteps(): void {
-  workflowStepButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      const step = button.dataset.stepJump;
-      if (step) {
-        setActiveStep(step);
-      }
-    });
-  });
-  editorWorkspaceTabs.forEach((button) => {
-    button.addEventListener("click", () => {
-      setEditorWorkspaceTab(button.dataset.editorTab ?? "search");
-    });
-  });
-  hookTabArrowNavigation(editorWorkspaceTabs, (button) => {
-    setEditorWorkspaceTab(button.dataset.editorTab ?? "search");
-  });
-  setEditorWorkspaceTab(
-    editorWorkspaceTabs.find((button) => button.classList.contains("active"))
-      ?.dataset.editorTab ?? "search",
-  );
-  hookSearchModeSwitches();
-  nextStepButton?.addEventListener("click", () => {
-    if (activeStep === "3") {
-      openCompleteDialog();
-      return;
-    }
-    const steps = ["0", "1", "2", "3"];
-    const index = Math.max(0, steps.indexOf(activeStep));
-    const next = steps[Math.min(steps.length - 1, index + 1)];
-    setActiveStep(next);
-  });
-  prevStepButton?.addEventListener("click", () => {
-    const steps = ["0", "1", "2", "3"];
-    const index = Math.max(0, steps.indexOf(activeStep));
-    const prev = steps[Math.max(0, index - 1)];
-    setActiveStep(prev);
-  });
+  workflowController.bind();
   ratioFree?.addEventListener("click", () => {
     ratioMode = "free";
     if (!cropBox) {
@@ -2120,7 +1983,7 @@ function drawMapStylePreview(styleId: string): boolean {
 
 function scheduleMapStylePreview(styleId: string, delay = 260): void {
   hideMapStylePreview();
-  if (activeStep !== "2" || !mapStyleHoverPreview) {
+  if (appState.workflow.activeStep !== "2" || !mapStyleHoverPreview) {
     return;
   }
   stylePreviewTimer = window.setTimeout(() => {
@@ -2242,7 +2105,11 @@ function visibleMapBounds(): {
   width: number;
   height: number;
 } | null {
-  if (cropBBox && (activeStep === "2" || activeStep === "3")) {
+  if (
+    cropBBox &&
+    (appState.workflow.activeStep === "2" ||
+      appState.workflow.activeStep === "3")
+  ) {
     return { ...cropBBox };
   }
   if (!mapStage) {
@@ -2305,7 +2172,7 @@ function setActiveTool(tool: typeof activeTool): void {
 }
 
 function addToolItem(tool: typeof activeTool): void {
-  if (activeStep !== "3") {
+  if (appState.workflow.activeStep !== "3") {
     return;
   }
   activeTool = tool;
@@ -2405,7 +2272,7 @@ const overlayRenderer = createOverlayRenderer({
     view,
     WRAPS,
     worldShift,
-    activeStep,
+    activeStep: appState.workflow.activeStep,
     selectedMarkerId,
     selectedShapeId,
     selectedLabelMarkerId,
@@ -2449,130 +2316,11 @@ function updateMarkerStyles(): void {
   updateOverlayMarkerStyles({
     svg,
     scale: view.scale,
-    activeStep,
+    activeStep: appState.workflow.activeStep,
     selectedMarkerId,
     labelZoomScale,
     labelOffsetScale,
   });
-}
-
-function haversineDistance(a: [number, number], b: [number, number]): number {
-  const toRad = (v: number) => (v * Math.PI) / 180;
-  const [lon1, lat1] = a;
-  const [lon2, lat2] = b;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const rLat1 = toRad(lat1);
-  const rLat2 = toRad(lat2);
-  const sinDlat = Math.sin(dLat / 2);
-  const sinDlon = Math.sin(dLon / 2);
-  const h =
-    sinDlat * sinDlat + Math.cos(rLat1) * Math.cos(rLat2) * sinDlon * sinDlon;
-  return 2 * EARTH_RADIUS * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-function sortResults(results: GeonamesResult[]): GeonamesResult[] {
-  const center = viewCenterLonLat();
-  return [...results].sort((a, b) => {
-    const da = haversineDistance(center, [a.longitude, a.latitude]);
-    const db = haversineDistance(center, [b.longitude, b.latitude]);
-    if (da !== db) {
-      return da - db;
-    }
-    return (b.population ?? 0) - (a.population ?? 0);
-  });
-}
-
-function renderResults(results: GeonamesResult[], target: HTMLUListElement) {
-  target.innerHTML = "";
-  const sorted = sortResults(results);
-  sorted.forEach((result) => {
-    const item = document.createElement("li");
-    item.className = "result-item";
-    const content = document.createElement("div");
-    content.className = "result-content";
-    const title = document.createElement("div");
-    const displayName =
-      result.nameAlt && result.nameAlt !== result.name
-        ? `${result.nameAlt} / ${result.name}`
-        : result.name;
-    title.textContent = displayName;
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    const lat = result.latitude.toFixed(4);
-    const lon = result.longitude.toFixed(4);
-    const country = result.countryCode ?? "";
-    meta.textContent = `${displayName} · ${country} (${lat}, ${lon})`;
-    content.appendChild(title);
-    content.appendChild(meta);
-    const actions = document.createElement("div");
-    actions.className = "result-actions";
-    const addButton = document.createElement("button");
-    addButton.className = "icon-btn";
-    addButton.textContent = "+";
-    addButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      addMarkerFromGeonames(result);
-      previewMarker = null;
-      renderMarkers();
-    });
-    actions.appendChild(addButton);
-    item.appendChild(content);
-    item.appendChild(actions);
-    item.addEventListener("click", () => {
-      if (hasGeonamesMarker(result)) {
-        previewMarker = null;
-        renderMarkers();
-        return;
-      }
-      setPreviewMarker(result);
-    });
-    target.appendChild(item);
-  });
-}
-
-function renderCoordResult(
-  target: HTMLUListElement,
-  marker: Marker,
-  lat: number,
-  lon: number,
-): void {
-  target.innerHTML = "";
-  const item = document.createElement("li");
-  item.className = "result-item";
-  const content = document.createElement("div");
-  content.className = "result-content";
-  const title = document.createElement("div");
-  title.textContent = marker.name;
-  const meta = document.createElement("div");
-  meta.className = "meta";
-  meta.textContent = `座標 · (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
-  content.appendChild(title);
-  content.appendChild(meta);
-  const actions = document.createElement("div");
-  actions.className = "result-actions";
-  const addButton = document.createElement("button");
-  addButton.className = "icon-btn";
-  addButton.textContent = "+";
-  addButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    addMarkerFromCoordsValue({ lat, lon });
-  });
-  actions.appendChild(addButton);
-  item.appendChild(content);
-  item.appendChild(actions);
-  item.addEventListener("click", () => {
-    previewMarker = marker;
-    renderMarkers();
-  });
-  target.appendChild(item);
-}
-
-function setResults3Visible(visible: boolean): void {
-  if (!results3Block) {
-    return;
-  }
-  results3Block.classList.toggle("visible", visible);
 }
 
 function setPreviewMarker(result: GeonamesResult): void {
@@ -2597,63 +2345,6 @@ function setPreviewMarker(result: GeonamesResult): void {
   placeMarkerLabelInsideView(previewMarker);
   renderMarkers();
   syncMarkerControls(previewMarker);
-}
-
-function parseLatLon(value: string): { lat: number; lon: number } | null {
-  const normalized = value
-    .trim()
-    .replace(/[，；]/g, ",")
-    .replace(/，/g, ",")
-    .replace(/　/g, " ");
-  const dd = normalized
-    .split(/[,\s]+/)
-    .map((v) => v.trim())
-    .filter(Boolean);
-  if (dd.length >= 2) {
-    const lat = Number(dd[0]);
-    const lon = Number(dd[1]);
-    if (Number.isFinite(lat) && Number.isFinite(lon)) {
-      if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
-        return { lat, lon };
-      }
-    }
-  }
-  const dmsMatches = normalized
-    .replace(/º/g, "°")
-    .replace(/″/g, '"')
-    .replace(/′/g, "'")
-    .match(
-      /([NS])?\s*(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)?\s*'?\s*(\d+(?:\.\d+)?)?\s*\"?\s*([NS])?.*?([EW])?\s*(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)?\s*'?\s*(\d+(?:\.\d+)?)?\s*\"?\s*([EW])?/i,
-    );
-  if (!dmsMatches) {
-    return null;
-  }
-  const latDir = (dmsMatches[1] || dmsMatches[5] || "").toUpperCase();
-  const latDeg = Number(dmsMatches[2]);
-  const latMin = Number(dmsMatches[3] || "0");
-  const latSec = Number(dmsMatches[4] || "0");
-  const lonDir = (dmsMatches[6] || dmsMatches[10] || "").toUpperCase();
-  const lonDeg = Number(dmsMatches[7]);
-  const lonMin = Number(dmsMatches[8] || "0");
-  const lonSec = Number(dmsMatches[9] || "0");
-  if (!Number.isFinite(latDeg) || !Number.isFinite(lonDeg)) {
-    return null;
-  }
-  let lat = latDeg + latMin / 60 + latSec / 3600;
-  let lon = lonDeg + lonMin / 60 + lonSec / 3600;
-  if (latDir === "S") {
-    lat = -lat;
-  }
-  if (lonDir === "W") {
-    lon = -lon;
-  }
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    return null;
-  }
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-    return null;
-  }
-  return { lat, lon };
 }
 
 function buildCoordMarker(
@@ -2688,7 +2379,7 @@ function addMarkerFromCoordsValue(parsed: { lat: number; lon: number }): void {
     return;
   }
   previewMarker = null;
-  if (activeStep === "3") {
+  if (appState.workflow.activeStep === "3") {
     selectMarker(marker.id);
   }
   renderMarkers();
@@ -2698,35 +2389,6 @@ function addMarkerFromCoordsValue(parsed: { lat: number; lon: number }): void {
   }
 }
 
-function handleCoordSearch(
-  input: HTMLInputElement | null,
-  target: HTMLUListElement | null,
-): void {
-  if (!input || !target) {
-    return;
-  }
-  const value = input.value.trim();
-  if (!value) {
-    return;
-  }
-  if (target === resultsEl3) {
-    setResults3Visible(true);
-  }
-  const parsed = parseLatLon(value);
-  if (!parsed) {
-    if (statusEl) {
-      statusEl.textContent = "經緯度格式錯誤，請輸入「緯度, 經度」。";
-    }
-    return;
-  }
-  const marker = buildCoordMarker(parsed, "coord-preview");
-  marker.labelMode = "coords";
-  placeMarkerLabelInsideView(marker);
-  previewMarker = marker;
-  renderMarkers();
-  syncMarkerControls(previewMarker);
-  renderCoordResult(target, marker, parsed.lat, parsed.lon);
-}
 function buildManualMarkerAt(center: { lon: number; lat: number }): Marker {
   manualMarkerCount += 1;
   return {
@@ -3021,7 +2683,7 @@ function addMarkerFromGeonames(result: GeonamesResult): void {
     return;
   }
   previewMarker = null;
-  if (activeStep === "3") {
+  if (appState.workflow.activeStep === "3") {
     selectMarker(marker.id);
   }
   renderMarkers();
@@ -3476,7 +3138,7 @@ function isStepThreeBlankTarget(target: EventTarget | null): boolean {
 
 function handleStepThreeBlankMouseDown(event: MouseEvent): void {
   if (
-    activeStep !== "3" ||
+    appState.workflow.activeStep !== "3" ||
     event.button !== 0 ||
     (!selectedMarkerId && !selectedShapeId && !selectedLabelMarkerId)
   ) {
@@ -3948,49 +3610,7 @@ function closeOrderDialog(): void {
 }
 
 function openCompleteDialog(): void {
-  completeModal?.classList.add("active");
-  window.requestAnimationFrame(() => {
-    completeExportPng?.focus();
-  });
-}
-
-function closeCompleteDialog(): void {
-  completeModal?.classList.remove("active");
-}
-
-function syncExportFrameOptions(): void {
-  exportFrameOptions.forEach((button) => {
-    button.classList.toggle(
-      "active",
-      button.dataset.exportFrame === selectedExportFrame,
-    );
-  });
-}
-
-function closeExportFrameDialog(value: ExportFrameStyle | null): void {
-  exportFrameModal?.classList.remove("active");
-  const resolver = exportFrameResolver;
-  exportFrameResolver = null;
-  resolver?.(value);
-}
-
-function chooseExportFrame(): Promise<ExportFrameStyle | null> {
-  if (!exportFrameModal) {
-    return Promise.resolve("none");
-  }
-  if (exportFrameResolver) {
-    return Promise.resolve(null);
-  }
-  syncExportFrameOptions();
-  exportFrameModal.classList.add("active");
-  window.requestAnimationFrame(() => {
-    exportFrameModal
-      .querySelector<HTMLElement>(".frame-option.active")
-      ?.focus();
-  });
-  return new Promise((resolve) => {
-    exportFrameResolver = resolve;
-  });
+  exportController.openCompleteDialog();
 }
 
 function attachOrderDragGlobalEvents(): void {
@@ -4024,33 +3644,6 @@ function deleteMarker(markerId: string): void {
   renderMarkerList();
 }
 
-async function handleSearch(
-  input: HTMLInputElement,
-  button: HTMLButtonElement,
-) {
-  const query = input.value.trim();
-  if (!query) {
-    return;
-  }
-  previewMarker = null;
-  renderMarkers();
-  button.disabled = true;
-  try {
-    const results = await window.mapSchematic?.searchGeonames?.(query, 10);
-    if (resultsEl0) {
-      renderResults((results ?? []) as GeonamesResult[], resultsEl0);
-    }
-    if (resultsEl3) {
-      renderResults((results ?? []) as GeonamesResult[], resultsEl3);
-    }
-    if (input === searchInput3) {
-      setResults3Visible(true);
-    }
-  } finally {
-    button.disabled = false;
-  }
-}
-
 function unprojectBBox(box: {
   x: number;
   y: number;
@@ -4077,6 +3670,45 @@ function unprojectBBox(box: {
   );
 }
 
+function clearSearchPreview(): void {
+  previewMarker = null;
+  renderMarkers();
+}
+
+function previewCoordinateMarker(marker: Marker): void {
+  placeMarkerLabelInsideView(marker);
+  previewMarker = marker;
+  renderMarkers();
+  syncMarkerControls(marker);
+}
+
+const searchController = new SearchController({
+  state: appState.search,
+  elements: {
+    placeInputs: [searchInput0, searchInput3],
+    placeButtons: [searchButton0, searchButton3],
+    coordinateInputs: [coordInput0, coordInput3],
+    coordinateButtons: [coordButton0, coordButton3],
+    resultLists: [resultsEl0, resultsEl3],
+    stepThreeResultBlock: results3Block,
+  },
+  getViewCenter: viewCenterLonLat,
+  searchGeonames: async (query, limit) =>
+    (await window.mapSchematic?.searchGeonames?.(query, limit)) ?? [],
+  clearPreview: clearSearchPreview,
+  previewGeonames: setPreviewMarker,
+  addGeonames: addMarkerFromGeonames,
+  hasGeonamesMarker,
+  createCoordinatePreview: (coordinates: ParsedCoordinates) => {
+    const marker = buildCoordMarker(coordinates, "coord-preview");
+    marker.labelMode = "coords";
+    return marker;
+  },
+  previewCoordinate: previewCoordinateMarker,
+  addCoordinate: addMarkerFromCoordsValue,
+  setStatus,
+});
+
 function currentSelectionBBox(): BBox {
   if (!cropBBox && cropBox) {
     updateCropBBox();
@@ -4094,7 +3726,7 @@ function currentSelectionBBox(): BBox {
 }
 
 function defaultObjectLayerId(): string {
-  return currentProject?.layers[0]?.id ?? "layer-1";
+  return appState.project.current?.layers[0]?.id ?? "layer-1";
 }
 
 function buildProject(): MapProject | null {
@@ -4103,15 +3735,15 @@ function buildProject(): MapProject | null {
   }
   syncOrderKeys();
   const now = new Date().toISOString();
-  const base = currentProject?.createdAt ?? now;
-  const currentLayer = currentProject?.layers[0];
+  const base = appState.project.current?.createdAt ?? now;
+  const currentLayer = appState.project.current?.layers[0];
   const layers = [
     currentLayer
       ? { id: currentLayer.id, name: currentLayer.name }
       : { id: "layer-1", name: "Default" },
   ];
   return {
-    ...(currentProject ?? {}),
+    ...(appState.project.current ?? {}),
     schemaVersion: "0.7",
     createdAt: base,
     updatedAt: now,
@@ -4123,14 +3755,14 @@ function buildProject(): MapProject | null {
       projection: "EPSG:4326",
     },
     layers,
-    objects: editorDocumentToV02Objects(
+    objects: editorDocumentToProjectObjects(
       editorDocument,
       preservedProjectObjects,
       defaultObjectLayerId(),
     ),
     history: editorCore.exportHistory(),
     ui: {
-      ...(currentProject?.ui ?? {}),
+      ...(appState.project.current?.ui ?? {}),
       listOrderKeys: [...editorDocument.listOrderKeys],
       displayOrderKeys: [...editorDocument.displayOrderKeys],
       activeStyleId,
@@ -4149,216 +3781,30 @@ function buildProject(): MapProject | null {
   };
 }
 
-function setProjectDirtyState(dirty: boolean): void {
-  if (projectDirty === dirty && reportedProjectDirty === dirty) {
-    syncProjectHeader();
-    return;
+function setStatus(message: string): void {
+  if (statusEl) {
+    statusEl.textContent = message;
   }
-  projectDirty = dirty;
-  reportedProjectDirty = dirty;
-  document.title = dirty ? "* 地圖示意圖" : "地圖示意圖";
-  window.mapSchematic?.setProjectDirty?.(dirty);
-  syncProjectHeader();
+}
+
+function syncProjectHeader(): void {
+  projectController.renderHeader();
 }
 
 function syncProjectDirtyState(): void {
-  const project = buildProject();
-  if (!project || savedProjectFingerprint == null) {
-    setProjectDirtyState(false);
-    return;
-  }
-  setProjectDirtyState(projectFingerprint(project) !== savedProjectFingerprint);
+  projectController.syncDirtyState();
 }
 
 function scheduleProjectDirtyCheck(): void {
-  if (dirtyCheckPending) {
-    return;
-  }
-  dirtyCheckPending = true;
-  window.requestAnimationFrame(() => {
-    dirtyCheckPending = false;
-    syncProjectDirtyState();
-  });
+  projectController.scheduleDirtyCheck();
 }
 
 function setProjectBaseline(project?: MapProject | null): void {
-  const baseline = project ?? buildProject();
-  savedProjectFingerprint = baseline ? projectFingerprint(baseline) : null;
-  syncProjectDirtyState();
+  projectController.setBaseline(project);
 }
 
-type ProjectSaveResult = {
-  ok: boolean;
-  canceled?: boolean;
-  path?: string;
-  error?: string;
-  errors?: string[];
-};
-
-const projectOperationCoordinator = new ProjectOperationCoordinator();
-
-async function performSave(saveAs = false): Promise<ProjectSaveResult | null> {
-  if (!window.mapSchematic?.saveProject) {
-    return null;
-  }
-  const project = buildProject();
-  if (!project) {
-    if (statusEl) {
-      statusEl.textContent = "資料包未載入，無法儲存。";
-    }
-    return null;
-  }
-  let result: {
-    ok: boolean;
-    canceled?: boolean;
-    path?: string;
-    error?: string;
-    errors?: string[];
-  };
-  try {
-    result = await window.mapSchematic.saveProject({
-      project,
-      path: currentProjectPath,
-      saveAs,
-    });
-  } catch (error) {
-    result = { ok: false, error: String(error) };
-  }
-  if (result?.path) {
-    currentProjectPath = result.path;
-    syncProjectHeader();
-  }
-  if (result.ok) {
-    currentProject = project;
-    setProjectBaseline(project);
-  }
-  if (statusEl) {
-    if (result.canceled) {
-      statusEl.textContent = "已取消儲存。";
-    } else {
-      statusEl.textContent = result.ok
-        ? `專案已儲存：${result.path}`
-        : `專案儲存失敗：${result.error ?? result.errors?.join("；") ?? "未知錯誤"}`;
-    }
-  }
-  return result;
-}
-
-function handleSave(saveAs = false): Promise<ProjectSaveResult | null> {
-  return projectOperationCoordinator.enqueue(
-    saveAs ? "saveAs" : "save",
-    () => performSave(saveAs),
-  );
-}
-
-async function performSaveBeforeClose(): Promise<void> {
-  const result = await performSave(false);
-  if (result?.ok) {
-    try {
-      await window.mapSchematic?.closeAfterSave?.();
-    } catch (error) {
-      if (statusEl) {
-        statusEl.textContent = `儲存完成，但關閉視窗失敗：${String(error)}`;
-      }
-    }
-  }
-}
-
-function handleSaveBeforeClose(): Promise<void> {
-  return projectOperationCoordinator.enqueue(
-    "saveBeforeClose",
-    performSaveBeforeClose,
-  );
-}
-
-async function performLoad(): Promise<void> {
-  if (!window.mapSchematic?.loadProject) {
-    return;
-  }
-  syncProjectDirtyState();
-  if (projectDirty) {
-    const response = await showAppDialog({
-      eyebrow: "未儲存變更",
-      title: "載入其他專案？",
-      message: "目前專案有尚未儲存的變更。",
-      detail: "繼續載入會放棄這些變更，且無法復原。",
-      tone: "warning",
-      buttons: [
-        { label: "取消", value: 0, variant: "ghost" },
-        { label: "放棄並載入", value: 1, variant: "danger" },
-      ],
-      defaultValue: 0,
-      cancelValue: 0,
-    });
-    if (response !== 1) {
-      if (statusEl) {
-        statusEl.textContent = "已取消載入，未儲存的變更仍保留。";
-      }
-      return;
-    }
-  }
-  let result;
-  try {
-    result = await window.mapSchematic.loadProject();
-  } catch (error) {
-    if (statusEl) {
-      statusEl.textContent = `載入失敗：${String(error)}`;
-    }
-    return;
-  }
-  if (!result.ok || !result.project) {
-    if (statusEl) {
-      statusEl.textContent = result.canceled
-        ? "已取消載入。"
-        : `載入失敗：${result.error ?? "未知錯誤"}`;
-    }
-    return;
-  }
-  const loadedProject = result.project;
-  const validationMessage = projectValidationMessage(result.validation);
-  if (validationMessage) {
-    await showAppNotice({
-      eyebrow: "載入失敗",
-      title: "專案格式無效",
-      message: "專案檔格式驗證失敗，已停止載入。",
-      detail: validationMessage,
-      tone: "danger",
-    });
-    if (statusEl) {
-      statusEl.textContent = "專案檔格式驗證失敗，已停止載入。";
-    }
-    return;
-  }
-  const mismatchMessage = projectDatapackMismatchMessage(
-    loadedProject,
-    currentPackId,
-    currentPackVersion,
-  );
-  if (mismatchMessage) {
-    const response = await showAppDialog({
-      eyebrow: "資料版本不同",
-      title: "使用本機資料包載入？",
-      message: mismatchMessage,
-      detail: "繼續後仍可編輯，但地名或底圖可能與原專案版本不同。",
-      tone: "warning",
-      buttons: [
-        { label: "取消", value: 0, variant: "ghost" },
-        { label: "仍要載入", value: 1, variant: "primary" },
-      ],
-      defaultValue: 0,
-      cancelValue: 0,
-    });
-    if (response !== 1) {
-      if (statusEl) {
-        statusEl.textContent = "已取消載入：專案資料包版本與本機不一致。";
-      }
-      return;
-    }
-  }
-  currentProject = loadedProject;
+function applyLoadedProject(loadedProject: MapProject): AppliedProjectSummary {
   projectCanvas = { ...loadedProject.canvas };
-  currentProjectPath = result.path ?? null;
-  syncProjectHeader();
   const loadedEditor = mapProjectToEditorDocument(loadedProject);
   editorCore.replaceDocument(loadedEditor.document);
   selectedMarkerId = null;
@@ -4448,43 +3894,36 @@ async function performLoad(): Promise<void> {
     updateCropOverlay();
     applyMapClip();
   }
-  setProjectBaseline();
-  const preservedCount = preservedProjectObjects.length;
-  if (preservedCount > 0) {
-    await showAppNotice({
-      eyebrow: "相容性提示",
-      title: "部分物件暫時無法編輯",
-      message: `此專案有 ${preservedCount} 個物件使用目前編輯器尚未支援的幾何格式。`,
-      detail: "這些物件不會顯示或提供編輯，但再次儲存時會原樣保留。",
-      tone: "warning",
-    });
-  }
-  if (!historyRestored) {
-    await showAppNotice({
-      eyebrow: "編輯歷史未恢復",
-      title: "此專案的復原紀錄無法使用",
-      message: "專案內容已正常載入，但復原與重做紀錄已略過。",
-      detail: "可能是較舊的專案格式，或歷史紀錄與目前內容不一致。",
-      tone: "warning",
-    });
-  }
-  if (statusEl) {
-    const preservedNotice =
-      preservedCount > 0
-        ? `；另保留 ${preservedCount} 個目前無法編輯的物件`
-        : "";
-    if (result.recoveredFromBackup) {
-      statusEl.textContent = `已從備份恢復並載入：${result.path}${preservedNotice}`;
-    } else if (result.migratedFromVersion) {
-      statusEl.textContent = `已載入並將專案格式從 ${result.migratedFromVersion} 升級為 ${loadedProject.schemaVersion}；下次儲存時會寫入新版格式${preservedNotice}。`;
-    } else {
-      statusEl.textContent = `專案已載入：${result.path}${preservedNotice}`;
-    }
-  }
+  return {
+    historyRestored,
+    preservedObjectCount: preservedProjectObjects.length,
+  };
+}
+
+const projectController = new ProjectController({
+  state: appState.project,
+  buildProject,
+  applyLoadedProject,
+  getDatapack: () => ({
+    id: currentPackId,
+    version: currentPackVersion,
+  }),
+  setStatus,
+  renderHeader: renderProjectHeader,
+  showDialog: showAppDialog,
+  showNotice: showAppNotice,
+});
+
+function handleSave(saveAs = false): Promise<ProjectSaveResult | null> {
+  return projectController.save(saveAs);
+}
+
+function handleSaveBeforeClose(): Promise<void> {
+  return projectController.saveBeforeClose();
 }
 
 function handleLoad(): Promise<void> {
-  return projectOperationCoordinator.enqueue("load", performLoad);
+  return projectController.load();
 }
 
 async function renderExportCanvas(exportScale = 1): Promise<{
@@ -4707,81 +4146,31 @@ function renderExportSvg(): {
   return { data, width: outputWidth, height: outputHeight };
 }
 
-async function handleExport(format: "png" | "svg" | "pdf"): Promise<void> {
-  if (!window.mapSchematic?.exportProject) {
-    return;
-  }
-  if (exportInProgress) {
-    if (statusEl) {
-      statusEl.textContent = "已有匯出作業正在進行。";
-    }
-    return;
-  }
-  exportInProgress = true;
-  showAppToast("正在準備匯出…", "loading", 0);
-  try {
-    const exportFrame =
-      format === "png" || format === "pdf" ? await chooseExportFrame() : "none";
-    if (exportFrame == null) {
-      if (statusEl) {
-        statusEl.textContent = "已取消匯出。";
-      }
-      appToast?.classList.remove("show");
-      return;
-    }
-    let data: string;
-    let width: number;
-    let height: number;
-    if (format === "svg") {
-      const renderedSvg = renderExportSvg();
-      if (!renderedSvg) {
-        throw new Error("無法建立向量 SVG");
-      }
-      data = renderedSvg.data;
-      width = renderedSvg.width;
-      height = renderedSvg.height;
-    } else {
-      const rendered = await renderExportCanvas(
-        format === "png" ? PNG_EXPORT_SCALE : 1,
-      );
-      if (!rendered) {
-        throw new Error("無法建立匯出畫布");
-      }
-      const exportCanvas = applyExportFrame(rendered.canvas, exportFrame);
-      width = exportCanvas.width;
-      height = exportCanvas.height;
-      data = exportCanvas.toDataURL("image/png");
-    }
-    const result = await window.mapSchematic.exportProject({
-      format,
-      data,
-      width,
-      height,
-    });
-    if (statusEl) {
-      if (result.canceled) {
-        statusEl.textContent = "已取消匯出。";
-      } else {
-        statusEl.textContent = result.ok
-          ? `已匯出：${result.path}`
-          : `匯出失敗：${result.error ?? "未知錯誤"}`;
-      }
-    }
-    if (result.canceled) {
-      appToast?.classList.remove("show");
-    } else if (result.ok) {
-      showAppToast("地圖已匯出", "success");
-    } else {
-      showAppToast("匯出失敗", "error", 2800);
-    }
-  } catch (error) {
-    if (statusEl) {
-      statusEl.textContent = `匯出失敗：${String(error)}`;
-    }
-    showAppToast("匯出失敗", "error", 2800);
-  } finally {
-    exportInProgress = false;
-  }
+const exportController = new ExportController({
+  state: appState.export,
+  elements: {
+    completeModal,
+    completePngButton: completeExportPng,
+    completeSvgButton: completeExportSvg,
+    completePdfButton: completeExportPdf,
+    completeContinueButton: completeContinue,
+    completeCloseButton: completeClose,
+    frameModal: exportFrameModal,
+    frameOptions: exportFrameOptions,
+    frameCloseButton: exportFrameClose,
+    frameCancelButton: exportFrameCancel,
+    frameApplyButton: exportFrameApply,
+  },
+  pngScale: PNG_EXPORT_SCALE,
+  renderCanvas: renderExportCanvas,
+  renderSvg: renderExportSvg,
+  setStatus,
+  showToast: showAppToast,
+  hideToast: () => appToast?.classList.remove("show"),
+});
+
+function handleExport(format: ExportFormat): Promise<void> {
+  return exportController.export(format);
 }
 
 function handleClearMarkers(): void {
@@ -5339,7 +4728,11 @@ function onMouseDown(event: MouseEvent): void {
   if (!svg) {
     return;
   }
-  if (activeStep === "3" && event.button === 0 && event.target === svg) {
+  if (
+    appState.workflow.activeStep === "3" &&
+    event.button === 0 &&
+    event.target === svg
+  ) {
     clearStepThreeSelection();
     return;
   }
@@ -5702,42 +5095,7 @@ function hookToolbar(): void {
   toolReset?.addEventListener("click", () => resetView());
 }
 
-searchButton0?.addEventListener("click", () => {
-  if (searchInput0 && searchButton0) {
-    handleSearch(searchInput0, searchButton0);
-  }
-});
-searchInput0?.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && searchInput0 && searchButton0) {
-    handleSearch(searchInput0, searchButton0);
-  }
-});
-searchButton3?.addEventListener("click", () => {
-  if (searchInput3 && searchButton3) {
-    handleSearch(searchInput3, searchButton3);
-  }
-});
-searchInput3?.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && searchInput3 && searchButton3) {
-    handleSearch(searchInput3, searchButton3);
-  }
-});
-coordButton0?.addEventListener("click", () =>
-  handleCoordSearch(coordInput0, resultsEl0),
-);
-coordInput0?.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    handleCoordSearch(coordInput0, resultsEl0);
-  }
-});
-coordButton3?.addEventListener("click", () =>
-  handleCoordSearch(coordInput3, resultsEl3),
-);
-coordInput3?.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    handleCoordSearch(coordInput3, resultsEl3);
-  }
-});
+searchController.bind();
 document.addEventListener("mousedown", handleStepThreeBlankMouseDown);
 document
   .querySelectorAll<HTMLButtonElement>("[data-clear]")
@@ -5855,55 +5213,11 @@ coordEditModal?.addEventListener("click", (event) => {
     coordEditCancel?.click();
   }
 });
-completeModal?.addEventListener("click", (event) => {
-  if (event.target === completeModal) {
-    closeCompleteDialog();
-  }
-});
-exportFrameOptions.forEach((button) => {
-  button.addEventListener("click", () => {
-    const frame = button.dataset.exportFrame as ExportFrameStyle | undefined;
-    if (!frame) {
-      return;
-    }
-    selectedExportFrame = frame;
-    syncExportFrameOptions();
-  });
-});
-exportFrameClose?.addEventListener("click", () => closeExportFrameDialog(null));
-exportFrameCancel?.addEventListener("click", () =>
-  closeExportFrameDialog(null),
-);
-exportFrameApply?.addEventListener("click", () =>
-  closeExportFrameDialog(selectedExportFrame),
-);
-exportFrameModal?.addEventListener("click", (event) => {
-  if (event.target === exportFrameModal) {
-    closeExportFrameDialog(null);
-  }
-});
-completeContinue?.addEventListener("click", () => {
-  closeCompleteDialog();
-});
-completeClose?.addEventListener("click", () => {
-  closeCompleteDialog();
-});
-completeExportPng?.addEventListener("click", () => {
-  closeCompleteDialog();
-  handleExport("png");
-});
-completeExportSvg?.addEventListener("click", () => {
-  closeCompleteDialog();
-  handleExport("svg");
-});
-completeExportPdf?.addEventListener("click", () => {
-  closeCompleteDialog();
-  handleExport("pdf");
-});
+exportController.bind();
 
 function nudgeSelectedObject(event: KeyboardEvent): boolean {
   if (
-    activeStep !== "3" ||
+    appState.workflow.activeStep !== "3" ||
     event.ctrlKey ||
     event.metaKey ||
     event.altKey ||
@@ -5977,132 +5291,61 @@ function nudgeSelectedObject(event: KeyboardEvent): boolean {
   return changed;
 }
 
-window.addEventListener("keydown", (event) => {
-  const key = event.key.toLowerCase();
-  const target = event.target;
-  const isTextEditing =
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement ||
-    (target instanceof HTMLElement && target.isContentEditable);
-  if (appDialog.handleKeyDown(event)) {
-    return;
-  }
-  if (event.defaultPrevented) {
-    return;
-  }
-  if (preferencesModal?.classList.contains("active")) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closePreferencesDialog();
-    }
-    return;
-  }
-  if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-    if (isTextEditing) {
-      return;
-    }
-    if (key === "z" && !event.shiftKey) {
-      event.preventDefault();
-      undoEditorChange();
-      return;
-    }
-    if ((key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey)) {
-      event.preventDefault();
-      redoEditorChange();
-      return;
-    }
-  }
-  if (!isTextEditing && nudgeSelectedObject(event)) {
-    event.preventDefault();
-    return;
-  }
-  if (event.key === "Escape") {
-    if (exportFrameModal?.classList.contains("active")) {
-      closeExportFrameDialog(null);
-      return;
-    }
-    if (completeModal?.classList.contains("active")) {
-      closeCompleteDialog();
-      return;
-    }
-    if (listOrderModal?.classList.contains("active")) {
-      closeOrderDialog();
-      return;
-    }
-    if (coordEditModal?.classList.contains("active")) {
-      coordEditCancel?.click();
-      return;
-    }
-    if (activeStep === "3" && !isTextEditing) {
-      clearStepThreeSelection();
-    }
-  }
-  if (
-    event.key === "Delete" &&
-    activeStep === "3" &&
-    !isTextEditing &&
-    !completeModal?.classList.contains("active")
-  ) {
+const appCommandController = new AppCommandController({
+  getActiveStep: () => appState.workflow.activeStep,
+  handleAppDialogKeyDown: (event) => appDialog.handleKeyDown(event),
+  isPreferencesOpen: () =>
+    preferencesModal?.classList.contains("active") === true,
+  closePreferences: closePreferencesDialog,
+  handleExportEscape: () => exportController.handleEscape(),
+  isOrderDialogOpen: () =>
+    listOrderModal?.classList.contains("active") === true,
+  closeOrderDialog,
+  isCoordinateDialogOpen: () =>
+    coordEditModal?.classList.contains("active") === true,
+  cancelCoordinateDialog: () => coordEditCancel?.click(),
+  isCompletionDialogOpen: () =>
+    completeModal?.classList.contains("active") === true,
+  undo: undoEditorChange,
+  redo: redoEditorChange,
+  nudgeSelection: nudgeSelectedObject,
+  clearSelection: clearStepThreeSelection,
+  deleteSelection: () => {
     if (selectedMarkerId) {
       deleteMarker(selectedMarkerId);
-      return;
-    }
-    if (selectedShapeId) {
+    } else if (selectedShapeId) {
       deleteShape(selectedShapeId);
     }
-  }
+  },
+  loadProject: () => {
+    void handleLoad();
+  },
+  saveProject: (saveAs) => {
+    void handleSave(saveAs);
+  },
+  saveBeforeClose: () => {
+    void handleSaveBeforeClose();
+  },
+  showAbout: () => {
+    void showAppNotice({
+      eyebrow: "關於",
+      title: "Map Schematic",
+      message: "離線地圖示意圖製作工具",
+      detail: `資料包：${currentPackId || "尚未載入"} ${currentPackVersion}\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief`,
+      tone: "info",
+    });
+  },
+  exportProject: (format) => {
+    void handleExport(format);
+  },
+  showRequestedDialog: (request) => {
+    const { id, ...options } = request;
+    void showAppDialog(options).then((response) => {
+      window.mapSchematic?.respondToAppDialog?.(id, response);
+    });
+  },
 });
-
-window.mapSchematic?.onMenuAction?.((action) => {
-  switch (action) {
-    case "edit:undo":
-      undoEditorChange();
-      break;
-    case "edit:redo":
-      redoEditorChange();
-      break;
-    case "project:open":
-      handleLoad();
-      break;
-    case "project:save":
-      handleSave(false);
-      break;
-    case "project:saveAs":
-      handleSave(true);
-      break;
-    case "project:saveBeforeClose":
-      void handleSaveBeforeClose();
-      break;
-    case "app:about":
-      void showAppNotice({
-        eyebrow: "關於",
-        title: "Map Schematic",
-        message: "離線地圖示意圖製作工具",
-        detail: `資料包：${currentPackId || "尚未載入"} ${currentPackVersion}\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief`,
-        tone: "info",
-      });
-      break;
-    case "export:png":
-      handleExport("png");
-      break;
-    case "export:svg":
-      handleExport("svg");
-      break;
-    case "export:pdf":
-      handleExport("pdf");
-      break;
-    default:
-      break;
-  }
-});
-
-window.mapSchematic?.onAppDialogRequest?.((request) => {
-  const { id, ...options } = request;
-  void showAppDialog(options).then((response) => {
-    window.mapSchematic?.respondToAppDialog?.(id, response);
-  });
-});
+appCommandController.bind();
 
 initializeThemePreferences({ buttons: themePreferenceButtons });
 hookToolbar();

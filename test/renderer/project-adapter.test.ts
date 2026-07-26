@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { MapProject } from "../../src/renderer/bridge.js";
 import {
-  editorDocumentToV02Objects,
+  editorDocumentToProjectObjects,
   mapProjectToEditorDocument
-} from "../../src/renderer/project/v02-adapter.js";
+} from "../../src/renderer/project/project-adapter.js";
 
 function createProject(): MapProject {
   return {
@@ -86,7 +86,7 @@ function createProject(): MapProject {
   };
 }
 
-describe("mapproj v0.2 editor adapter", () => {
+describe("map project editor adapter", () => {
   it("loads markers and shapes into one editor document", () => {
     const loaded = mapProjectToEditorDocument(createProject());
 
@@ -111,7 +111,7 @@ describe("mapproj v0.2 editor adapter", () => {
 
   it("round-trips editable and preserved objects without losing their type", () => {
     const loaded = mapProjectToEditorDocument(createProject());
-    const saved = editorDocumentToV02Objects(
+    const saved = editorDocumentToProjectObjects(
       loaded.document,
       loaded.preservedObjects
     );
@@ -159,7 +159,7 @@ describe("mapproj v0.2 editor adapter", () => {
     loaded.document.objects[0].longitude = 360;
     loaded.document.objects[1].longitude = 181;
 
-    const saved = editorDocumentToV02Objects(loaded.document);
+    const saved = editorDocumentToProjectObjects(loaded.document);
 
     expect(saved[0].geometry).toEqual({ kind: "point", lon: 0, lat: 25.033 });
     expect(saved[1].geometry).toEqual({ kind: "point", lon: -179, lat: 24 });

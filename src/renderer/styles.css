@@ -1,3 +1,5 @@
+@layer components {
+/* Design tokens and theme variants */
 :root {
   color-scheme: dark;
   --ui-bg: #111418;
@@ -139,6 +141,7 @@ select:focus-visible,
   outline-offset: 2px;
 }
 
+/* Shared controls */
 .ui-icon {
   width: 18px;
   height: 18px;
@@ -233,6 +236,7 @@ select:focus-visible,
   opacity: 0.65;
 }
 
+/* Application header and project actions */
 .app-header {
   position: relative;
   z-index: 20;
@@ -376,6 +380,7 @@ select:focus-visible,
   background: var(--ui-border);
 }
 
+/* Workflow navigation and step shell */
 .workflow-nav {
   position: relative;
   z-index: 15;
@@ -497,6 +502,7 @@ select:focus-visible,
   background: var(--ui-border-strong);
 }
 
+/* Main workspace layout */
 .layout,
 .layout.step-3 {
   display: grid;
@@ -604,6 +610,7 @@ select:focus-visible,
   font-weight: 400;
 }
 
+/* Search, ratio, and basemap controls */
 .segmented-control {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1385,6 +1392,7 @@ select:focus-visible,
   display: none;
 }
 
+/* Step 3 tools and item list */
 .tool-panel {
   padding: 0;
   overflow: hidden;
@@ -1785,6 +1793,7 @@ select:focus-visible,
   opacity: 0.45;
 }
 
+/* Map canvas and workflow footer */
 .map-wrap {
   position: relative;
   display: grid;
@@ -1998,6 +2007,7 @@ select:focus-visible,
   box-shadow: none;
 }
 
+/* Inspector */
 .right-panel {
   display: none;
 }
@@ -2241,6 +2251,7 @@ select:focus-visible,
   box-shadow: none;
 }
 
+/* Dialogs, export flow, preferences, and notifications */
 .modal-backdrop {
   z-index: 50;
   align-items: center;
@@ -2749,6 +2760,7 @@ select:focus-visible,
   margin-left: 12px;
 }
 
+/* Responsive adaptations */
 @media (max-width: 1180px) {
   .workflow-step {
     min-width: 118px;
@@ -2849,4 +2861,5 @@ select:focus-visible,
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
+}
 }

@@ -59,6 +59,36 @@ export type FillStyle = {
 
 export type Style = TextStyle & StrokeStyle & FillStyle;
 
+export type MarkerObjectFields = {
+  name?: string;
+  nameAlt?: string;
+  displayName?: string;
+  sourceType?: "geonames" | "coords" | "manual";
+  kind?: "label" | "point";
+  showLabel?: boolean;
+  dotColor?: string;
+  textColor?: string;
+  dotSize?: number;
+  textSize?: number;
+  textAnchor?: "start" | "end";
+};
+
+export type ShapeObjectFields = {
+  shapeType?: "line" | "area" | "text" | "arrow";
+  displayName?: string;
+  width?: number;
+  height?: number;
+  rotation?: number;
+  strokeColor?: string;
+  fillColor?: string;
+  textColor?: string;
+  textSize?: number;
+};
+
+// Schema 0.7 stores editor metadata beside visual properties. Keeping the
+// groups explicit prevents arbitrary values while preserving file compatibility.
+export type MapObjectStyle = Style & MarkerObjectFields & ShapeObjectFields;
+
 export type Provenance = {
   source: "geonames" | "manual";
   sourceId?: string;
@@ -69,7 +99,7 @@ export type MapObject = {
   id: string;
   type: "pointLabel" | "areaLabel" | "textOnly" | "arrow" | "polyline";
   layerId: string;
-  style: Style & Record<string, unknown>;
+  style: MapObjectStyle;
   geometry: Geometry;
   text?: string;
   provenance?: Provenance;

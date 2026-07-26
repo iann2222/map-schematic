@@ -138,6 +138,37 @@ describe("validateProject", () => {
     );
   });
 
+  it("rejects malformed editor object style fields", () => {
+    const project = createTestProject() as unknown as Record<string, unknown>;
+    project.objects = [
+      {
+        ...createTestPointObject(),
+        style: {
+          sourceType: "remote",
+          showLabel: "yes",
+          shapeType: "circle"
+        }
+      }
+    ];
+
+    expect(validateProject(project).errors).toEqual(
+      expect.arrayContaining([
+        {
+          path: "objects[0].style.sourceType",
+          message: "must be geonames, coords, or manual"
+        },
+        {
+          path: "objects[0].style.showLabel",
+          message: "must be a boolean"
+        },
+        {
+          path: "objects[0].style.shapeType",
+          message: "must be line, area, text, or arrow"
+        }
+      ])
+    );
+  });
+
   it("requires longitude/latitude viewport coordinates to use EPSG:4326", () => {
     const project = createTestProject() as unknown as {
       viewport: { projection: string };

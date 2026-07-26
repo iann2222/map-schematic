@@ -295,6 +295,62 @@ export function validateProject(input: unknown): ValidationResult {
         ) {
           errors.push({ path: `${prefix}.style.fillOpacity`, message: "must be between 0 and 1" });
         }
+        for (const field of [
+          "fontFamily", "fill", "stroke", "strokeDasharray", "labelName",
+          "name", "nameAlt", "displayName", "dotColor", "textColor",
+          "strokeColor", "fillColor"
+        ]) {
+          if (style[field] !== undefined && typeof style[field] !== "string") {
+            errors.push({ path: `${prefix}.style.${field}`, message: "must be a string" });
+          }
+        }
+        if (style.showLabel !== undefined && typeof style.showLabel !== "boolean") {
+          errors.push({ path: `${prefix}.style.showLabel`, message: "must be a boolean" });
+        }
+        if (
+          style.labelMode !== undefined &&
+          style.labelMode !== "name" &&
+          style.labelMode !== "coords"
+        ) {
+          errors.push({ path: `${prefix}.style.labelMode`, message: "must be name or coords" });
+        }
+        if (
+          style.sourceType !== undefined &&
+          style.sourceType !== "geonames" &&
+          style.sourceType !== "coords" &&
+          style.sourceType !== "manual"
+        ) {
+          errors.push({
+            path: `${prefix}.style.sourceType`,
+            message: "must be geonames, coords, or manual"
+          });
+        }
+        if (
+          style.kind !== undefined &&
+          style.kind !== "label" &&
+          style.kind !== "point"
+        ) {
+          errors.push({ path: `${prefix}.style.kind`, message: "must be label or point" });
+        }
+        if (
+          style.textAnchor !== undefined &&
+          style.textAnchor !== "start" &&
+          style.textAnchor !== "end"
+        ) {
+          errors.push({ path: `${prefix}.style.textAnchor`, message: "must be start or end" });
+        }
+        if (
+          style.shapeType !== undefined &&
+          style.shapeType !== "line" &&
+          style.shapeType !== "area" &&
+          style.shapeType !== "text" &&
+          style.shapeType !== "arrow"
+        ) {
+          errors.push({
+            path: `${prefix}.style.shapeType`,
+            message: "must be line, area, text, or arrow"
+          });
+        }
       }
 
       if (obj.provenance !== undefined) {

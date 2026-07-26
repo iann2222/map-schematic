@@ -52,7 +52,7 @@
 - `npm run test:typecheck`
   - 只執行測試程式與相關原始碼的 TypeScript 型別檢查，不執行測試案例。
 
-測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj`、資料包 manifest、manager、初始化、更新、修復、fallback，以及 renderer Editor Core 的命令、歷史與專案操作排程。
+測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj`、資料包 manifest、manager、初始化、更新、修復、fallback，以及 renderer Editor Core 的命令、歷史、專案操作排程、App State 與座標解析。
 
 ## 程式碼結構
 
@@ -74,15 +74,24 @@
 渲染程序（Renderer）：
 
 - `src/renderer/index.html`
-  - Step 0 至 Step 3 介面、搜尋與標示面板、匯出外框 dialog。
+  - Step 0 至 Step 3 介面、搜尋與標示面板、匯出外框 dialog；不放置 inline CSS。
+- `src/renderer/styles/foundation.css`
+  - 保存由舊版 `index.html` 移出的基礎樣式，位於 `foundation` cascade layer；後續元件規則可穩定覆寫。
 - `src/renderer/styles.css`
-  - 定義應用程式視覺系統、工作流程版面、Step 3 編輯工作區、屬性面板、對話框及窄視窗配置。
+  - 位於 `components` cascade layer，依 design token、共用控制、工作流程、地圖、屬性面板、dialog 與 responsive 區段組織。
 - `src/renderer/index.ts`
-  - 組合 renderer 模組、管理工作流程狀態並綁定畫面事件。
+  - 作為 renderer composition root，建立控制器、注入地圖與 UI callback，並保留尚未拆出的地圖渲染與屬性編輯邏輯。
   - 管理範圍裁切、比例、底圖風格與地形陰影。
-  - 管理地名／座標搜尋、點、文字、線、區域、箭頭及其排序、拖曳與樣式。
-  - 將目前狀態轉換為 `.mapproj`，並從專案檔還原編輯狀態。
+  - 管理點、文字、線、區域、箭頭及其排序、拖曳與樣式。
   - 產生高解析 PNG、PDF 輸入與真正向量 SVG；地形陰影啟用時僅陰影部分維持點陣圖片。
+- `src/renderer/app-state.ts`
+  - 定義 renderer 唯一的 `AppState` 根結構；工作流程、專案生命週期、搜尋請求與匯出狀態不再由入口檔的零散全域變數維護。
+- `src/renderer/controllers/*`
+  - `workflow-controller.ts` 管理步驟切換、導覽、工作區分頁與搜尋模式分頁。
+  - `project-controller.ts` 管理載入、儲存、另存、未儲存狀態與資料包版本確認，並透過 operation coordinator 序列化操作。
+  - `search-controller.ts` 管理離線地名搜尋、座標解析、結果排序與結果清單。
+  - `export-controller.ts` 管理匯出格式、外框選擇、進度與輸出請求。
+  - `app-command-controller.ts` 集中全域快捷鍵、Electron menu action 與 dialog request 路由。
 - `src/renderer/bridge.ts`
   - 定義 preload bridge 與 GeoNames 查詢結果；專案契約直接引用 shared schema，避免重複定義。
 - `src/renderer/editor/*`
@@ -96,8 +105,8 @@
 - `src/renderer/project/operation-coordinator.ts`
   - 依照請求順序逐一執行載入、儲存、另存與關閉前儲存，避免非同步結果互相覆寫專案路徑與狀態。
   - 單一操作失敗後仍會繼續處理後續操作，不讓整條佇列永久停止。
-- `src/renderer/project/v02-adapter.ts`
-  - 集中處理 `.mapproj` 與 `EditorDocument` 的雙向轉換，保留可編輯物件的圖層歸屬，renderer 互動邏輯不直接解析專案欄位。
+- `src/renderer/project/project-adapter.ts`
+  - 集中處理 `.mapproj` 與 `EditorDocument` 的雙向轉換，保留可編輯物件的圖層歸屬，renderer 互動邏輯不直接解析專案欄位；名稱不再綁定特定舊 schema 版本。
 - `src/renderer/project/canvas.ts`
   - 集中處理專案畫布比例、px／mm 邏輯尺寸與匯出像素換算。
 - `src/renderer/map/geometry.ts`
@@ -115,7 +124,7 @@
 - `src/shared/schema/mapproj.ts`
   - 提供目前 `.mapproj` v0.7 版本常數與初始專案。
 - `src/shared/schema/mapproj-contract.d.ts`
-  - 集中定義 main、preload、renderer 共用的 `.mapproj` 與可序列化歷史命令契約。
+  - 集中定義 main、preload、renderer 共用的 `.mapproj` 與可序列化歷史命令契約；0.7 物件 style 的標記欄位、圖形欄位與視覺樣式均使用明確型別，不接受任意欄位。
 - `src/shared/schema/history.ts`
   - 驗證 historyVersion、命令結構、物件快照、數量與遞迴深度，並安全處理舊版歷史。
 - `src/shared/schema/migrate.ts`

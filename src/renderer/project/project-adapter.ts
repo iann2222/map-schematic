@@ -8,7 +8,7 @@ import { isMarker, isShape } from "../editor/types.js";
 import { normalizeLongitude } from "../map/geometry.js";
 import { partitionProjectObjects } from "./project-state.js";
 
-export type V02EditorLoadResult = {
+export type ProjectEditorLoadResult = {
   document: EditorDocument;
   preservedObjects: MapProject["objects"];
 };
@@ -94,7 +94,7 @@ function markerSourceType(
   return object.provenance?.query === "manual" ? "manual" : "coords";
 }
 
-export function editorDocumentToV02Objects(
+export function editorDocumentToProjectObjects(
   document: EditorDocument,
   preservedObjects: MapProject["objects"] = [],
   defaultLayerId = "layer-1",
@@ -167,7 +167,9 @@ export function editorDocumentToV02Objects(
   return [...markerObjects, ...shapeObjects, ...preservedObjects];
 }
 
-export function mapProjectToEditorDocument(project: MapProject): V02EditorLoadResult {
+export function mapProjectToEditorDocument(
+  project: MapProject,
+): ProjectEditorLoadResult {
   const partitioned = partitionProjectObjects(project.objects ?? []);
   const objects: EditorDocument["objects"] = [];
 
