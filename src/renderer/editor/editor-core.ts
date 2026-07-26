@@ -6,7 +6,11 @@ import {
 import type { EditorCommand } from "./commands.js";
 import { cloneEditorDocument } from "./document.js";
 import type { EditorDocument } from "./types.js";
-import type { ProjectHistory } from "../../shared/schema/mapproj-contract.js";
+import type {
+  HistoryCommandLimit,
+  HistoryVersion,
+  ProjectHistory,
+} from "../../shared/schema/mapproj-contract.js";
 
 export type EditorCoreChange = {
   kind: "execute" | "undo" | "redo" | "reset";
@@ -20,7 +24,8 @@ export type EditorCoreRecordOptions = {
 
 export type EditorHistorySnapshot = ProjectHistory;
 
-const EDITOR_HISTORY_VERSION = 1 satisfies ProjectHistory["historyVersion"];
+export const EDITOR_HISTORY_VERSION = 1 satisfies HistoryVersion;
+export const EDITOR_HISTORY_LIMIT = 300 satisfies HistoryCommandLimit;
 
 type HistoryEntry = {
   command: EditorCommand;
@@ -66,7 +71,7 @@ export class EditorCore {
     options: { limit?: number; mergeWindowMs?: number } = {},
   ) {
     this.document = cloneEditorDocument(document);
-    this.limit = Math.max(1, options.limit ?? 100);
+    this.limit = Math.max(1, options.limit ?? EDITOR_HISTORY_LIMIT);
     this.mergeWindowMs = Math.max(0, options.mergeWindowMs ?? 750);
   }
 

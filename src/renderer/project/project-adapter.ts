@@ -4,6 +4,14 @@ import type {
   Marker,
   ShapeItem
 } from "../editor/types.js";
+import {
+  defaultMarkerStyle,
+  defaultShapeStyle,
+} from "../editor/defaults.js";
+import {
+  formatCoordinates,
+  markerLabelText,
+} from "../editor/presentation.js";
 import { isMarker, isShape } from "../editor/types.js";
 import { normalizeLongitude } from "../map/geometry.js";
 import { partitionProjectObjects } from "./project-state.js";
@@ -12,24 +20,6 @@ export type ProjectEditorLoadResult = {
   document: EditorDocument;
   preservedObjects: MapProject["objects"];
 };
-
-function formatCoords(latitude: number, longitude: number): string {
-  return `(${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
-}
-
-function markerLabelText(marker: Marker): string {
-  const customLabel = marker.labelName?.trim();
-  if (customLabel) {
-    return customLabel;
-  }
-  if (marker.sourceType === "coords") {
-    return marker.displayName?.trim() || marker.name;
-  }
-  if (marker.labelMode === "coords") {
-    return formatCoords(marker.latitude, marker.longitude);
-  }
-  return marker.name;
-}
 
 function normalizeRotation(value: unknown): number {
   const rotation = Number(value);
@@ -181,7 +171,8 @@ export function mapProjectToEditorDocument(
     const style = object.style;
     if (object.type === "pointLabel") {
       const sourceType = markerSourceType(object);
-      const coordsText = formatCoords(lat, lon);
+      const coordsText = formatCoordinates(lat, lon);
+      const markerDefaults = defaultMarkerStyle();
       const labelName = typeof style.labelName === "string" ? style.labelName : undefined;
       const labelMode =
         style.labelMode === "name" || style.labelMode === "coords"
@@ -211,13 +202,13 @@ export function mapProjectToEditorDocument(
         longitude: normalizeLongitude(lon),
         sourceId: object.provenance?.sourceId,
         style: {
-          dotColor: String(style.dotColor ?? "#f97316"),
-          textColor: String(style.textColor ?? "#fde68a"),
-          dotSize: Number(style.dotSize ?? 7),
-          textSize: Number(style.textSize ?? 7),
-          fontFamily: String(style.fontFamily ?? "IBM Plex Sans, sans-serif"),
-          textOffsetX: Number(style.textOffsetX ?? 8),
-          textOffsetY: Number(style.textOffsetY ?? -6),
+          dotColor: String(style.dotColor ?? markerDefaults.dotColor),
+          textColor: String(style.textColor ?? markerDefaults.textColor),
+          dotSize: Number(style.dotSize ?? markerDefaults.dotSize),
+          textSize: Number(style.textSize ?? markerDefaults.textSize),
+          fontFamily: String(style.fontFamily ?? markerDefaults.fontFamily),
+          textOffsetX: Number(style.textOffsetX ?? markerDefaults.textOffsetX),
+          textOffsetY: Number(style.textOffsetY ?? markerDefaults.textOffsetY),
           textAnchor:
             style.textAnchor === "end" || style.textAnchor === "start"
               ? style.textAnchor
@@ -236,6 +227,7 @@ export function mapProjectToEditorDocument(
     if (!shapeType) {
       continue;
     }
+    const shapeDefaults = defaultShapeStyle(shapeType);
     objects.push({
       objectKind: "shape",
       id: object.id,
@@ -249,13 +241,13 @@ export function mapProjectToEditorDocument(
       rotation: normalizeRotation(style.rotation),
       text: typeof object.text === "string" ? object.text : undefined,
       style: {
-        strokeColor: String(style.strokeColor ?? "#38bdf8"),
-        strokeWidth: Number(style.strokeWidth ?? 2),
-        fillColor: String(style.fillColor ?? "#38bdf8"),
-        fillOpacity: Number(style.fillOpacity ?? 0.35),
-        textColor: String(style.textColor ?? "#fde68a"),
-        textSize: Number(style.textSize ?? 7),
-        fontFamily: String(style.fontFamily ?? "IBM Plex Sans, sans-serif")
+        strokeColor: String(style.strokeColor ?? shapeDefaults.strokeColor),
+        strokeWidth: Number(style.strokeWidth ?? shapeDefaults.strokeWidth),
+        fillColor: String(style.fillColor ?? shapeDefaults.fillColor),
+        fillOpacity: Number(style.fillOpacity ?? shapeDefaults.fillOpacity),
+        textColor: String(style.textColor ?? shapeDefaults.textColor),
+        textSize: Number(style.textSize ?? shapeDefaults.textSize),
+        fontFamily: String(style.fontFamily ?? shapeDefaults.fontFamily)
       }
     });
   }

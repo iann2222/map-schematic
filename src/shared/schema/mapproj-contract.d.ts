@@ -212,6 +212,7 @@ export type SerializedEditorCommand =
     };
 
 export type HistoryVersion = 1;
+export type HistoryCommandLimit = 300;
 
 export type ProjectHistory = {
   historyVersion: HistoryVersion;

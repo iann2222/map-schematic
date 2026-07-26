@@ -3,6 +3,10 @@ import {
   createEmptyProjectHistory,
   migrateLegacyProjectHistory
 } from "./history";
+import {
+  isRecord,
+  type UnknownRecord
+} from "../validation/primitives";
 
 export type ProjectMigrationResult = {
   project: MapProject;
@@ -19,16 +23,12 @@ export class ProjectMigrationError extends Error {
   }
 }
 
-type ProjectRecord = Record<string, unknown>;
+type ProjectRecord = UnknownRecord;
 
 type MigrationStep = {
   toVersion: string;
   migrate: (project: ProjectRecord) => ProjectRecord;
 };
-
-function isRecord(value: unknown): value is ProjectRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function migrateViewportBBox(viewport: unknown): unknown {
   if (!isRecord(viewport) || !isRecord(viewport.bbox)) {

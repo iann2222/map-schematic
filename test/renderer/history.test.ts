@@ -7,7 +7,10 @@ import {
   createReorderCommand,
   createUpdateObjectCommand,
 } from "../../src/renderer/editor/commands.js";
-import { EditorCore } from "../../src/renderer/editor/editor-core.js";
+import {
+  EDITOR_HISTORY_LIMIT,
+  EditorCore,
+} from "../../src/renderer/editor/editor-core.js";
 import { cloneEditorObject } from "../../src/renderer/editor/document.js";
 import { validateProjectHistory } from "../../src/shared/schema/history.js";
 import type {
@@ -240,6 +243,19 @@ describe("EditorCore history", () => {
     core.undo();
     expect(markerFrom(core).name).toBe("B");
     expect(core.undo()).toBeNull();
+  });
+
+  it("uses the project history limit by default", () => {
+    const core = new EditorCore(createDocument([createMarker()]));
+
+    for (let index = 0; index <= EDITOR_HISTORY_LIMIT; index += 1) {
+      const before = markerFrom(core);
+      const after = cloneEditorObject(before) as Marker;
+      after.name = `marker-${index}`;
+      core.dispatch(createUpdateObjectCommand(before, after));
+    }
+
+    expect(core.undoCount).toBe(EDITOR_HISTORY_LIMIT);
   });
 
   it("replaces a loaded document and clears both history branches", () => {

@@ -10,6 +10,16 @@ import {
 import { validateProject } from "../shared/schema/validate";
 import type { MapProject } from "../shared/schema/mapproj";
 import { parseBuildInfo, type AppBuildInfo } from "../shared/build-info";
+import { IPC_CHANNELS } from "../shared/ipc-channels";
+import type {
+  AppDialogOptions,
+  AppDialogResponse,
+  MenuAction,
+  ProjectExportPayload,
+  ProjectExportResult,
+  ProjectLoadResult,
+  ProjectSaveResult
+} from "../shared/ipc-contract";
 import { resolveInsidePack } from "../shared/datapack/manifest";
 import type {
   DataPackDownloadReason,
@@ -27,54 +37,10 @@ import {
   updateDatapack
 } from "./datapack-download";
 
-type Datapack = DataPackManifest;
-
-type SaveResult = {
-  ok: boolean;
-  errors?: string[];
-  path?: string;
-  canceled?: boolean;
-};
-
-type LoadResult = {
-  ok: boolean;
-  path?: string;
-  project?: unknown;
-  validation?: { valid: boolean; errors: Array<{ path: string; message: string }> };
-  error?: string;
-  canceled?: boolean;
-  migratedFromVersion?: string;
-  recoveredFromBackup?: boolean;
-};
-
-type ExportResult = {
-  ok: boolean;
-  path?: string;
-  error?: string;
-  canceled?: boolean;
-};
-
 type WindowCloseState = {
   dirty: boolean;
   allowClose: boolean;
   promptOpen: boolean;
-};
-
-type AppDialogButton = {
-  label: string;
-  value: number;
-  variant?: "primary" | "ghost" | "danger" | "dangerGhost";
-};
-
-type AppDialogOptions = {
-  eyebrow?: string;
-  title: string;
-  message: string;
-  detail?: string;
-  tone?: "info" | "warning" | "danger";
-  buttons: AppDialogButton[];
-  defaultValue: number;
-  cancelValue: number;
 };
 
 type PendingRendererDialog = {
@@ -124,7 +90,7 @@ function requestRendererDialog(
       cancelValue: options.cancelValue,
       resolve
     });
-    win.webContents.send("app-dialog:request", { id, ...options });
+    win.webContents.send(IPC_CHANNELS.appDialogRequest, { id, ...options });
   });
 }
 
@@ -174,7 +140,10 @@ function attachUnsavedChangesGuard(win: BrowserWindow): void {
           return;
         }
         if (response === 0) {
-          win.webContents.send("menu:action", "project:saveBeforeClose");
+          win.webContents.send(
+            IPC_CHANNELS.menuAction,
+            "project:saveBeforeClose" satisfies MenuAction
+          );
         } else if (response === 1) {
           closeWindowWithoutPrompt(win);
         }
@@ -268,12 +237,19 @@ async function getReadyDatapack(): Promise<ReadyDataPack> {
   return ensureDatapackReady(confirmDatapackDownload);
 }
 
-async function loadDatapack(): Promise<Datapack> {
+async function loadDatapack(): Promise<DataPackManifest> {
   return (await getReadyDatapack()).manifest;
 }
 
 function isTargetPack(ref: { id: string; version: string }, status: DataPackStatus): boolean {
   return ref.id === status.target.id && ref.version === status.target.version;
+}
+
+function sendMenuAction(action: MenuAction): void {
+  BrowserWindow.getFocusedWindow()?.webContents.send(
+    IPC_CHANNELS.menuAction,
+    action
+  );
 }
 
 function buildAppMenu(): Menu {
@@ -284,30 +260,30 @@ function buildAppMenu(): Menu {
         {
           label: "載入專案",
           accelerator: "CommandOrControl+O",
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "project:open")
+          click: () => sendMenuAction("project:open")
         },
         {
           label: "儲存專案",
           accelerator: "CommandOrControl+S",
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "project:save")
+          click: () => sendMenuAction("project:save")
         },
         {
           label: "另存新檔",
           accelerator: "CommandOrControl+Shift+S",
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "project:saveAs")
+          click: () => sendMenuAction("project:saveAs")
         },
         { type: "separator" },
         {
           label: "匯出 PNG",
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "export:png")
+          click: () => sendMenuAction("export:png")
         },
         {
           label: "匯出 SVG",
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "export:svg")
+          click: () => sendMenuAction("export:svg")
         },
         {
           label: "匯出 PDF",
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "export:pdf")
+          click: () => sendMenuAction("export:pdf")
         },
         { type: "separator" },
         { role: "close", label: "關閉視窗" },
@@ -320,12 +296,12 @@ function buildAppMenu(): Menu {
         {
           label: "復原",
           accelerator: "CommandOrControl+Z",
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "edit:undo")
+          click: () => sendMenuAction("edit:undo")
         },
         {
           label: "重做",
           accelerator: process.platform === "darwin" ? "Command+Shift+Z" : "Control+Y",
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send("menu:action", "edit:redo")
+          click: () => sendMenuAction("edit:redo")
         }
       ]
     },
@@ -379,19 +355,11 @@ function buildAppMenu(): Menu {
       submenu: [
         {
           label: "關於",
-          click: () =>
-            BrowserWindow.getFocusedWindow()?.webContents.send(
-              "menu:action",
-              "app:about"
-            )
+          click: () => sendMenuAction("app:about")
         },
         {
           label: "資料來源與授權",
-          click: () =>
-            BrowserWindow.getFocusedWindow()?.webContents.send(
-              "menu:action",
-              "app:attributions"
-            )
+          click: () => sendMenuAction("app:attributions")
         }
       ]
     }
@@ -429,7 +397,7 @@ app.whenReady().then(() => {
   configureDataRoot();
   Menu.setApplicationMenu(buildAppMenu());
 
-  ipcMain.handle("app:get-attributions", async () => {
+  ipcMain.handle(IPC_CHANNELS.appGetAttributions, async () => {
     try {
       return {
         ok: true,
@@ -442,9 +410,9 @@ app.whenReady().then(() => {
       };
     }
   });
-  ipcMain.handle("app:get-build-info", async () => loadBuildInfo());
+  ipcMain.handle(IPC_CHANNELS.appGetBuildInfo, async () => loadBuildInfo());
 
-  ipcMain.on("app-dialog:response", (event, payload: unknown) => {
+  ipcMain.on(IPC_CHANNELS.appDialogResponse, (event, payload: unknown) => {
     if (
       !payload ||
       typeof payload !== "object" ||
@@ -455,21 +423,22 @@ app.whenReady().then(() => {
     ) {
       return;
     }
-    const pending = pendingRendererDialogs.get(payload.id);
+    const response = payload as AppDialogResponse;
+    const pending = pendingRendererDialogs.get(response.id);
     if (!pending || pending.webContentsId !== event.sender.id) {
       return;
     }
-    pendingRendererDialogs.delete(payload.id);
+    pendingRendererDialogs.delete(response.id);
     pending.resolve(
-      pending.allowedValues.has(payload.response)
-        ? payload.response
+      pending.allowedValues.has(response.response)
+        ? response.response
         : pending.cancelValue
     );
   });
 
-  ipcMain.handle("datapack:get", async () => loadDatapack());
-  ipcMain.handle("datapack:status", async () => getDatapackStatus());
-  ipcMain.handle("datapack:update", async () => {
+  ipcMain.handle(IPC_CHANNELS.datapackGet, async () => loadDatapack());
+  ipcMain.handle(IPC_CHANNELS.datapackStatus, async () => getDatapackStatus());
+  ipcMain.handle(IPC_CHANNELS.datapackUpdate, async () => {
     try {
       const ready = await updateDatapack(confirmDatapackDownload);
       const status = await getDatapackStatus();
@@ -483,7 +452,7 @@ app.whenReady().then(() => {
       return { ok: false, error: String(error) };
     }
   });
-  ipcMain.on("project:dirty-state", (event, dirty: unknown) => {
+  ipcMain.on(IPC_CHANNELS.projectDirtyState, (event, dirty: unknown) => {
     if (typeof dirty !== "boolean") {
       return;
     }
@@ -493,7 +462,7 @@ app.whenReady().then(() => {
       state.dirty = dirty;
     }
   });
-  ipcMain.handle("project:close-after-save", (event): boolean => {
+  ipcMain.handle(IPC_CHANNELS.projectCloseAfterSave, (event): boolean => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) {
       return false;
@@ -501,7 +470,7 @@ app.whenReady().then(() => {
     closeWindowWithoutPrompt(win);
     return true;
   });
-  ipcMain.handle("basemap:get", async () => {
+  ipcMain.handle(IPC_CHANNELS.basemapGet, async () => {
     const ready = await getReadyDatapack();
     const layers = ready.manifest.basemap.layers;
     const payload = [] as Array<{ id: string; geojson: string }>;
@@ -512,7 +481,7 @@ app.whenReady().then(() => {
     }
     return payload;
   });
-  ipcMain.handle("relief:get", async () => {
+  ipcMain.handle(IPC_CHANNELS.reliefGet, async () => {
     const ready = await getReadyDatapack();
     const reliefPath = ready.manifest.relief?.path;
     if (!reliefPath) {
@@ -525,42 +494,53 @@ app.whenReady().then(() => {
       projection: ready.manifest.relief?.projection ?? null
     };
   });
-  ipcMain.handle("geonames:search", async (_event, query: string, limit: number) => {
+  ipcMain.handle(IPC_CHANNELS.geonamesSearch, async (_event, query: string, limit: number) => {
     const ready = await getReadyDatapack();
     const dbPath = resolveInsidePack(ready.rootPath, ready.manifest.geonames.dbPath);
     return searchGeonames(query, limit, dbPath);
   });
-  ipcMain.handle("project:save", async (_event, payload: unknown): Promise<SaveResult> => {
-    try {
-      const data = payload as { project?: unknown; path?: string | null; saveAs?: boolean };
-      const validation = validateProject(data?.project);
-      if (!validation.valid) {
-        return {
-          ok: false,
-          errors: validation.errors.map((error) => `${error.path}: ${error.message}`)
+  ipcMain.handle(
+    IPC_CHANNELS.projectSave,
+    async (_event, payload: unknown): Promise<ProjectSaveResult> => {
+      try {
+        const data = payload as {
+          project?: unknown;
+          path?: string | null;
+          saveAs?: boolean;
         };
-      }
-      const root = projectFilesRoot();
-      await fs.mkdir(root, { recursive: true });
-      let filePath = data.path ?? null;
-      if (!filePath || data.saveAs) {
-        const result = await dialog.showSaveDialog({
-          title: "儲存專案",
-          defaultPath: filePath ?? defaultProjectPath(),
-          filters: [{ name: "Map Project", extensions: ["mapproj"] }]
-        });
-        if (result.canceled || !result.filePath) {
-          return { ok: false, canceled: true };
+        const validation = validateProject(data?.project);
+        if (!validation.valid) {
+          return {
+            ok: false,
+            errors: validation.errors.map(
+              (error) => `${error.path}: ${error.message}`
+            )
+          };
         }
-        filePath = result.filePath;
+        const root = projectFilesRoot();
+        await fs.mkdir(root, { recursive: true });
+        let filePath = data.path ?? null;
+        if (!filePath || data.saveAs) {
+          const result = await dialog.showSaveDialog({
+            title: "儲存專案",
+            defaultPath: filePath ?? defaultProjectPath(),
+            filters: [{ name: "Map Project", extensions: ["mapproj"] }]
+          });
+          if (result.canceled || !result.filePath) {
+            return { ok: false, canceled: true };
+          }
+          filePath = result.filePath;
+        }
+        await enqueueProjectSave(() =>
+          saveProjectToFile(filePath, data.project as MapProject)
+        );
+        return { ok: true, path: filePath };
+      } catch (err) {
+        return { ok: false, errors: [String(err)] };
       }
-      await enqueueProjectSave(() => saveProjectToFile(filePath, data.project as MapProject));
-      return { ok: true, path: filePath };
-    } catch (err) {
-      return { ok: false, errors: [String(err)] };
     }
-  });
-  ipcMain.handle("project:load", async (event): Promise<LoadResult> => {
+  );
+  ipcMain.handle(IPC_CHANNELS.projectLoad, async (event): Promise<ProjectLoadResult> => {
     try {
       const root = projectFilesRoot();
       await fs.mkdir(root, { recursive: true });
@@ -649,11 +629,11 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle(
-    "project:export",
+    IPC_CHANNELS.projectExport,
     async (
       _event,
-      payload: { format: "png" | "svg" | "pdf"; data: string; width: number; height: number }
-    ): Promise<ExportResult> => {
+      payload: ProjectExportPayload
+    ): Promise<ProjectExportResult> => {
       try {
         const root = projectFilesRoot();
         await fs.mkdir(root, { recursive: true });

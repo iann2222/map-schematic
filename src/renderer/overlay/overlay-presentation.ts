@@ -1,5 +1,3 @@
-import type { MarkerStyle, ShapeItem, ShapeStyle } from "../editor/types.js";
-
 export function shapeStrokeScale(width: number, height: number): number {
   const minDim = Math.max(24, Math.min(width, height));
   return Math.max(0.42, Math.min(1, minDim / 120));
@@ -37,31 +35,4 @@ export function clearDraggingLabelOutline(label: SVGTextElement): void {
   label.removeAttribute("stroke-dasharray");
   label.removeAttribute("stroke-linecap");
   label.removeAttribute("stroke-linejoin");
-}
-
-export function defaultMarkerStyle(): MarkerStyle {
-  return {
-    dotSize: 7,
-    textSize: 7,
-    dotColor: "#f97316",
-    textColor: "#fde68a",
-    textOffsetX: 8,
-    textOffsetY: -6,
-    textAnchor: "start",
-    fontFamily: "IBM Plex Sans, sans-serif",
-  };
-}
-
-export function defaultShapeStyle(type: ShapeItem["type"]): ShapeStyle {
-  const base: ShapeStyle = {
-    strokeColor: "#38bdf8",
-    strokeWidth: 2,
-    fillColor: "#38bdf8",
-    fillOpacity: 0.35,
-    textColor: "#fde68a",
-    textSize: 7,
-    fontFamily: "IBM Plex Sans, sans-serif",
-  };
-  if (type === "area") base.fillOpacity = 0.4;
-  return base;
 }

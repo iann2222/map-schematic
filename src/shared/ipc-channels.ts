@@ -1,0 +1,18 @@
+export const IPC_CHANNELS = {
+  appDialogRequest: "app-dialog:request",
+  appDialogResponse: "app-dialog:response",
+  appGetAttributions: "app:get-attributions",
+  appGetBuildInfo: "app:get-build-info",
+  basemapGet: "basemap:get",
+  datapackGet: "datapack:get",
+  datapackStatus: "datapack:status",
+  datapackUpdate: "datapack:update",
+  geonamesSearch: "geonames:search",
+  menuAction: "menu:action",
+  projectCloseAfterSave: "project:close-after-save",
+  projectDirtyState: "project:dirty-state",
+  projectExport: "project:export",
+  projectLoad: "project:load",
+  projectSave: "project:save",
+  reliefGet: "relief:get",
+} as const;

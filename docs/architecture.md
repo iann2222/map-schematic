@@ -103,9 +103,10 @@
   - `export-controller.ts` 管理匯出格式、外框選擇、進度與輸出請求。
   - `app-command-controller.ts` 集中全域快捷鍵、Electron menu action 與 dialog request 路由。
 - `src/renderer/bridge.ts`
-  - 定義 preload bridge 與 GeoNames 查詢結果；專案契約直接引用 shared schema，避免重複定義。
+  - 將 shared IPC 契約提供給 renderer，並宣告 `window.mapSchematic`；不再另外維護 preload API、GeoNames 或專案操作型別。
 - `src/renderer/editor/*`
   - 以單一 `EditorDocument.objects` 管理點標示與形狀，並以可辨識物件型別提供安全存取。
+  - `defaults.ts` 與 `presentation.ts` 分別集中物件預設樣式、標示顯示文字與座標格式，供建立、載入與畫面呈現共用。
   - `editor-core.ts` 集中套用編輯命令、交易與最多 300 筆的 Undo/Redo 歷史；UI 不再自行維護完整文件快照。
   - `commands.ts` 定義可序列化的新增、刪除、欄位更新、排序與清空命令，套用前會檢查目前資料狀態。
   - 命令只保存實際變更欄位；連續文字與滑桿修改可合併，拖曳期間即時預覽並在結束時記為單一命令。
@@ -126,11 +127,18 @@
 
 共用模組（Shared）：
 
+- `src/shared/ipc-contract.d.ts`
+  - 定義 main、preload 與 renderer 共用的 IPC payload、回傳值、選單動作及 `MapSchematicApi`，讓兩端的介面變更可由 TypeScript 一起檢查。
+- `src/shared/ipc-channels.ts`
+  - 保存 IPC channel 名稱的唯一來源，避免 main 與 preload 使用不同字串。
 - `src/shared/paths.ts`
   - 統一解析資料根目錄。
 - `src/shared/datapack/*`
   - 定義 manifest／release 契約、檔案校驗、active 版本、初始化、更新、修復、安全啟用與 fallback。
+  - `contract.d.ts` 保存跨 main／renderer 使用的資料包型別，runtime 模組只保留實際邏輯。
   - `pack-release.json` 是目標資料包 id／version 的唯一來源，不另在程式碼維護重複版本常數。
+- `src/shared/validation/primitives.ts`
+  - 提供 schema、資料包 manifest 與建置資訊解析共用的 record、有限數值及非空字串檢查。
 - `src/shared/schema/mapproj.ts`
   - 提供目前 `.mapproj` v0.7 版本常數與初始專案。
 - `src/shared/schema/mapproj-contract.d.ts`

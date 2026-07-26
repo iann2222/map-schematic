@@ -1,15 +1,9 @@
-export type AppBuildInfo = {
-  version: string;
-  commitSha: string;
-  shortCommitSha: string;
-  dirty: boolean | null;
-};
+import type { AppBuildInfo } from "./ipc-contract";
+import { isRecord } from "./validation/primitives";
+
+export type { AppBuildInfo } from "./ipc-contract";
 
 export const UNKNOWN_COMMIT_SHA = "unknown";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isCommitSha(value: unknown): value is string {
   return (

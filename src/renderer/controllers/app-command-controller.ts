@@ -1,5 +1,9 @@
 import type { WorkflowStep } from "../app-state.js";
-import type { AppDialogRequest } from "../bridge.js";
+import type {
+  AppDialogRequest,
+  ExportFormat,
+  MenuAction,
+} from "../bridge.js";
 
 export type AppCommandControllerOptions = {
   getActiveStep: () => WorkflowStep;
@@ -22,7 +26,7 @@ export type AppCommandControllerOptions = {
   saveBeforeClose: () => void;
   showAbout: () => void;
   showAttributions: () => void;
-  exportProject: (format: "png" | "svg" | "pdf") => void;
+  exportProject: (format: ExportFormat) => void;
   showRequestedDialog: (request: AppDialogRequest) => void;
 };
 
@@ -113,7 +117,7 @@ export class AppCommandController {
     }
   }
 
-  private handleMenuAction(action: string): void {
+  private handleMenuAction(action: MenuAction): void {
     switch (action) {
       case "edit:undo":
         this.options.undo();

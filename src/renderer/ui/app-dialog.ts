@@ -1,6 +1,6 @@
-import type { AppDialogButton, AppDialogRequest } from "../bridge.js";
+import type { AppDialogButton, AppDialogOptions } from "../bridge.js";
 
-export type AppDialogOptions = Omit<AppDialogRequest, "id">;
+export type { AppDialogOptions } from "../bridge.js";
 
 type QueuedAppDialog = {
   options: AppDialogOptions;

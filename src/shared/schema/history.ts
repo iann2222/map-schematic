@@ -1,15 +1,22 @@
 import type {
   HistoryMarkerSnapshot,
+  HistoryCommandLimit,
   HistoryObjectSnapshot,
   HistoryShapeSnapshot,
+  HistoryVersion,
   ProjectHistory,
   SerializedEditorCommand,
   SerializedEditorFieldChange,
   StoredHistoryFieldValue
 } from "./mapproj-contract";
+import {
+  isFiniteNumber,
+  isNonEmptyString,
+  isRecord
+} from "../validation/primitives";
 
-export const CURRENT_HISTORY_VERSION = 1 as const;
-export const MAX_HISTORY_COMMANDS = 300;
+export const CURRENT_HISTORY_VERSION = 1 satisfies HistoryVersion;
+export const MAX_HISTORY_COMMANDS = 300 satisfies HistoryCommandLimit;
 
 const MAX_BATCH_DEPTH = 12;
 const MAX_COMMAND_NODES = 3000;
@@ -30,18 +37,6 @@ type ValidationContext = {
   commandNodes: number;
   commandLimitReported: boolean;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
 
 function isSafeJsonValue(value: unknown, depth = 0): boolean {
   if (depth > 32) {

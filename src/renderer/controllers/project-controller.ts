@@ -1,5 +1,9 @@
 import type { ProjectState } from "../app-state.js";
-import type { MapProject } from "../bridge.js";
+import type {
+  MapProject,
+  ProjectLoadResult,
+  ProjectSaveResult,
+} from "../bridge.js";
 import type { AppDialogOptions } from "../ui/app-dialog.js";
 import {
   projectDatapackMismatchMessage,
@@ -8,31 +12,11 @@ import {
 import { ProjectOperationCoordinator } from "../project/operation-coordinator.js";
 import { projectFingerprint } from "../project/project-state.js";
 
-export type ProjectSaveResult = {
-  ok: boolean;
-  canceled?: boolean;
-  path?: string;
-  error?: string;
-  errors?: string[];
-};
+export type { ProjectSaveResult } from "../bridge.js";
 
 export type AppliedProjectSummary = {
   historyRestored: boolean;
   preservedObjectCount: number;
-};
-
-type ProjectLoadResult = {
-  ok: boolean;
-  path?: string;
-  project?: MapProject;
-  validation?: {
-    valid: boolean;
-    errors: Array<{ path: string; message: string }>;
-  };
-  error?: string;
-  canceled?: boolean;
-  migratedFromVersion?: string;
-  recoveredFromBackup?: boolean;
 };
 
 export type ProjectControllerOptions = {

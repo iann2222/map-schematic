@@ -9,8 +9,19 @@ import {
   createUpdateObjectCommand,
 } from "./editor/commands.js";
 import type { EditorCommand } from "./editor/commands.js";
-import { EditorCore } from "./editor/editor-core.js";
+import {
+  EDITOR_HISTORY_LIMIT,
+  EditorCore,
+} from "./editor/editor-core.js";
 import { cloneEditorObject } from "./editor/document.js";
+import {
+  defaultMarkerStyle,
+  defaultShapeStyle,
+} from "./editor/defaults.js";
+import {
+  formatCoordinates,
+  markerLabelText,
+} from "./editor/presentation.js";
 import type { EditorDocument, Marker, ShapeItem } from "./editor/types.js";
 import { isMarker, isShape } from "./editor/types.js";
 import {
@@ -38,8 +49,6 @@ import {
   fitCanvasToAspectRatio,
 } from "./project/canvas.js";
 import {
-  defaultMarkerStyle,
-  defaultShapeStyle,
   labelOffsetScale,
   labelZoomScale,
   shapeStrokeScale,
@@ -521,7 +530,6 @@ const ZOOM_LEVELS = [0.4, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12];
 const MAP_WIDTH = 1200;
 const MAP_HEIGHT = 800;
 const PNG_EXPORT_SCALE = 2;
-const EDITOR_HISTORY_LIMIT = 300;
 let cropRatio = MAP_WIDTH / MAP_HEIGHT;
 let projectCanvas = { ...DEFAULT_PROJECT_CANVAS };
 let ratioMode: "free" | "fixed" = "fixed";
@@ -2443,24 +2451,6 @@ function buildShapeAt(
   };
 }
 
-function formatCoords(marker: { latitude: number; longitude: number }): string {
-  return `(${marker.latitude.toFixed(4)}, ${marker.longitude.toFixed(4)})`;
-}
-
-function markerLabelText(marker: Marker): string {
-  const customLabel = marker.labelName?.trim();
-  if (customLabel) {
-    return customLabel;
-  }
-  if (marker.sourceType === "coords") {
-    return marker.displayName?.trim() || marker.name;
-  }
-  if (marker.labelMode === "coords") {
-    return formatCoords(marker);
-  }
-  return marker.name;
-}
-
 function markerKey(marker: {
   name: string;
   latitude: number;
@@ -2766,11 +2756,12 @@ function syncMarkerControls(marker: Marker | null): void {
     return;
   }
   if (!marker) {
-    dotSizeSlider && setSliderValue(dotSizeSlider, 7, true);
-    textSizeSlider && setSliderValue(textSizeSlider, 7, true);
-    markerDotColor.value = "#f97316";
-    markerTextColor.value = "#fde68a";
-    markerFont.value = "IBM Plex Sans, sans-serif";
+    const defaults = defaultMarkerStyle();
+    dotSizeSlider && setSliderValue(dotSizeSlider, defaults.dotSize, true);
+    textSizeSlider && setSliderValue(textSizeSlider, defaults.textSize, true);
+    markerDotColor.value = defaults.dotColor;
+    markerTextColor.value = defaults.textColor;
+    markerFont.value = defaults.fontFamily;
     syncColorInputs("dot", markerDotColor.value);
     syncColorInputs("text", markerTextColor.value);
     if (markerLabelInput) {
@@ -2803,7 +2794,10 @@ function syncMarkerControls(marker: Marker | null): void {
   }
   if (markerCoordsInput) {
     markerCoordsInput.disabled = false;
-    markerCoordsInput.value = formatCoords(marker);
+    markerCoordsInput.value = formatCoordinates(
+      marker.latitude,
+      marker.longitude,
+    );
   }
 }
 

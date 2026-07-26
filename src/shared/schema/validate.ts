@@ -1,5 +1,10 @@
 import { CURRENT_SCHEMA_VERSION, MapProject } from "./mapproj";
 import { validateProjectHistory } from "./history";
+import {
+  isFiniteNumber,
+  isNonEmptyString,
+  isRecord
+} from "../validation/primitives";
 
 export type ValidationError = {
   path: string;
@@ -10,18 +15,6 @@ export type ValidationResult = {
   valid: boolean;
   errors: ValidationError[];
 };
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isIsoDateString(value: unknown): value is string {
   return isNonEmptyString(value) && Number.isFinite(Date.parse(value));

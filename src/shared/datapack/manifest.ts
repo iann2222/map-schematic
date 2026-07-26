@@ -8,22 +8,17 @@ import {
   DataPackRef,
   DataPackRelease
 } from "./types";
+import {
+  isNonEmptyString,
+  isRecord
+} from "../validation/primitives";
 
-type UnknownRecord = Record<string, unknown>;
 const MAX_PACK_SEGMENT_LENGTH = 64;
 const WINDOWS_RESERVED_NAMES = new Set([
   "CON", "PRN", "AUX", "NUL",
   ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
   ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`)
 ]);
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
 
 function isSha256(value: unknown): value is string {
   return typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);

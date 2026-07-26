@@ -1,10 +1,11 @@
 import type { ExportState } from "../app-state.js";
+import type { ExportFormat } from "../bridge.js";
 import {
   applyExportFrame,
   type ExportFrameStyle,
 } from "../export/export-frame.js";
 
-export type ExportFormat = "png" | "svg" | "pdf";
+export type { ExportFormat } from "../bridge.js";
 
 export type RenderedCanvasExport = {
   canvas: HTMLCanvasElement;

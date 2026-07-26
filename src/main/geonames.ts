@@ -1,16 +1,8 @@
 import Database from "better-sqlite3";
 
-export type GeonamesResult = {
-  id: number;
-  name: string;
-  nameAlt: string | null;
-  latitude: number;
-  longitude: number;
-  featureClass: string | null;
-  featureCode: string | null;
-  countryCode: string | null;
-  population: number | null;
-};
+import type { GeonamesResult } from "../shared/ipc-contract";
+
+export type { GeonamesResult } from "../shared/ipc-contract";
 
 let cachedDb: Database.Database | null = null;
 let cachedDbPath: string | null = null;
