@@ -1,9 +1,12 @@
 import argparse
 import csv
 import hashlib
+from importlib import metadata
 import json
 import os
 import pathlib
+import platform
+import re
 import sqlite3
 import time
 import zipfile
@@ -12,6 +15,14 @@ import warnings
 import shutil
 import subprocess
 from typing import Dict, Iterable, List, Optional, Tuple
+
+try:
+    from .datapack_common import (
+        EXPECTED_BUILD_ENVIRONMENT,
+        require_safe_pack_segment,
+    )
+except ImportError:
+    from datapack_common import EXPECTED_BUILD_ENVIRONMENT, require_safe_pack_segment
 
 
 BASEMAP_LAYERS = [
@@ -24,6 +35,7 @@ BASEMAP_LAYERS = [
 
 HILLSHADE_WIDTH = 1200
 HILLSHADE_HEIGHT = 800
+GDAL_VERSION_PATTERN = re.compile(r"\bGDAL\s+(\d+\.\d+\.\d+)\b", re.IGNORECASE)
 
 
 def sha256_file(path: pathlib.Path) -> str:
@@ -169,9 +181,76 @@ def resolve_hillshade_image(raw_root: pathlib.Path) -> Optional[pathlib.Path]:
 
 def resolve_gdalwarp() -> Optional[str]:
     env_path = os.getenv("MAPSCHEM_GDALWARP")
-    if env_path and pathlib.Path(env_path).exists():
-        return env_path
+    if env_path:
+        candidate = pathlib.Path(env_path).expanduser()
+        if not candidate.is_file():
+            raise RuntimeError(
+                f"MAPSCHEM_GDALWARP does not point to a file: {candidate}"
+            )
+        return str(candidate.resolve())
     return shutil.which("gdalwarp")
+
+
+def read_gdal_version(gdalwarp: str) -> str:
+    try:
+        result = subprocess.run(
+            [gdalwarp, "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Unable to execute gdalwarp --version: {exc}") from exc
+    output = f"{result.stdout}\n{result.stderr}"
+    match = GDAL_VERSION_PATTERN.search(output)
+    if not match:
+        raise RuntimeError(f"Unable to parse GDAL version from: {output.strip()}")
+    return match.group(1)
+
+
+def inspect_build_environment() -> Dict[str, str]:
+    versions = {
+        "python": platform.python_version(),
+    }
+    for manifest_name, output_name in [
+        ("geopandas", "geopandas"),
+        ("Pillow", "pillow"),
+    ]:
+        try:
+            versions[output_name] = metadata.version(manifest_name)
+        except metadata.PackageNotFoundError as exc:
+            raise RuntimeError(
+                f"Required build package is missing: {manifest_name}"
+            ) from exc
+
+    gdalwarp = resolve_gdalwarp()
+    if not gdalwarp:
+        raise RuntimeError(
+            "gdalwarp is missing; create the official Conda environment from "
+            "environment-win-64.lock.txt"
+        )
+    versions["gdal"] = read_gdal_version(gdalwarp)
+    return versions
+
+
+def validate_build_environment() -> Dict[str, str]:
+    versions = inspect_build_environment()
+    mismatches = [
+        f"{name} expected {expected}, found {versions.get(name, 'missing')}"
+        for name, expected in EXPECTED_BUILD_ENVIRONMENT.items()
+        if versions.get(name) != expected
+    ]
+    if mismatches:
+        raise RuntimeError(
+            "Datapack build environment does not match the official toolchain: "
+            + "; ".join(mismatches)
+        )
+    print(
+        "Build environment verified: "
+        + ", ".join(f"{name} {version}" for name, version in versions.items())
+    )
+    return versions
 
 
 def build_hillshade_gdal(
@@ -457,12 +536,41 @@ def resolve_geonames_source(raw_root: pathlib.Path, mode: str) -> pathlib.Path:
     raise ValueError(f"Unsupported geonames mode: {mode}")
 
 
+def safe_segment_argument(label: str):
+    def parse(value: str) -> str:
+        try:
+            return require_safe_pack_segment(value, label)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(str(exc)) from exc
+
+    return parse
+
+
+def resolve_version_root(out_root: pathlib.Path, version: str) -> pathlib.Path:
+    safe_version = require_safe_pack_segment(version, "Data pack version")
+    resolved_root = out_root.resolve()
+    candidate = (resolved_root / safe_version).resolve()
+    if candidate.parent != resolved_root:
+        raise ValueError("Data pack version escapes the output root")
+    return candidate
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build map-schematic datapack.")
     parser.add_argument("--raw", default="geodata_source", help="Raw data root")
     parser.add_argument("--out", default="geodata/packs/standard", help="Output root")
-    parser.add_argument("--id", default="standard", help="Data pack id")
-    parser.add_argument("--version", default=time.strftime("%Y.%m"), help="Data pack version")
+    parser.add_argument(
+        "--id",
+        default="standard",
+        type=safe_segment_argument("Data pack id"),
+        help="Data pack id",
+    )
+    parser.add_argument(
+        "--version",
+        default=time.strftime("%Y.%m"),
+        type=safe_segment_argument("Data pack version"),
+        help="Data pack version",
+    )
     parser.add_argument(
         "--geonames",
         default="cities1000",
@@ -474,11 +582,23 @@ def main() -> None:
         action="store_true",
         help="Overwrite existing outputs in the target pack directory",
     )
+    parser.add_argument(
+        "--check-environment",
+        action="store_true",
+        help="Verify the pinned Python and GDAL toolchain, then exit",
+    )
     args = parser.parse_args()
+
+    try:
+        build_environment = validate_build_environment()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+    if args.check_environment:
+        return
 
     raw_root = pathlib.Path(args.raw).resolve()
     out_root = pathlib.Path(args.out).resolve()
-    final_pack_root = out_root / args.version
+    final_pack_root = resolve_version_root(out_root, args.version)
     manifest_only = os.getenv("MAPSCHEM_MANIFEST_ONLY") == "1"
 
     if manifest_only and not final_pack_root.is_dir():
@@ -573,6 +693,7 @@ def main() -> None:
         "version": args.version,
         "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "projection": "EPSG:4326",
+        "buildEnvironment": build_environment,
         "basemap": {
             "format": "geojson",
             "layers": basemap_layers,

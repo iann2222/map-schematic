@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isSafePackSegment,
   parseRelease,
   resolveInsidePack,
   validateManifest,
@@ -44,6 +45,21 @@ describe("datapack manifest contract", () => {
     expect(validateManifest(validManifest())).toEqual([]);
   });
 
+  it("accepts only portable bounded pack identifiers", () => {
+    expect(isSafePackSegment("standard")).toBe(true);
+    expect(isSafePackSegment("2026.03-beta_1")).toBe(true);
+    for (const value of [
+      "../outside",
+      "2026..03",
+      "2026.03.",
+      "CON",
+      "con.txt",
+      "a".repeat(65)
+    ]) {
+      expect(isSafePackSegment(value)).toBe(false);
+    }
+  });
+
   it("rejects unsafe and unlisted referenced paths", () => {
     const manifest = validManifest() as unknown as Record<string, unknown>;
     manifest.basemap = {
@@ -65,6 +81,20 @@ describe("datapack manifest contract", () => {
         "file path must be unique: basemap/land.geojson",
         "file checksum must be valid: basemap/land.geojson"
       ])
+    );
+  });
+
+  it("validates optional build environment metadata", () => {
+    const manifest = validManifest() as unknown as Record<string, unknown>;
+    manifest.buildEnvironment = {
+      python: "3.11.14",
+      geopandas: "1.1.2",
+      pillow: "",
+      gdal: "3.11.4"
+    };
+
+    expect(validateManifest(manifest)).toContain(
+      "buildEnvironment.pillow must be a non-empty string"
     );
   });
 

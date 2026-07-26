@@ -5,10 +5,46 @@
   "type": "object",
   "required": ["id", "version", "createdAt", "projection", "basemap", "geonames", "files"],
   "properties": {
-    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
-    "version": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?$",
+      "allOf": [
+        { "not": { "pattern": "\\.\\." } },
+        {
+          "not": {
+            "pattern": "^(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|$)"
+          }
+        }
+      ]
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?$",
+      "allOf": [
+        { "not": { "pattern": "\\.\\." } },
+        {
+          "not": {
+            "pattern": "^(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|$)"
+          }
+        }
+      ]
+    },
     "createdAt": { "type": "string", "minLength": 1 },
     "projection": { "type": "string", "enum": ["EPSG:4326"] },
+    "buildEnvironment": {
+      "type": "object",
+      "required": ["python", "geopandas", "pillow", "gdal"],
+      "properties": {
+        "python": { "type": "string", "minLength": 1 },
+        "geopandas": { "type": "string", "minLength": 1 },
+        "pillow": { "type": "string", "minLength": 1 },
+        "gdal": { "type": "string", "minLength": 1 }
+      }
+    },
     "basemap": {
       "type": "object",
       "required": ["format", "layers"],

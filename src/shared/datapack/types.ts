@@ -12,6 +12,12 @@ export type DataPackFileEntry = {
 export type DataPackManifest = DataPackRef & {
   createdAt: string;
   projection: "EPSG:4326";
+  buildEnvironment?: {
+    python: string;
+    geopandas: string;
+    pillow: string;
+    gdal: string;
+  };
   basemap: {
     format: "geojson";
     layers: Array<{ id: string; path: string }>;

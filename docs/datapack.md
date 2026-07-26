@@ -67,6 +67,62 @@ geodata/
 
 ## 建置
 
+### 誰需要 Conda
+
+- 一般使用封裝版 EXE：不需要 Conda、Python 或 GDAL。
+- 開發、測試或封裝 Electron 應用程式：只需要 README 指定的 Node.js 與 npm。
+- 重新製作官方資料包：才需要本節的 Conda 環境與 `geodata_source/` 官方原始資料。
+
+Conda 環境只用於把 Natural Earth、GeoNames 與地形來源轉換成官方資料包，不是應用程式 runtime。封裝版會直接讀取已完成的資料包，不會在使用時執行 Python、GeoPandas 或 GDAL。
+
+### 環境契約
+
+官方 Windows 資料包使用兩層 Conda 環境契約：
+
+- `environment.yml`：維護者可讀的直接相依與版本來源。
+- `environment-win-64.lock.txt`：正式建置使用的完整 win-64 鎖定檔，包含所有間接相依、來源 URL 與 MD5。
+
+`environment.yml` 交給 Conda 重新解析時，間接相依可能因套件庫更新而改變，因此不作為跨設備完全重現正式環境的入口。`requirements.txt` 也不再作為另一套安裝入口。
+
+### 新設備建立相同環境
+
+以下流程適用於 Windows x64。安裝 Git 與 Conda，取得 repository 後執行：
+
+```powershell
+cd path\to\map-schematic
+conda create -n mapschem --file environment-win-64.lock.txt
+conda activate mapschem
+python scripts/build_datapack.py --check-environment
+python -m unittest discover -s test/python -p "test_*.py"
+```
+
+環境檢查應顯示 Python 3.11.14、GeoPandas 1.1.2、Pillow 12.1.0 與 GDAL 3.11.4。若 `mapschem` 名稱已存在，可用另一個名稱建立，不要在未確認用途前覆蓋既有環境：
+
+```powershell
+conda create -n mapschem-build --file environment-win-64.lock.txt
+conda activate mapschem-build
+```
+
+Conda 環境只包含建置工具，不包含 `geodata_source/`。要真正產生資料包，仍需另外準備本文件「原始資料」列出的官方來源檔案。
+
+### 更新建置版本
+
+只有維護者決定升級 Python、GeoPandas、Pillow 或 GDAL 時，才修改 `environment.yml`。可先建立試驗環境：
+
+```powershell
+conda env create -n mapschem-next -f environment.yml
+conda activate mapschem-next
+```
+
+確認新版本可用後，必須在 Windows 重新產生並提交完整鎖定檔：
+
+```powershell
+python scripts/lock_datapack_environment.py
+python -m unittest discover -s test/python -p "test_*.py"
+```
+
+正式建置前仍應執行 `python scripts/build_datapack.py --check-environment`。缺少工具或版本不同時，腳本會在讀取原始資料前停止。
+
 標準範例：
 
 ```powershell
@@ -84,9 +140,9 @@ python scripts/build_datapack.py --id standard --version 2026.02 --geonames citi
 
 非 manifest-only 建置會先在同層建置目錄產生完整資料包。必要內容與 checksum 驗證成功後才替換正式版本；失敗時保留既有資料。
 
-地形投影會優先使用 `MAPSCHEM_GDALWARP` 指定的 `gdalwarp`，否則從 `PATH` 尋找；找不到或執行失敗時才使用腳本的 fallback。正式資料包應使用 `EPSG:3857` 的 `hillshade_3857.png`。
+`--id` 與 `--version` 只能使用 1 至 64 個英數字、點、底線或連字號，不可包含 `..`、路徑分隔符、結尾點或 Windows 保留裝置名稱。輸出路徑還會再次確認必須位於指定 output root 的直接下一層。
 
-目前 Python 環境同時提供 `environment.yml` 與 `requirements.txt`，GDAL 則由外部環境提供。發布前必須記錄實際 Python 與 GDAL 版本；統一可重現建置環境屬下一階段工作。
+地形投影會優先使用 `MAPSCHEM_GDALWARP` 指定的 `gdalwarp`，否則使用目前 Conda 環境 `PATH` 中的版本。環境檢查會先執行 `gdalwarp --version`；正式資料包應使用 `EPSG:3857` 的 `hillshade_3857.png`。
 
 ## 成功輸出
 
@@ -99,7 +155,7 @@ geodata/packs/standard/<version>/geonames/geonames.sqlite
 geodata/packs/standard/<version>/relief/hillshade_3857.png  # 可選
 ```
 
-`datapack.json` 保存資料包 id、version、資料入口，以及每個內容檔的 size／SHA-256。manifest 不將自己列入 `files`。
+`datapack.json` 保存資料包 id、version、資料入口、固定工具鏈的 `buildEnvironment`，以及每個內容檔的 size／SHA-256。manifest 不將自己列入 `files`。
 
 ## 發布設定
 

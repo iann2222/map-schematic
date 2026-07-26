@@ -10,6 +10,12 @@ import {
 } from "./types";
 
 type UnknownRecord = Record<string, unknown>;
+const MAX_PACK_SEGMENT_LENGTH = 64;
+const WINDOWS_RESERVED_NAMES = new Set([
+  "CON", "PRN", "AUX", "NUL",
+  ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
+  ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`)
+]);
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -24,7 +30,15 @@ function isSha256(value: unknown): value is string {
 }
 
 export function isSafePackSegment(value: unknown): value is string {
-  return isNonEmptyString(value) && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value);
+  if (
+    !isNonEmptyString(value) ||
+    value.length > MAX_PACK_SEGMENT_LENGTH ||
+    !/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?$/.test(value) ||
+    value.includes("..")
+  ) {
+    return false;
+  }
+  return !WINDOWS_RESERVED_NAMES.has(value.split(".", 1)[0].toUpperCase());
 }
 
 export function resolveInsidePack(root: string, relativePath: string): string {
@@ -105,6 +119,17 @@ export function validateManifest(input: unknown): string[] {
   }
   if (input.projection !== "EPSG:4326") {
     errors.push("projection must be EPSG:4326");
+  }
+  if (input.buildEnvironment !== undefined) {
+    if (!isRecord(input.buildEnvironment)) {
+      errors.push("buildEnvironment must be an object");
+    } else {
+      for (const field of ["python", "geopandas", "pillow", "gdal"]) {
+        if (!isNonEmptyString(input.buildEnvironment[field])) {
+          errors.push(`buildEnvironment.${field} must be a non-empty string`);
+        }
+      }
+    }
   }
 
   const referencedPaths = new Set<string>();

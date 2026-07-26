@@ -21,6 +21,11 @@ import zipfile
 from pathlib import Path
 from typing import Dict, Iterable
 
+try:
+    from .datapack_common import EXPECTED_BUILD_ENVIRONMENT, is_safe_pack_segment
+except ImportError:
+    from datapack_common import EXPECTED_BUILD_ENVIRONMENT, is_safe_pack_segment
+
 
 EXCLUDE_NAMES = {
     ".keep",
@@ -95,11 +100,14 @@ def read_and_validate_archive(zip_path: Path) -> Dict[str, object]:
             raise SystemExit("datapack.json is missing id")
         if not isinstance(version, str) or not version:
             raise SystemExit("datapack.json is missing version")
-        safe_segment = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-        if not safe_segment.fullmatch(pack_id) or not safe_segment.fullmatch(version):
+        if not is_safe_pack_segment(pack_id) or not is_safe_pack_segment(version):
             raise SystemExit("datapack.json id and version must be safe path segments")
         if manifest.get("projection") != "EPSG:4326":
             raise SystemExit("datapack.json projection must be EPSG:4326")
+        if manifest.get("buildEnvironment") != EXPECTED_BUILD_ENVIRONMENT:
+            raise SystemExit(
+                "datapack.json buildEnvironment must match the pinned official toolchain"
+            )
         basemap = manifest.get("basemap")
         if (
             not isinstance(basemap, dict)
@@ -188,6 +196,11 @@ def main() -> None:
         help="Output JSON path (default: pack-release.json)",
     )
     args = parser.parse_args()
+
+    if args.id is not None and not is_safe_pack_segment(args.id):
+        raise SystemExit("--id must be a safe data pack identifier")
+    if args.version is not None and not is_safe_pack_segment(args.version):
+        raise SystemExit("--version must be a safe data pack version")
 
     zip_path = Path(args.zip).resolve()
     if not zip_path.exists():

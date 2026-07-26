@@ -22,6 +22,14 @@
 
 ## 開始使用
 
+不同用途需要的環境不同：
+
+| 用途 | 需要安裝 |
+| --- | --- |
+| 使用封裝後的 EXE | 不需要 Node.js、Python 或 Conda |
+| 開發及封裝 Electron 應用程式 | Node.js 與 npm |
+| 製作官方資料包 | Conda、固定的資料包建置環境與官方原始資料 |
+
 **環境需求**：Node 20（20.19 以上）、22（22.12 以上）或 24 以上，建議使用 Node 20 LTS。若使用 nvm 或 fnm，可依 `.nvmrc` 切換版本。
 
 ```powershell
@@ -53,10 +61,25 @@ npm run start:dev
 
 資料包不會隨 Git repository 複製。搬移既有 `.mapproj` 專案檔時，請確認新裝置已安裝相容版本的資料包，最簡單的方式是讓應用程式於首次啟動時自行初始化。
 
+### 新設備建立資料包建置環境
+
+只有需要重新製作官方資料包時才需執行以下步驟。`environment-win-64.lock.txt` 固定完整的 Windows x64 Conda 相依，應用程式開發與 EXE 執行不會使用這個環境。
+
+```powershell
+cd path\to\map-schematic
+conda create -n mapschem --file environment-win-64.lock.txt
+conda activate mapschem
+python scripts/build_datapack.py --check-environment
+python -m unittest discover -s test/python -p "test_*.py"
+```
+
+`environment.yml` 是維護核心套件版本的來源，不保證間接相依永遠相同；跨設備重建正式環境時應使用鎖定檔。資料包原始地理資料不在 Git repository，實際建置前仍須依 `docs/datapack.md` 準備官方來源檔案。
+
 ## 測試與建置
 
 ```powershell
 npm test                # 執行測試
+npm run test:datapack-tools # 資料包 Python 工具測試
 npm run test:watch      # 監看模式
 npm run test:typecheck  # 型別檢查
 npm run build           # 建置

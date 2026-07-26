@@ -84,6 +84,7 @@ Map Schematic 是一套離線地圖示意圖製作工具，協助使用者以真
 - 首次初始化、手動更新、損壞修復與離線 fallback
 - ZIP 安裝防護、checksum 與內容驗證
 - 開發版與封裝版共用資料包位置
+- 固定 Python、GeoPandas、Pillow 與 GDAL 的單一 Conda 建置環境
 
 ### 地圖工作流程
 
@@ -117,7 +118,6 @@ Map Schematic 是一套離線地圖示意圖製作工具，協助使用者以真
 
 ## 近期重點
 
-- 完成可重現的官方資料包建置環境
 - 完善發布驗證、授權呈現與乾淨裝置 smoke test
 - 持續拆分 renderer 的地圖互動與屬性面板責任
 - 提升 Step 3 高頻操作、資訊層級與鍵盤效率

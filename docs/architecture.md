@@ -15,14 +15,19 @@
 - `geodata_source/`：資料包原始資料，已由 gitignore 排除。
 - `project_files/`：開發模式的專案檔與匯出預設目錄，已由 gitignore 排除。
 - `pack-release.json`：官方資料包版本、下載位置、SHA-256 與來源檔案設定。
-- `package.json`、`tsconfig.*.json`、`vitest.config.ts`：建置與測試設定。
+- `package.json`、`tsconfig.*.json`、`vitest.config.ts`：應用程式建置與測試設定。
+- `environment.yml`：官方資料包建置環境的直接相依與版本來源。
+- `environment-win-64.lock.txt`：正式 Windows 資料包建置使用的完整 Conda 相依鎖定檔。
+- `scripts/lock_datapack_environment.py`：依 `environment.yml` 在乾淨臨時環境解析並更新 win-64 鎖定檔。
 
 ## 開發環境
 
 - Node.js：支援 Node 20.19 以上的 Node 20、Node 22.12 以上的 Node 22，以及 Node 24 以上；建議 Node 20 LTS。`.nvmrc` 提供 nvm／fnm 使用的主版本。
 - 安裝依賴：使用 `npm ci` 依 `package-lock.json` 安裝固定版本。
 - 換作業系統或 CPU 架構時不可直接複製 `node_modules`；`postinstall` 會透過 `electron-rebuild` 重建 `better-sqlite3` 的原生模組。
-- 已打包的 Electron 應用程式內含 runtime，一般使用者無須安裝 Node.js。
+- Electron 應用程式的開發、測試與封裝不需要 Conda；Conda 只用於製作官方資料包。
+- 已打包的 Electron 應用程式內含 runtime，一般使用者無須安裝 Node.js、Python 或 Conda。
+- 新設備需重建官方資料包環境時，使用 `conda create -n mapschem --file environment-win-64.lock.txt`；完整步驟見 `docs/datapack.md`。
 
 ## 執行流程
 
@@ -51,8 +56,10 @@
   - 適合開發期間使用；按 `Ctrl+C` 結束。
 - `npm run test:typecheck`
   - 只執行測試程式與相關原始碼的 TypeScript 型別檢查，不執行測試案例。
+- `npm run test:datapack-tools`
+  - 使用 Python 內建 unittest 驗證資料包安全路徑、GDAL 版本解析、建置環境契約與 win-64 鎖定檔。
 
-測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj`、資料包 manifest、manager、初始化、更新、修復、fallback，以及 renderer Editor Core 的命令、歷史、專案操作排程、App State 與座標解析。
+測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj`、資料包 manifest、manager、初始化、更新、修復、fallback、Python 建置工具，以及 renderer Editor Core 的命令、歷史、專案操作排程、App State 與座標解析。
 
 ## 程式碼結構
 

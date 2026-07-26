@@ -65,17 +65,21 @@ npm run package:win
 
 - [ ] 原始檔案來自 `ATTRIBUTIONS.md` 列出的官方來源。
 - [ ] 保存原始檔名、下載日期、來源 URL 與 checksum。
-- [ ] 資料包版本使用預期的簡單版本字串，例如 `2026.02`。
-- [ ] 記錄 Python、套件環境與 `gdalwarp --version`。
+- [ ] 使用 `conda create -n mapschem --file environment-win-64.lock.txt` 建立正式 win-64 建置環境。
+- [ ] 若調整 `environment.yml`，已執行 `python scripts/lock_datapack_environment.py` 並提交新的鎖定檔。
+- [ ] `python scripts/build_datapack.py --check-environment` 通過。
+- [ ] `npm run test:datapack-tools` 通過。
+- [ ] 資料包 id／version 通過安全片段限制，例如 `standard`、`2026.02`。
 
 ### 建置與內容
 
 - [ ] `scripts/build_datapack.py` 完整成功。
 - [ ] `datapack.json` 的 id／version 正確。
+- [ ] `datapack.json.buildEnvironment` 記錄固定的 Python、GeoPandas、Pillow 與 GDAL 版本。
 - [ ] 所有必要底圖與 GeoNames SQLite 存在。
 - [ ] 地形陰影存在時使用 `EPSG:3857`。
 - [ ] manifest 的每個 path、size 與 SHA-256 均通過驗證。
-- [ ] 以全新目錄重建可得到相同的資料結構；若 checksum 不同，已記錄原因。
+- [ ] 使用相同原始資料與完整鎖定環境重建可得到相同資料結構；若內容 checksum 不同，已記錄原因。
 
 ### 發布與更新
 
