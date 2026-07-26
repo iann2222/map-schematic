@@ -52,7 +52,7 @@
 - `npm run test:typecheck`
   - 只執行測試程式與相關原始碼的 TypeScript 型別檢查，不執行測試案例。
 
-測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj`、資料包 manifest、manager、初始化、更新、修復、fallback，以及 renderer Editor Core 的命令與歷史行為。
+測試集中於 `test/`；共用測試資料放在 `test/fixtures/`，各模組測試依照原始碼領域分組。目前涵蓋 `.mapproj`、資料包 manifest、manager、初始化、更新、修復、fallback，以及 renderer Editor Core 的命令、歷史與專案操作排程。
 
 ## 程式碼結構
 
@@ -93,6 +93,9 @@
 - `src/renderer/project/project-state.ts`
   - 比較目前專案與最近一次成功儲存／載入的內容，供未儲存狀態提示使用。
   - 分離目前 renderer 可編輯的 point 物件與尚未支援的幾何物件；後者不顯示，但再次儲存時會原樣保留。
+- `src/renderer/project/operation-coordinator.ts`
+  - 依照請求順序逐一執行載入、儲存、另存與關閉前儲存，避免非同步結果互相覆寫專案路徑與狀態。
+  - 單一操作失敗後仍會繼續處理後續操作，不讓整條佇列永久停止。
 - `src/renderer/project/v02-adapter.ts`
   - 集中處理 `.mapproj` 與 `EditorDocument` 的雙向轉換，保留可編輯物件的圖層歸屬，renderer 互動邏輯不直接解析專案欄位。
 - `src/renderer/map/geometry.ts`

@@ -38,6 +38,7 @@ import {
   projectDatapackMismatchMessage,
   projectValidationMessage,
 } from "./project/project-messages.js";
+import { ProjectOperationCoordinator } from "./project/operation-coordinator.js";
 import {
   defaultMarkerStyle,
   defaultShapeStyle,
@@ -4182,13 +4183,17 @@ function setProjectBaseline(project?: MapProject | null): void {
   syncProjectDirtyState();
 }
 
-async function handleSave(saveAs = false): Promise<{
+type ProjectSaveResult = {
   ok: boolean;
   canceled?: boolean;
   path?: string;
   error?: string;
   errors?: string[];
-} | null> {
+};
+
+const projectOperationCoordinator = new ProjectOperationCoordinator();
+
+async function performSave(saveAs = false): Promise<ProjectSaveResult | null> {
   if (!window.mapSchematic?.saveProject) {
     return null;
   }
@@ -4235,14 +4240,34 @@ async function handleSave(saveAs = false): Promise<{
   return result;
 }
 
-async function handleSaveBeforeClose(): Promise<void> {
-  const result = await handleSave(false);
+function handleSave(saveAs = false): Promise<ProjectSaveResult | null> {
+  return projectOperationCoordinator.enqueue(
+    saveAs ? "saveAs" : "save",
+    () => performSave(saveAs),
+  );
+}
+
+async function performSaveBeforeClose(): Promise<void> {
+  const result = await performSave(false);
   if (result?.ok) {
-    await window.mapSchematic?.closeAfterSave?.();
+    try {
+      await window.mapSchematic?.closeAfterSave?.();
+    } catch (error) {
+      if (statusEl) {
+        statusEl.textContent = `儲存完成，但關閉視窗失敗：${String(error)}`;
+      }
+    }
   }
 }
 
-async function handleLoad() {
+function handleSaveBeforeClose(): Promise<void> {
+  return projectOperationCoordinator.enqueue(
+    "saveBeforeClose",
+    performSaveBeforeClose,
+  );
+}
+
+async function performLoad(): Promise<void> {
   if (!window.mapSchematic?.loadProject) {
     return;
   }
@@ -4268,7 +4293,15 @@ async function handleLoad() {
       return;
     }
   }
-  const result = await window.mapSchematic.loadProject();
+  let result;
+  try {
+    result = await window.mapSchematic.loadProject();
+  } catch (error) {
+    if (statusEl) {
+      statusEl.textContent = `載入失敗：${String(error)}`;
+    }
+    return;
+  }
   if (!result.ok || !result.project) {
     if (statusEl) {
       statusEl.textContent = result.canceled
@@ -4432,6 +4465,10 @@ async function handleLoad() {
       statusEl.textContent = `專案已載入：${result.path}${preservedNotice}`;
     }
   }
+}
+
+function handleLoad(): Promise<void> {
+  return projectOperationCoordinator.enqueue("load", performLoad);
 }
 
 async function renderExportCanvas(exportScale = 1): Promise<{
