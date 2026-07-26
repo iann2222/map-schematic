@@ -83,6 +83,11 @@ import {
   type ExportFormat,
 } from "./controllers/export-controller.js";
 import { AppCommandController } from "./controllers/app-command-controller.js";
+import {
+  OrderDialogController,
+  type OrderDialogItem,
+  type OrderMode,
+} from "./controllers/order-dialog-controller.js";
 
 type BBox = MapProject["viewport"]["bbox"];
 const appState = createAppState();
@@ -574,31 +579,6 @@ function shapeObjects(): ShapeItem[] {
 let selectedMarkerId: string | null = null;
 let previewMarker: Marker | null = null;
 const preservedProjectObjects: MapProject["objects"] = [];
-type DragPhase = "idle" | "pending" | "dragging" | "settling";
-type OrderMode = "list" | "display";
-type OrderDragSession = {
-  phase: DragPhase;
-  mode: OrderMode;
-  pointerId: number;
-  container: HTMLUListElement;
-  sourceItem: HTMLLIElement;
-  sourceKey: string;
-  handle: HTMLElement;
-  startClientX: number;
-  startClientY: number;
-  offsetX: number;
-  offsetY: number;
-  ghost: HTMLLIElement | null;
-  placeholder: HTMLLIElement | null;
-  cachedRows: HTMLLIElement[];
-  rafId: number | null;
-  queuedClientX: number;
-  queuedClientY: number;
-  orderChanged: boolean;
-};
-
-let orderDragSession: OrderDragSession | null = null;
-const orderRowAnimations = new WeakMap<HTMLLIElement, Animation>();
 let selectedShapeId: string | null = null;
 let activeTool: "marker" | "line" | "area" | "text" | "arrow" = "marker";
 let hasActiveToolSelection = false;
@@ -683,9 +663,7 @@ function cancelEditorTransaction(): void {
 }
 
 function refreshEditorAfterHistoryChange(): void {
-  if (orderDragSession) {
-    cleanupOrderSession("cancel");
-  }
+  orderDialogController.cancelActiveDrag();
   if (!markerObjects().some((marker) => marker.id === selectedMarkerId)) {
     selectedMarkerId = null;
   }
@@ -707,8 +685,8 @@ function refreshEditorAfterHistoryChange(): void {
   syncManualMarkerCount();
   renderMarkers();
   renderMarkerList();
-  if (listOrderModal?.classList.contains("active")) {
-    renderOrderDialog();
+  if (orderDialogController.isOpen()) {
+    orderDialogController.render();
   }
   syncMarkerControls(getSelectedMarker());
   syncShapeControls(getSelectedShape());
@@ -2519,13 +2497,6 @@ function shapeDefaultName(shape: ShapeItem, index: number): string {
   return `${shapeTypeLabel[shape.type]}${index}`;
 }
 
-type OverlayObjectRef = {
-  key: string;
-  kind: "marker" | "shape";
-  id: string;
-  name: string;
-};
-
 function markerOverlayKey(markerId: string): string {
   return `marker:${markerId}`;
 }
@@ -2554,8 +2525,8 @@ function shapeDisplayNameMap(): Map<string, string> {
   return names;
 }
 
-function getOverlayRefs(): OverlayObjectRef[] {
-  const refs: OverlayObjectRef[] = [];
+function getOverlayRefs(): OrderDialogItem[] {
+  const refs: OrderDialogItem[] = [];
   const uniqueNames = uniqueOverlayNameMap();
   const seen = new Set<string>();
   markerObjects().forEach((marker) => {
@@ -2566,8 +2537,6 @@ function getOverlayRefs(): OverlayObjectRef[] {
     seen.add(key);
     refs.push({
       key,
-      kind: "marker",
-      id: marker.id,
       name: uniqueNames.get(key) ?? markerListName(marker),
     });
   });
@@ -2575,8 +2544,6 @@ function getOverlayRefs(): OverlayObjectRef[] {
     const key = shapeOverlayKey(shape.id);
     refs.push({
       key,
-      kind: "shape",
-      id: shape.id,
       name: uniqueNames.get(key) ?? "標示",
     });
   });
@@ -2603,6 +2570,36 @@ function syncOrderKeys(): void {
   editorDocument.listOrderKeys = normalizedList;
   editorDocument.displayOrderKeys = normalizedDisplay;
 }
+
+const orderDialogController = new OrderDialogController({
+  elements: {
+    triggerButton: listOrderSettingsBtn,
+    modal: listOrderModal,
+    listOrder: listOrderList,
+    displayOrder: displayOrderList,
+    closeButton: listOrderClose,
+  },
+  normalizeOrders: syncOrderKeys,
+  getItems: getOverlayRefs,
+  getOrder: (mode: OrderMode) =>
+    mode === "list"
+      ? editorDocument.listOrderKeys
+      : editorDocument.displayOrderKeys,
+  commitOrder: (mode, order) =>
+    dispatchEditorCommand(
+      createReorderCommand(
+        mode,
+        mode === "list"
+          ? editorDocument.listOrderKeys
+          : editorDocument.displayOrderKeys,
+        order,
+      ),
+    ),
+  onOrderChanged: () => {
+    renderMarkers();
+    renderMarkerList();
+  },
+});
 
 function getDisplayRankMap(): Map<string, number> {
   syncOrderKeys();
@@ -3175,452 +3172,8 @@ function renderMarkerList(): void {
   }
 }
 
-const DRAG_START_THRESHOLD = 4;
-
-function isReducedMotion(): boolean {
-  return (
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
-  );
-}
-
-function measureOrderRows(
-  session: OrderDragSession,
-  clientY: number,
-): { positions: Map<string, DOMRect>; refNode: Node | null } {
-  const positions = new Map<string, DOMRect>();
-  let refNode: Node | null = null;
-  session.cachedRows.forEach((row) => {
-    if (!row.isConnected) {
-      return;
-    }
-    const key = row.dataset.key;
-    if (!key) {
-      return;
-    }
-    const rect = row.getBoundingClientRect();
-    positions.set(key, rect);
-    if (refNode === null && clientY < rect.top + rect.height / 2) {
-      refNode = row;
-    }
-  });
-  return { positions, refNode };
-}
-
-function animateRowsWithFLIP(
-  container: HTMLUListElement,
-  before: Map<string, DOMRect>,
-  duration = 115,
-): void {
-  const rows = Array.from(
-    container.querySelectorAll<HTMLLIElement>("li.order-item"),
-  );
-  rows.forEach((row) => {
-    orderRowAnimations.get(row)?.cancel();
-    if (isReducedMotion()) {
-      return;
-    }
-    const key = row.dataset.key;
-    if (!key) {
-      return;
-    }
-    const oldRect = before.get(key);
-    if (!oldRect) {
-      return;
-    }
-    const newRect = row.getBoundingClientRect();
-    const deltaY = oldRect.top - newRect.top;
-    if (Math.abs(deltaY) < 0.5) {
-      return;
-    }
-    const animation = row.animate(
-      [
-        { transform: `translate3d(0, ${deltaY}px, 0)` },
-        { transform: "translate3d(0, 0, 0)" },
-      ],
-      {
-        duration,
-        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-      },
-    );
-    orderRowAnimations.set(row, animation);
-    const clearAnimation = () => {
-      if (orderRowAnimations.get(row) === animation) {
-        orderRowAnimations.delete(row);
-      }
-    };
-    animation.addEventListener("finish", clearAnimation, { once: true });
-    animation.addEventListener("cancel", clearAnimation, { once: true });
-  });
-}
-
-function latestPointerPosition(event: PointerEvent): {
-  clientX: number;
-  clientY: number;
-} {
-  const samples = event.getCoalescedEvents?.() ?? [];
-  const latest = samples[samples.length - 1] ?? event;
-  return {
-    clientX: latest.clientX,
-    clientY: latest.clientY,
-  };
-}
-
-function cancelOrderRowAnimations(container: HTMLUListElement): void {
-  container.querySelectorAll<HTMLLIElement>("li.order-item").forEach((row) => {
-    orderRowAnimations.get(row)?.cancel();
-  });
-}
-
-function scheduleDragMove(
-  session: OrderDragSession,
-  clientX: number,
-  clientY: number,
-): void {
-  session.queuedClientX = clientX;
-  session.queuedClientY = clientY;
-  if (session.rafId !== null) {
-    return;
-  }
-  session.rafId = requestAnimationFrame(() => {
-    session.rafId = null;
-    runDragMoveFrame(session);
-  });
-}
-
-function updateGhostTransform(
-  session: OrderDragSession,
-  clientX: number,
-  clientY: number,
-): void {
-  if (!session.ghost) {
-    return;
-  }
-  const x = clientX - session.offsetX;
-  const y = clientY - session.offsetY;
-  session.ghost.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-}
-
-function movePlaceholderWithFLIP(
-  session: OrderDragSession,
-  clientY: number,
-): void {
-  if (!session.placeholder) {
-    return;
-  }
-  const { container, placeholder } = session;
-  const { positions, refNode } = measureOrderRows(session, clientY);
-  const currentNext = placeholder.nextSibling;
-  if (refNode === null) {
-    if (currentNext === null) {
-      return;
-    }
-    container.appendChild(placeholder);
-  } else if (currentNext === refNode) {
-    return;
-  } else {
-    container.insertBefore(placeholder, refNode);
-  }
-  animateRowsWithFLIP(container, positions);
-  session.orderChanged = true;
-}
-
-function runDragMoveFrame(session: OrderDragSession): void {
-  if (orderDragSession !== session) {
-    return;
-  }
-  updateGhostTransform(session, session.queuedClientX, session.queuedClientY);
-  movePlaceholderWithFLIP(session, session.queuedClientY);
-}
-
-function startDragging(
-  session: OrderDragSession,
-  clientX: number,
-  clientY: number,
-): void {
-  session.phase = "dragging";
-  const { sourceItem, container } = session;
-  const sourceRect = sourceItem.getBoundingClientRect();
-  sourceItem.classList.add("order-item--drag-source");
-  const placeholder = document.createElement("li");
-  placeholder.className = "order-placeholder";
-  placeholder.style.minHeight = `${Math.max(32, sourceRect.height)}px`;
-  container.replaceChild(placeholder, sourceItem);
-  session.placeholder = placeholder;
-  const ghost = sourceItem.cloneNode(true) as HTMLLIElement;
-  ghost.classList.add("order-ghost");
-  ghost.style.width = `${sourceRect.width}px`;
-  ghost.style.height = `${sourceRect.height}px`;
-  document.body.appendChild(ghost);
-  session.ghost = ghost;
-  session.cachedRows = Array.from(
-    container.querySelectorAll<HTMLLIElement>("li.order-item"),
-  );
-  updateGhostTransform(session, clientX, clientY);
-}
-
-function finalizeOrderCommit(session: OrderDragSession): void {
-  const { mode, container } = session;
-  const nextOrder = Array.from(
-    container.querySelectorAll<HTMLLIElement>("li.order-item"),
-  )
-    .map((row) => row.dataset.key ?? "")
-    .filter((key) => key.length > 0);
-  const currentOrder =
-    mode === "list"
-      ? editorDocument.listOrderKeys
-      : editorDocument.displayOrderKeys;
-  if (
-    !dispatchEditorCommand(createReorderCommand(mode, currentOrder, nextOrder))
-  ) {
-    return;
-  }
-  renderOrderDialog();
-  renderMarkers();
-  renderMarkerList();
-}
-
-function cleanupOrderSession(reason: "commit" | "cancel"): void {
-  const session = orderDragSession;
-  if (!session) {
-    return;
-  }
-  const wasDragging = session.phase === "dragging";
-  session.phase = "settling";
-  session.handle.releasePointerCapture?.(session.pointerId);
-  if (session.rafId !== null) {
-    cancelAnimationFrame(session.rafId);
-    session.rafId = null;
-  }
-  cancelOrderRowAnimations(session.container);
-  if (session.ghost) {
-    if (isReducedMotion()) {
-      session.ghost.remove();
-    } else {
-      session.ghost.style.transition =
-        "transform 100ms ease-out, opacity 100ms ease-out";
-      session.ghost.style.opacity = "0";
-      window.setTimeout(() => session.ghost?.remove(), 110);
-    }
-  }
-  if (session.placeholder && session.placeholder.parentElement) {
-    session.container.replaceChild(session.sourceItem, session.placeholder);
-  }
-  session.sourceItem.classList.remove("order-item--drag-source");
-  if (reason === "commit" && wasDragging && session.orderChanged) {
-    finalizeOrderCommit(session);
-  }
-  orderDragSession = null;
-}
-
-function onOrderPointerMove(event: PointerEvent): void {
-  const session = orderDragSession;
-  if (!session || event.pointerId !== session.pointerId) {
-    return;
-  }
-  const pointer = latestPointerPosition(event);
-  if (session.phase === "pending") {
-    const dx = pointer.clientX - session.startClientX;
-    const dy = pointer.clientY - session.startClientY;
-    if (Math.hypot(dx, dy) >= DRAG_START_THRESHOLD) {
-      startDragging(session, pointer.clientX, pointer.clientY);
-      scheduleDragMove(session, pointer.clientX, pointer.clientY);
-    }
-    return;
-  }
-  if (session.phase !== "dragging") {
-    return;
-  }
-  scheduleDragMove(session, pointer.clientX, pointer.clientY);
-}
-
-function onOrderPointerUp(event: PointerEvent): void {
-  const session = orderDragSession;
-  if (!session || event.pointerId !== session.pointerId) {
-    return;
-  }
-  if (session.phase === "dragging") {
-    cleanupOrderSession("commit");
-    return;
-  }
-  cleanupOrderSession("cancel");
-}
-
-function onOrderPointerCancel(event: PointerEvent): void {
-  const session = orderDragSession;
-  if (!session || event.pointerId !== session.pointerId) {
-    return;
-  }
-  cleanupOrderSession("cancel");
-}
-
-function startOrderPending(
-  event: PointerEvent,
-  mode: OrderMode,
-  sourceItem: HTMLLIElement,
-  handle: HTMLElement,
-): void {
-  if (orderDragSession) {
-    cleanupOrderSession("cancel");
-  }
-  const container = mode === "list" ? listOrderList : displayOrderList;
-  const sourceKey = sourceItem.dataset.key;
-  if (!container || !sourceKey) {
-    return;
-  }
-  const rect = sourceItem.getBoundingClientRect();
-  orderDragSession = {
-    phase: "pending",
-    mode,
-    pointerId: event.pointerId,
-    container,
-    sourceItem,
-    sourceKey,
-    handle,
-    startClientX: event.clientX,
-    startClientY: event.clientY,
-    offsetX: event.clientX - rect.left,
-    offsetY: event.clientY - rect.top,
-    ghost: null,
-    placeholder: null,
-    cachedRows: [],
-    rafId: null,
-    queuedClientX: event.clientX,
-    queuedClientY: event.clientY,
-    orderChanged: false,
-  };
-  handle.setPointerCapture(event.pointerId);
-}
-
-function createOrderItem(
-  item: OverlayObjectRef,
-  mode: OrderMode,
-): HTMLLIElement {
-  const li = document.createElement("li");
-  li.className = "order-item";
-  li.dataset.key = item.key;
-  li.dataset.mode = mode;
-  const handle = document.createElement("span");
-  handle.className = "order-handle";
-  handle.textContent = "⋮⋮";
-  const name = document.createElement("span");
-  name.className = "order-name";
-  name.textContent = item.name;
-  const actions = document.createElement("span");
-  actions.className = "order-actions";
-  const moveTop = document.createElement("button");
-  moveTop.className = "order-jump";
-  moveTop.type = "button";
-  moveTop.title = "移到最上";
-  moveTop.setAttribute("aria-label", "移到最上");
-  moveTop.innerHTML =
-    '<svg class="icon-double-up" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path><path d="M18 9l-6-6-6 6"></path></svg>';
-  const moveBottom = document.createElement("button");
-  moveBottom.className = "order-jump";
-  moveBottom.type = "button";
-  moveBottom.title = "移到最下";
-  moveBottom.setAttribute("aria-label", "移到最下");
-  moveBottom.innerHTML =
-    '<svg class="icon-double-down" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path><path d="M6 15l6 6 6-6"></path></svg>';
-  actions.appendChild(moveTop);
-  actions.appendChild(moveBottom);
-  li.appendChild(handle);
-  li.appendChild(name);
-  li.appendChild(actions);
-
-  const moveToEdge = (edge: "top" | "bottom") => {
-    const current =
-      mode === "list"
-        ? editorDocument.listOrderKeys
-        : editorDocument.displayOrderKeys;
-    const base = current.filter((key) => key !== item.key);
-    const next = edge === "top" ? [item.key, ...base] : [...base, item.key];
-    dispatchEditorCommand(createReorderCommand(mode, current, next));
-    renderOrderDialog();
-    renderMarkers();
-    renderMarkerList();
-  };
-  moveTop.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    moveToEdge("top");
-  });
-  moveBottom.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    moveToEdge("bottom");
-  });
-
-  handle.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    startOrderPending(event, mode, li, handle);
-  });
-  return li;
-}
-
-function renderOrderDialog(): void {
-  if (!listOrderList || !displayOrderList) {
-    return;
-  }
-  syncOrderKeys();
-  const refs = getOverlayRefs();
-  const refMap = new Map(refs.map((item) => [item.key, item]));
-  const renderList = (
-    container: HTMLUListElement,
-    keys: string[],
-    mode: "list" | "display",
-  ) => {
-    container.innerHTML = "";
-    keys.forEach((key) => {
-      const ref = refMap.get(key);
-      if (!ref) {
-        return;
-      }
-      const row = createOrderItem(ref, mode);
-      container.appendChild(row);
-    });
-  };
-  renderList(listOrderList, editorDocument.listOrderKeys, "list");
-  renderList(displayOrderList, editorDocument.displayOrderKeys, "display");
-}
-
-function openOrderDialog(): void {
-  if (!listOrderModal) {
-    return;
-  }
-  renderOrderDialog();
-  listOrderModal.classList.add("active");
-  window.requestAnimationFrame(() => {
-    listOrderModal.querySelector<HTMLElement>("button, [tabindex]")?.focus();
-  });
-}
-
-function closeOrderDialog(): void {
-  cleanupOrderSession("cancel");
-  listOrderModal?.classList.remove("active");
-}
-
 function openCompleteDialog(): void {
   exportController.openCompleteDialog();
-}
-
-function attachOrderDragGlobalEvents(): void {
-  window.addEventListener("pointermove", onOrderPointerMove, { passive: true });
-  window.addEventListener("pointerup", onOrderPointerUp);
-  window.addEventListener("pointercancel", onOrderPointerCancel);
-  window.addEventListener("blur", () => {
-    if (orderDragSession) {
-      cleanupOrderSession("cancel");
-    }
-  });
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible" && orderDragSession) {
-      cleanupOrderSession("cancel");
-    }
-  });
 }
 
 function deleteMarker(markerId: string): void {
@@ -5180,23 +4733,6 @@ clearMarkersButton?.addEventListener("click", async () => {
 });
 undoButton?.addEventListener("click", undoEditorChange);
 redoButton?.addEventListener("click", redoEditorChange);
-listOrderSettingsBtn?.addEventListener("mousedown", (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-});
-listOrderSettingsBtn?.addEventListener("click", (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-  openOrderDialog();
-});
-listOrderClose?.addEventListener("click", () => {
-  closeOrderDialog();
-});
-listOrderModal?.addEventListener("click", (event) => {
-  if (event.target === listOrderModal) {
-    closeOrderDialog();
-  }
-});
 appDialogModal?.addEventListener("click", (event) => {
   if (event.target === appDialogModal) {
     appDialog.closeCancel();
@@ -5370,9 +4906,8 @@ const appCommandController = new AppCommandController({
     preferencesModal?.classList.contains("active") === true,
   closePreferences: closePreferencesDialog,
   handleExportEscape: () => exportController.handleEscape(),
-  isOrderDialogOpen: () =>
-    listOrderModal?.classList.contains("active") === true,
-  closeOrderDialog,
+  isOrderDialogOpen: () => orderDialogController.isOpen(),
+  closeOrderDialog: () => orderDialogController.close(),
   isCoordinateDialogOpen: () =>
     coordEditModal?.classList.contains("active") === true,
   cancelCoordinateDialog: () => coordEditCancel?.click(),
@@ -5419,7 +4954,7 @@ appCommandController.bind();
 initializeThemePreferences({ buttons: themePreferenceButtons });
 hookToolbar();
 hookSteps();
-attachOrderDragGlobalEvents();
+orderDialogController.bind();
 attachCropInteractions();
 attachMarkerControls();
 attachShapeControls();

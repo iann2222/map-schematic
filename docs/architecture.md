@@ -102,6 +102,7 @@
   - `search-controller.ts` 管理離線地名搜尋、座標解析、結果排序與結果清單。
   - `export-controller.ts` 管理匯出格式、外框選擇、進度與輸出請求。
   - `app-command-controller.ts` 集中全域快捷鍵、Electron menu action 與 dialog request 路由。
+  - `order-dialog-controller.ts` 管理項目排序 dialog、置頂／置底操作、拖曳 session 與 FLIP 動畫，排序結果再透過 Editor Core 命令提交。
 - `src/renderer/bridge.ts`
   - 將 shared IPC 契約提供給 renderer，並宣告 `window.mapSchematic`；不再另外維護 preload API、GeoNames 或專案操作型別。
 - `src/renderer/editor/*`
