@@ -9,6 +9,7 @@ import {
 } from "../shared/schema/io";
 import { validateProject } from "../shared/schema/validate";
 import type { MapProject } from "../shared/schema/mapproj";
+import { parseBuildInfo, type AppBuildInfo } from "../shared/build-info";
 import { resolveInsidePack } from "../shared/datapack/manifest";
 import type {
   DataPackDownloadReason,
@@ -403,6 +404,17 @@ function attributionsPath(): string {
     : path.join(app.getAppPath(), "ATTRIBUTIONS.md");
 }
 
+async function loadBuildInfo(): Promise<AppBuildInfo> {
+  const fallbackVersion = app.getVersion();
+  try {
+    const buildInfoPath = path.join(app.getAppPath(), "out", "build-info.json");
+    const raw = await fs.readFile(buildInfoPath, "utf8");
+    return parseBuildInfo(JSON.parse(raw) as unknown, fallbackVersion);
+  } catch {
+    return parseBuildInfo(null, fallbackVersion);
+  }
+}
+
 function projectFilesRoot(): string {
   return app.isPackaged
     ? path.join(app.getPath("documents"), "map-schematic")
@@ -430,6 +442,7 @@ app.whenReady().then(() => {
       };
     }
   });
+  ipcMain.handle("app:get-build-info", async () => loadBuildInfo());
 
   ipcMain.on("app-dialog:response", (event, payload: unknown) => {
     if (
@@ -694,8 +707,8 @@ app.whenReady().then(() => {
 
   const aboutBase = {
     applicationName: "map-schematic",
-    applicationVersion: "",
-    version: "",
+    applicationVersion: app.getVersion(),
+    version: app.getVersion(),
     credits:
       "資料包：未載入\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief\n完整授權資訊請見「說明 > 資料來源與授權」。",
     copyright: ""

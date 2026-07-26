@@ -2,6 +2,13 @@ import type { MapProject } from "../shared/schema/mapproj-contract.js";
 
 export type { MapProject } from "../shared/schema/mapproj-contract.js";
 
+export type AppBuildInfo = {
+  version: string;
+  commitSha: string;
+  shortCommitSha: string;
+  dirty: boolean | null;
+};
+
 export type DataPackStatus = {
   target: { id: string; version: string };
   active: { id: string; version: string } | null;
@@ -47,6 +54,7 @@ declare global {
         content?: string;
         error?: string;
       }>;
+      getBuildInfo?: () => Promise<AppBuildInfo>;
       getDatapack?: () => Promise<{
         id: string;
         version: string;

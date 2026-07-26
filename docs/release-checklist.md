@@ -8,6 +8,7 @@
 
 - [ ] 工作目錄只包含預期變更。
 - [ ] `package.json` 版本與發布名稱一致。
+- [ ] `npm run build` 產生的 `out/build-info.json` 版本與完整 commit SHA 正確，且 `dirty` 為 `false`。
 - [ ] `package-lock.json` 已提交且可由 `npm ci` 安裝。
 - [ ] Node.js 版本符合 `package.json#engines`。
 - [ ] `pack-release.json` 指向預計支援的官方資料包。
@@ -39,6 +40,7 @@ npm run package:win
 - [ ] 發行產物不包含 `geodata/`、`geodata_source/` 或本機專案檔。
 - [ ] `resources/ATTRIBUTIONS.md` 存在。
 - [ ] 應用程式「說明 > 資料來源與授權」可顯示相同內容。
+- [ ] 應用程式「說明 > 關於」顯示的版本與 commit SHA 和發布目標一致。
 - [ ] `builder-debug.yml` 與 `builder-effective-config.yaml` 未留在正式產物。
 
 ### Smoke Test

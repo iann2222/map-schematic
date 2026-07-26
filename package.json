@@ -9,7 +9,7 @@
   },
   "main": "out/main/index.js",
   "scripts": {
-    "build": "node scripts/clean-output.mjs && tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json && node scripts/copy-static.mjs",
+    "build": "node scripts/clean-output.mjs && tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json && node scripts/copy-static.mjs && node scripts/generate-build-info.mjs",
     "postinstall": "electron-builder install-app-deps",
     "start": "node scripts/start-electron.mjs .",
     "start:dev": "npm run build && node scripts/start-electron.mjs .",

@@ -80,6 +80,24 @@ function cleanReleaseOutput(outputDirectory) {
   rmSync(outputDirectory, { recursive: true, force: true });
 }
 
+function readBuildInfo() {
+  const buildInfoPath = resolve(process.cwd(), "out", "build-info.json");
+  if (!existsSync(buildInfoPath)) {
+    throw new Error("Build info is missing; run the standard build before packaging.");
+  }
+  const buildInfo = JSON.parse(readFileSync(buildInfoPath, "utf8"));
+  if (
+    typeof buildInfo.version !== "string"
+    || typeof buildInfo.commitSha !== "string"
+    || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(buildInfo.commitSha)
+  ) {
+    throw new Error(
+      "Packaging requires a valid commit SHA. Build from a Git checkout or set MAP_SCHEMATIC_COMMIT_SHA."
+    );
+  }
+  return buildInfo;
+}
+
 if (process.platform !== "win32") {
   throw new Error("Windows releases can only be built on Windows.");
 }
@@ -89,6 +107,10 @@ if (!(releaseTarget in targetArguments)) {
 }
 
 run(npmCommand, ["run", "build"]);
+const buildInfo = readBuildInfo();
+if (buildInfo.dirty) {
+  console.warn("Warning: packaging a working tree with uncommitted changes.");
+}
 const outputDirectory = resolve(process.cwd(), "dist");
 cleanReleaseOutput(outputDirectory);
 run(npmCommand, [
@@ -117,6 +139,8 @@ if (artifacts.length === 0) {
 }
 
 console.log("\nPackaging completed successfully.");
+console.log(`Version: ${buildInfo.version}`);
+console.log(`Commit: ${buildInfo.commitSha}${buildInfo.dirty ? " (dirty)" : ""}`);
 for (const artifact of artifacts) {
   console.log(`Output: ${artifact}`);
 }

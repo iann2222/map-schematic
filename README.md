@@ -116,6 +116,8 @@ npm run package:win
 
 封裝產物中不含官方資料包；首次啟動時仍會詢問並下載、驗證，之後即可離線使用。
 
+建置時會將 `package.json` 版本與目前 Git commit SHA 寫入應用程式，可在「說明 > 關於」查看。若從沒有 `.git` 的來源封裝，需先設定 `MAP_SCHEMATIC_COMMIT_SHA`；工作樹含未提交變更時會標示為 dirty。
+
 資料來源與授權檔會放在封裝內容的 `resources/ATTRIBUTIONS.md`，也可從應用程式的「說明 > 資料來源與授權」查看。
 
 > 封裝使用 `packaging/icon.ico` 作為 Windows 應用程式、安裝程式與捷徑圖示；原始設計檔保留為 `packaging/icon-source.png`。尚未設定程式碼簽章，首次執行或安裝時 Windows 可能顯示未知發行者或 SmartScreen 提示。

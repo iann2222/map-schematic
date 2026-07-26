@@ -1,5 +1,6 @@
 ﻿import { contextBridge, ipcRenderer } from "electron";
 
+import type { AppBuildInfo } from "../shared/build-info";
 import type { DataPackStatus } from "../shared/datapack/types";
 import type { MapProject } from "../shared/schema/mapproj-contract";
 
@@ -62,6 +63,8 @@ contextBridge.exposeInMainWorld("mapSchematic", {
     content?: string;
     error?: string;
   }> => ipcRenderer.invoke("app:get-attributions"),
+  getBuildInfo: (): Promise<AppBuildInfo> =>
+    ipcRenderer.invoke("app:get-build-info"),
   getDatapack: (): Promise<DatapackInfo> => ipcRenderer.invoke("datapack:get"),
   getDatapackStatus: (): Promise<DataPackStatus> => ipcRenderer.invoke("datapack:status"),
   updateDatapack: (): Promise<{

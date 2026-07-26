@@ -15,6 +15,7 @@
 - `geodata_source/`：資料包原始資料，已由 gitignore 排除。
 - `project_files/`：開發模式的專案檔與匯出預設目錄，已由 gitignore 排除。
 - `pack-release.json`：官方資料包版本、下載位置、SHA-256 與來源檔案設定。
+- `out/build-info.json`：建置時產生的應用程式版本、commit SHA 與工作樹狀態，隨封裝產物一併保存。
 - `package.json`、`tsconfig.*.json`、`vitest.config.ts`：應用程式建置與測試設定。
 - `environment.yml`：官方資料包建置環境的直接相依與版本來源。
 - `environment-win-64.lock.txt`：正式 Windows 資料包建置使用的完整 Conda 相依鎖定檔。
@@ -69,6 +70,7 @@
   - 建立安全隔離的 Electron 視窗與應用程式選單。
   - 註冊資料包、底圖、地形、GeoNames、專案檔與匯出 IPC。
   - 依開發版／封裝版路徑讀取同一份 `ATTRIBUTIONS.md`，供應用程式內的授權入口顯示。
+  - 讀取建置時固化的版本與 commit SHA，透過受限 IPC 提供給「說明 > 關於」。
   - 管理檔案選擇、未儲存變更確認、專案備份恢復詢問、PDF 產生及開發版／封裝版輸出路徑。
 - `src/main/data-root.ts`
   - 決定開發版與封裝版共用的官方資料包位置，並保留使用中的位置設定。

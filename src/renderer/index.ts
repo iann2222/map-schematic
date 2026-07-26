@@ -5337,6 +5337,38 @@ async function showAttributions(): Promise<void> {
   });
 }
 
+async function showAbout(): Promise<void> {
+  let version = "未知";
+  let shortCommitSha = "unknown";
+  let dirty: boolean | null = null;
+  try {
+    const buildInfo = await window.mapSchematic?.getBuildInfo?.();
+    if (buildInfo) {
+      version = buildInfo.version;
+      shortCommitSha = buildInfo.shortCommitSha;
+      dirty = buildInfo.dirty;
+    }
+  } catch {
+    // Runtime and datapack details remain useful without build metadata.
+  }
+  const commitState = dirty === true
+    ? "（包含未提交變更）"
+    : dirty === null
+      ? "（狀態未知）"
+      : "";
+  await showAppNotice({
+    eyebrow: "關於",
+    title: "Map Schematic",
+    message: "離線地圖示意圖製作工具",
+    detail:
+      `資料包：${currentPackId || "尚未載入"} ${currentPackVersion}\n`
+      + "資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief\n\n"
+      + `版本：${version}\n`
+      + `Commit SHA：${shortCommitSha}${commitState}`,
+    tone: "info",
+  });
+}
+
 const appCommandController = new AppCommandController({
   getActiveStep: () => appState.workflow.activeStep,
   handleAppDialogKeyDown: (event) => appDialog.handleKeyDown(event),
@@ -5373,13 +5405,7 @@ const appCommandController = new AppCommandController({
     void handleSaveBeforeClose();
   },
   showAbout: () => {
-    void showAppNotice({
-      eyebrow: "關於",
-      title: "Map Schematic",
-      message: "離線地圖示意圖製作工具",
-      detail: `資料包：${currentPackId || "尚未載入"} ${currentPackVersion}\n資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief`,
-      tone: "info",
-    });
+    void showAbout();
   },
   showAttributions: () => {
     void showAttributions();
