@@ -2556,6 +2556,44 @@ select:focus-visible,
   font-size: 11px;
 }
 
+.datapack-preference-card {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+}
+
+.datapack-preference-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.datapack-preference-state {
+  color: var(--ui-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.datapack-preference-detail {
+  overflow: hidden;
+  color: var(--ui-text-soft);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.datapack-preference-card .ui-button {
+  min-width: 110px;
+  flex: 0 0 auto;
+}
+
 .theme-preference-list {
   display: flex;
   flex-direction: column;

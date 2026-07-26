@@ -3090,6 +3090,27 @@
             </button>
           </div>
         </section>
+        <section class="preferences-section" aria-labelledby="datapackTitle">
+          <div class="preferences-section-heading">
+            <div class="preferences-section-title" id="datapackTitle">官方資料包</div>
+            <div class="preferences-section-description">
+              地圖、地名與地形資料會安裝在本機，日常使用不需要網路連線。
+            </div>
+          </div>
+          <div class="datapack-preference-card">
+            <div class="datapack-preference-copy">
+              <span class="datapack-preference-state" id="datapackPreferenceState">正在檢查資料包…</span>
+              <span class="datapack-preference-detail" id="datapackPreferenceDetail"></span>
+            </div>
+            <button id="datapackUpdateBtn" class="ui-button secondary" type="button" disabled>
+              <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 12a8 8 0 1 1-2.34-5.66"></path>
+                <path d="M20 4v6h-6"></path>
+              </svg>
+              <span id="datapackUpdateLabel">檢查中</span>
+            </button>
+          </div>
+        </section>
         <div class="modal-actions">
           <button id="preferencesDone" class="ui-button primary" type="button">
             完成

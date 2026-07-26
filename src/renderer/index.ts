@@ -1,6 +1,6 @@
 ﻿export {};
 
-import type { GeonamesResult, MapProject } from "./bridge.js";
+import type { DataPackStatus, GeonamesResult, MapProject } from "./bridge.js";
 import {
   createAddObjectCommand,
   createClearObjectsCommand,
@@ -131,6 +131,12 @@ const preferencesDone = document.getElementById(
 const themePreferenceButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-theme-preference]"),
 );
+const datapackPreferenceState = document.getElementById("datapackPreferenceState");
+const datapackPreferenceDetail = document.getElementById("datapackPreferenceDetail");
+const datapackUpdateButton = document.getElementById(
+  "datapackUpdateBtn",
+) as HTMLButtonElement | null;
+const datapackUpdateLabel = document.getElementById("datapackUpdateLabel");
 const reliefToggle = document.getElementById(
   "reliefToggle",
 ) as HTMLInputElement | null;
@@ -1581,6 +1587,129 @@ function showAppToast(
   }
 }
 
+function syncDatapackPreferences(status: DataPackStatus): void {
+  if (!datapackPreferenceState || !datapackPreferenceDetail || !datapackUpdateButton) {
+    return;
+  }
+  const targetLabel = `${status.target.id} ${status.target.version}`;
+  const activeLabel = status.active
+    ? `${status.active.id} ${status.active.version}`
+    : null;
+  let buttonLabel = "已是最新版本";
+  let enabled = false;
+
+  if (status.availability === "ready") {
+    datapackPreferenceState.textContent = "官方資料包已就緒";
+    datapackPreferenceDetail.textContent = `${targetLabel} 已安裝，可離線使用。`;
+  } else if (status.availability === "updateAvailable") {
+    datapackPreferenceState.textContent = "有新版官方資料包可用";
+    datapackPreferenceDetail.textContent = `目前使用 ${activeLabel}，可更新至 ${targetLabel}。`;
+    buttonLabel = "下載並更新";
+    enabled = true;
+  } else if (status.availability === "repairRequired") {
+    datapackPreferenceState.textContent = "資料包需要修復";
+    datapackPreferenceDetail.textContent = activeLabel
+      ? `目前可使用 ${activeLabel}；重新下載後會修復 ${targetLabel}。`
+      : `${targetLabel} 無法使用，請重新下載官方資料包。`;
+    buttonLabel = "重新下載";
+    enabled = true;
+  } else {
+    datapackPreferenceState.textContent = "尚未安裝官方資料包";
+    datapackPreferenceDetail.textContent = `首次使用需要下載 ${targetLabel}，完成後即可離線使用。`;
+    buttonLabel = "下載資料包";
+    enabled = true;
+  }
+
+  datapackUpdateButton.disabled = !enabled;
+  if (datapackUpdateLabel) {
+    datapackUpdateLabel.textContent = buttonLabel;
+  }
+}
+
+async function refreshDatapackPreferences(): Promise<DataPackStatus | null> {
+  if (!window.mapSchematic?.getDatapackStatus) {
+    return null;
+  }
+  try {
+    const status = await window.mapSchematic.getDatapackStatus();
+    syncDatapackPreferences(status);
+    return status;
+  } catch {
+    if (datapackPreferenceState) {
+      datapackPreferenceState.textContent = "無法檢查資料包狀態";
+    }
+    if (datapackPreferenceDetail) {
+      datapackPreferenceDetail.textContent = "請稍後再試，或重新啟動應用程式。";
+    }
+    if (datapackUpdateButton) {
+      datapackUpdateButton.disabled = true;
+    }
+    if (datapackUpdateLabel) {
+      datapackUpdateLabel.textContent = "暫時無法使用";
+    }
+    return null;
+  }
+}
+
+async function handleDatapackUpdate(): Promise<void> {
+  if (!window.mapSchematic?.updateDatapack || !datapackUpdateButton) {
+    return;
+  }
+  datapackUpdateButton.disabled = true;
+  if (datapackUpdateLabel) {
+    datapackUpdateLabel.textContent = "正在處理";
+  }
+  showAppToast("正在下載、驗證並安裝官方資料包…", "loading", 0);
+  const result = await window.mapSchematic.updateDatapack();
+  if (!result.ok) {
+    await refreshDatapackPreferences();
+    await showAppDialog({
+      eyebrow: "資料包更新失敗",
+      title: "無法完成官方資料包更新",
+      message: "目前資料包沒有被替換，仍可繼續離線使用。",
+      detail: result.error ?? "請確認網路連線後再試一次。",
+      tone: "danger",
+      buttons: [{ label: "知道了", value: 0, variant: "primary" }],
+      defaultValue: 0,
+      cancelValue: 0,
+    });
+    showAppToast("資料包更新失敗", "error");
+    return;
+  }
+  if (result.canceled) {
+    if (result.status) {
+      syncDatapackPreferences(result.status);
+    } else {
+      await refreshDatapackPreferences();
+    }
+    showAppToast("已取消資料包更新", "success");
+    return;
+  }
+  try {
+    await reloadDatapackAssets();
+  } catch (error) {
+    await refreshDatapackPreferences();
+    await showAppDialog({
+      eyebrow: "資料包已更新",
+      title: "資料包已安裝，但畫面重新載入失敗",
+      message: "請重新啟動應用程式後再繼續使用。",
+      detail: String(error),
+      tone: "warning",
+      buttons: [{ label: "知道了", value: 0, variant: "primary" }],
+      defaultValue: 0,
+      cancelValue: 0,
+    });
+    showAppToast("資料包已更新，請重新啟動應用程式", "error");
+    return;
+  }
+  if (result.status) {
+    syncDatapackPreferences(result.status);
+  } else {
+    await refreshDatapackPreferences();
+  }
+  showAppToast("官方資料包已更新並套用", "success");
+}
+
 function openPreferencesDialog(): void {
   if (!preferencesModal) {
     return;
@@ -1590,6 +1719,7 @@ function openPreferencesDialog(): void {
       ? document.activeElement
       : null;
   preferencesModal.classList.add("active");
+  void refreshDatapackPreferences();
   window.requestAnimationFrame(() => {
     themePreferenceButtons
       .find((button) => button.classList.contains("active"))
@@ -2237,7 +2367,6 @@ async function renderBasemap() {
   if (basemapBuilt) {
     return;
   }
-  basemapBuilt = true;
   const width = svg.viewBox.baseVal.width || 1200;
   const height = svg.viewBox.baseVal.height || 800;
 
@@ -2256,6 +2385,7 @@ async function renderBasemap() {
     }
     return { id: layer.id, paths, pathData };
   });
+  basemapBuilt = true;
   drawBasemap();
 }
 
@@ -5356,6 +5486,66 @@ function attachMapInteractions(): void {
   });
 }
 
+async function loadDatapackRelief(): Promise<void> {
+  hillshadeTexture = null;
+  hillshadeImage = null;
+  const relief = await window.mapSchematic?.getRelief?.();
+  if (!relief?.path) {
+    requestBasemapDraw();
+    return;
+  }
+  hillshadeProjection = relief.projection ?? null;
+  const texture = await loadHillshadeTexture(
+    relief.path,
+    hillshadeProjection,
+    MAP_WIDTH,
+    MAP_HEIGHT,
+  );
+  if (texture) {
+    hillshadeTexture = texture;
+    requestBasemapDraw();
+    return;
+  }
+  const image = new Image();
+  hillshadeImage = image;
+  image.src = relief.path;
+  image.onload = () => {
+    if (hillshadeImage !== image) {
+      return;
+    }
+    hillshadeTexture = buildHillshadeTexture({
+      image,
+      width: MAP_WIDTH,
+      height: MAP_HEIGHT,
+      unproject,
+    });
+    requestBasemapDraw();
+  };
+  image.onerror = () => {
+    if (hillshadeImage === image) {
+      hillshadeImage = null;
+      requestBasemapDraw();
+    }
+  };
+}
+
+async function reloadDatapackAssets(): Promise<void> {
+  const datapack = await window.mapSchematic?.getDatapack?.();
+  await loadDatapackRelief();
+  basemapBuilt = false;
+  cachedBasemapLayers = [];
+  await renderBasemap();
+  if (!datapack) {
+    return;
+  }
+  currentPackId = datapack.id;
+  currentPackVersion = datapack.version;
+  scheduleProjectDirtyCheck();
+  if (statusEl) {
+    statusEl.textContent = `資料包 ${datapack.id} ${datapack.version} 已就緒`;
+  }
+}
+
 async function boot() {
   if (!statusEl) {
     return;
@@ -5364,36 +5554,7 @@ async function boot() {
   const ping = window.mapSchematic?.ping?.() ?? "no-bridge";
   statusEl.textContent = `橋接：${ping}。載入資料包中...`;
   try {
-    const datapack = await window.mapSchematic?.getDatapack?.();
-    const relief = await window.mapSchematic?.getRelief?.();
-    if (relief?.path) {
-      hillshadeProjection = relief.projection ?? null;
-      const texture = await loadHillshadeTexture(
-        relief.path,
-        hillshadeProjection,
-        MAP_WIDTH,
-        MAP_HEIGHT,
-      );
-      if (texture) {
-        hillshadeTexture = texture;
-        requestBasemapDraw();
-      } else {
-        hillshadeImage = new Image();
-        hillshadeImage.src = relief.path;
-        hillshadeImage.onload = () => {
-          if (hillshadeImage) {
-            hillshadeTexture = buildHillshadeTexture({
-              image: hillshadeImage,
-              width: MAP_WIDTH,
-              height: MAP_HEIGHT,
-              unproject,
-            });
-            requestBasemapDraw();
-          }
-        };
-      }
-    }
-    await renderBasemap();
+    await reloadDatapackAssets();
     renderMarkers();
     renderMarkerList();
     setActiveStyleButton("styleOriginal");
@@ -5404,11 +5565,8 @@ async function boot() {
     setActiveStep("0");
     attachMapInteractions();
     lastScaleFit = resizeCanvasToStage().scaleFit;
-    if (datapack) {
-      currentPackId = datapack.id;
-      currentPackVersion = datapack.version;
+    if (currentPackId && currentPackVersion) {
       setProjectBaseline();
-      statusEl.textContent = `資料包 ${datapack.id} ${datapack.version} 已就緒`;
     } else {
       statusEl.textContent = "資料包不可用。";
     }
@@ -5552,6 +5710,9 @@ topExportButton?.addEventListener("click", openCompleteDialog);
 preferencesButton?.addEventListener("click", openPreferencesDialog);
 preferencesClose?.addEventListener("click", closePreferencesDialog);
 preferencesDone?.addEventListener("click", closePreferencesDialog);
+datapackUpdateButton?.addEventListener("click", () => {
+  void handleDatapackUpdate();
+});
 preferencesModal?.addEventListener("click", (event) => {
   if (event.target === preferencesModal) {
     closePreferencesDialog();

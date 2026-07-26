@@ -38,6 +38,18 @@ export type DataPackRelease = DataPackRef & {
 
 export type DataPackDownloadReason = "initialization" | "update" | "repair";
 
+export type DataPackAvailability =
+  | "ready"
+  | "updateAvailable"
+  | "repairRequired"
+  | "missing";
+
+export type DataPackStatus = {
+  target: DataPackRef;
+  active: DataPackRef | null;
+  availability: DataPackAvailability;
+};
+
 export type ReadyDataPack = {
   ref: DataPackRef;
   rootPath: string;

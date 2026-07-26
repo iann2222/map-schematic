@@ -11,8 +11,8 @@
   "scripts": {
     "build": "node scripts/clean-output.mjs && tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json && node scripts/copy-static.mjs",
     "postinstall": "electron-builder install-app-deps",
-    "start": "electron .",
-    "start:dev": "npm run build && electron .",
+    "start": "node scripts/start-electron.mjs .",
+    "start:dev": "npm run build && node scripts/start-electron.mjs .",
     "package:win": "node packaging/package-win.mjs",
     "test": "npm run test:typecheck && vitest run",
     "test:typecheck": "tsc -p tsconfig.test.json",

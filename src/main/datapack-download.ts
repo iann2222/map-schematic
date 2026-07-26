@@ -4,14 +4,14 @@ import https from "https";
 import path from "path";
 import { pipeline } from "stream/promises";
 
-import AdmZip from "adm-zip";
 import { app } from "electron";
 
+import { extractDatapackArchive } from "../shared/datapack/archive";
 import {
   DataPackManager,
   EnsureDataPackOptions
 } from "../shared/datapack/manager";
-import { ReadyDataPack } from "../shared/datapack/types";
+import { DataPackStatus, ReadyDataPack } from "../shared/datapack/types";
 import { resolveDataRoot } from "../shared/paths";
 
 let manager: DataPackManager | null = null;
@@ -64,9 +64,7 @@ function downloadFile(url: string, destination: string, redirectCount = 0): Prom
 }
 
 async function extractArchive(archivePath: string, destination: string): Promise<void> {
-  await fs.mkdir(destination, { recursive: true });
-  const archive = new AdmZip(archivePath);
-  archive.extractAllTo(destination, true);
+  await extractDatapackArchive(archivePath, destination);
 }
 
 async function getManager(): Promise<DataPackManager> {
@@ -87,6 +85,12 @@ export async function ensureDatapackReady(
   return (await getManager()).ensureReady({ confirmDownload });
 }
 
-export async function updateDatapack(): Promise<ReadyDataPack> {
-  return (await getManager()).update();
+export async function updateDatapack(
+  confirmDownload?: EnsureDataPackOptions["confirmDownload"]
+): Promise<ReadyDataPack> {
+  return (await getManager()).update({ confirmDownload });
+}
+
+export async function getDatapackStatus(): Promise<DataPackStatus> {
+  return (await getManager()).getStatus();
 }

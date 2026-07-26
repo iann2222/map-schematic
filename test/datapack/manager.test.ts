@@ -83,7 +83,7 @@ describe("DataPackManager", () => {
     expect((await readActivePack(dataRoot)).active).toEqual(targetRef);
   });
 
-  it("keeps a valid active pack when the user declines an update", async () => {
+  it("uses a valid active pack without prompting when an update is available", async () => {
     const oldRef = { id: "standard", version: "2026.02" };
     await createTestDatapack(getPackRoot(dataRoot, oldRef.id, oldRef.version), oldRef);
     await setActivePack(dataRoot, oldRef);
@@ -94,9 +94,61 @@ describe("DataPackManager", () => {
 
     expect(ready.ref).toEqual(oldRef);
     expect(ready.source).toBe("fallback");
-    expect(confirmDownload).toHaveBeenCalledWith("update", expect.objectContaining(targetRef));
+    expect(confirmDownload).not.toHaveBeenCalled();
     expect(downloadFile).not.toHaveBeenCalled();
     expect((await readActivePack(dataRoot)).active).toEqual(oldRef);
+  });
+
+  it("reports an available update without downloading or contacting the release", async () => {
+    const oldRef = { id: "standard", version: "2026.02" };
+    await createTestDatapack(getPackRoot(dataRoot, oldRef.id, oldRef.version), oldRef);
+    await setActivePack(dataRoot, oldRef);
+    const { manager, downloadFile } = await createManager();
+
+    await expect(manager.getStatus()).resolves.toEqual({
+      target: targetRef,
+      active: oldRef,
+      availability: "updateAvailable"
+    });
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+
+  it("reports when the configured pack must be repaired", async () => {
+    const targetRoot = getPackRoot(dataRoot, targetRef.id, targetRef.version);
+    await createTestDatapack(targetRoot, targetRef);
+    await fs.writeFile(path.join(targetRoot, "basemap", "land.geojson"), "damaged", "utf8");
+    const { manager } = await createManager();
+
+    await expect(manager.getStatus()).resolves.toEqual({
+      target: targetRef,
+      active: null,
+      availability: "repairRequired"
+    });
+  });
+
+  it("reports a missing pack before first initialization", async () => {
+    const { manager, downloadFile } = await createManager();
+
+    await expect(manager.getStatus()).resolves.toEqual({
+      target: targetRef,
+      active: null,
+      availability: "missing"
+    });
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+
+  it("requires confirmation when the user explicitly starts an update", async () => {
+    const oldRef = { id: "standard", version: "2026.02" };
+    await createTestDatapack(getPackRoot(dataRoot, oldRef.id, oldRef.version), oldRef);
+    await setActivePack(dataRoot, oldRef);
+    const { manager, downloadFile } = await createManager();
+    const confirmDownload = vi.fn(async () => false);
+
+    const ready = await manager.update({ confirmDownload });
+
+    expect(ready.ref).toEqual(oldRef);
+    expect(confirmDownload).toHaveBeenCalledWith("update", expect.objectContaining(targetRef));
+    expect(downloadFile).not.toHaveBeenCalled();
   });
 
   it("does not repeatedly ask after a repair download is declined", async () => {
@@ -136,7 +188,7 @@ describe("DataPackManager", () => {
     await setActivePack(dataRoot, oldRef);
     const { manager, downloadFile } = await createManager();
 
-    const ready = await manager.ensureReady({ confirmDownload: async () => true });
+    const ready = await manager.update({ confirmDownload: async () => true });
 
     expect(ready.ref).toEqual(targetRef);
     expect(ready.source).toBe("downloaded");

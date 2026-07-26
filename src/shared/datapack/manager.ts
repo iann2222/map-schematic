@@ -14,6 +14,7 @@ import {
   DataPackManifest,
   DataPackRef,
   DataPackRelease,
+  DataPackStatus,
   ReadyDataPack
 } from "./types";
 
@@ -37,6 +38,7 @@ export type DataPackManagerOptions = {
 
 export type EnsureDataPackOptions = {
   confirmDownload?: (reason: DataPackDownloadReason, release: DataPackRelease) => Promise<boolean>;
+  allowUpdateDownload?: boolean;
 };
 
 export class DatapackDownloadDeclinedError extends Error {
@@ -187,9 +189,13 @@ export class DataPackManager {
     return this.readyPromise;
   }
 
-  update(): Promise<ReadyDataPack> {
+  update(options: EnsureDataPackOptions = {}): Promise<ReadyDataPack> {
     this.readyPromise = null;
-    return this.ensureReady({ confirmDownload: async () => true });
+    return this.ensureReady({
+      ...options,
+      allowUpdateDownload: true,
+      confirmDownload: options.confirmDownload ?? (async () => true)
+    });
   }
 
   invalidate(): void {
@@ -289,6 +295,40 @@ export class DataPackManager {
     return null;
   }
 
+  async getStatus(): Promise<DataPackStatus> {
+    await ensureDataRootExists(this.dataRoot);
+    const target = await this.validatePack(this.targetRef);
+    if (target) {
+      return {
+        target: this.targetRef,
+        active: target.ref,
+        availability: "ready"
+      };
+    }
+
+    const fallback = await this.findFallback();
+    const targetRoot = getPackRoot(
+      this.dataRoot,
+      this.release.id,
+      this.release.version
+    );
+    const hasTargetRoot = await pathExists(targetRoot);
+    if (fallback) {
+      return {
+        target: this.targetRef,
+        active: fallback.ref,
+        availability: hasTargetRoot ? "repairRequired" : "updateAvailable"
+      };
+    }
+
+    const localPacks = await listLocalPacks(this.dataRoot);
+    return {
+      target: this.targetRef,
+      active: null,
+      availability: hasTargetRoot || localPacks.length > 0 ? "repairRequired" : "missing"
+    };
+  }
+
   private async ensureReadyOnce(options: EnsureDataPackOptions): Promise<ReadyDataPack> {
     await ensureDataRootExists(this.dataRoot);
     const recovered = await this.recoverInterruptedTarget();
@@ -305,11 +345,19 @@ export class DataPackManager {
     const fallback = await this.findFallback();
     const targetRoot = getPackRoot(this.dataRoot, this.release.id, this.release.version);
     const localPacks = await listLocalPacks(this.dataRoot);
+    const hasTargetRoot = await pathExists(targetRoot);
     const reason: DataPackDownloadReason = fallback
-      ? "update"
-      : (await pathExists(targetRoot)) || localPacks.length > 0
+      ? hasTargetRoot
+        ? "repair"
+        : "update"
+      : hasTargetRoot || localPacks.length > 0
         ? "repair"
         : "initialization";
+
+    if (reason === "update" && !options.allowUpdateDownload) {
+      await setActivePack(this.dataRoot, fallback!.ref);
+      return fallback!;
+    }
 
     if (reason !== "initialization") {
       const approved = options.confirmDownload

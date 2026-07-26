@@ -1,5 +1,6 @@
 ﻿import { contextBridge, ipcRenderer } from "electron";
 
+import type { DataPackStatus } from "../shared/datapack/types";
 import type { MapProject } from "../shared/schema/mapproj-contract";
 
 type DatapackInfo = {
@@ -57,6 +58,13 @@ type AppDialogRequest = {
 contextBridge.exposeInMainWorld("mapSchematic", {
   ping: () => "pong",
   getDatapack: (): Promise<DatapackInfo> => ipcRenderer.invoke("datapack:get"),
+  getDatapackStatus: (): Promise<DataPackStatus> => ipcRenderer.invoke("datapack:status"),
+  updateDatapack: (): Promise<{
+    ok: boolean;
+    canceled?: boolean;
+    status?: DataPackStatus;
+    error?: string;
+  }> => ipcRenderer.invoke("datapack:update"),
   getBasemapLayers: (): Promise<BasemapLayerPayload[]> =>
     ipcRenderer.invoke("basemap:get"),
   getRelief: (): Promise<{ path: string; projection: string | null } | null> =>

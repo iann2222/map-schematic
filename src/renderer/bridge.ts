@@ -2,6 +2,12 @@ import type { MapProject } from "../shared/schema/mapproj-contract.js";
 
 export type { MapProject } from "../shared/schema/mapproj-contract.js";
 
+export type DataPackStatus = {
+  target: { id: string; version: string };
+  active: { id: string; version: string } | null;
+  availability: "ready" | "updateAvailable" | "repairRequired" | "missing";
+};
+
 export type GeonamesResult = {
   id: number;
   name: string;
@@ -43,6 +49,13 @@ declare global {
           format: string;
           layers: Array<{ id: string; path: string }>;
         };
+      }>;
+      getDatapackStatus?: () => Promise<DataPackStatus>;
+      updateDatapack?: () => Promise<{
+        ok: boolean;
+        canceled?: boolean;
+        status?: DataPackStatus;
+        error?: string;
       }>;
       getBasemapLayers?: () => Promise<Array<{ id: string; geojson: string }>>;
       getRelief?: () => Promise<{

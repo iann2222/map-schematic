@@ -14,12 +14,17 @@ import type {
   DataPackDownloadReason,
   DataPackManifest,
   DataPackRelease,
+  DataPackStatus,
   ReadyDataPack
 } from "../shared/datapack/types";
 import { resolveDataRoot } from "../shared/paths";
 import { configureDataRoot } from "./data-root";
 import { searchGeonames } from "./geonames";
-import { ensureDatapackReady } from "./datapack-download";
+import {
+  ensureDatapackReady,
+  getDatapackStatus,
+  updateDatapack
+} from "./datapack-download";
 
 type Datapack = DataPackManifest;
 
@@ -266,6 +271,10 @@ async function loadDatapack(): Promise<Datapack> {
   return (await getReadyDatapack()).manifest;
 }
 
+function isTargetPack(ref: { id: string; version: string }, status: DataPackStatus): boolean {
+  return ref.id === status.target.id && ref.version === status.target.version;
+}
+
 function buildAppMenu(): Menu {
   return Menu.buildFromTemplate([
     {
@@ -418,6 +427,21 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("datapack:get", async () => loadDatapack());
+  ipcMain.handle("datapack:status", async () => getDatapackStatus());
+  ipcMain.handle("datapack:update", async () => {
+    try {
+      const ready = await updateDatapack(confirmDatapackDownload);
+      const status = await getDatapackStatus();
+      return {
+        ok: true,
+        canceled: !isTargetPack(ready.ref, status),
+        datapack: ready.manifest,
+        status
+      };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
   ipcMain.on("project:dirty-state", (event, dirty: unknown) => {
     if (typeof dirty !== "boolean") {
       return;
