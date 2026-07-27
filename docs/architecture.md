@@ -90,9 +90,9 @@
 - `src/renderer/styles.css`
   - 位於 `components` cascade layer，依 design token、共用控制、工作流程、地圖、屬性面板、dialog 與 responsive 區段組織。
 - `src/renderer/index.ts`
-  - 作為 renderer composition root，建立控制器、注入地圖與 UI callback，並保留尚未拆出的地圖渲染與屬性編輯邏輯。
-  - 管理範圍裁切、比例、底圖風格與地形陰影。
-  - 管理點、文字、線、區域、箭頭及其排序、拖曳與樣式。
+  - 作為 renderer composition root，建立控制器、注入共享狀態與 callback，並負責應用程式啟動。
+  - 專案、工作流程、搜尋、匯出、地圖、裁切、選取、排序與屬性面板的狀態及互動分別由對應模組管理。
+  - 保留跨控制器的 Editor Core 命令組裝、專案資料轉換與匯出內容組裝。
   - 產生高解析 PNG、PDF 輸入與真正向量 SVG；地形陰影啟用時僅陰影部分維持點陣圖片。
 - `src/renderer/app-state.ts`
   - 定義 renderer 唯一的 `AppState` 根結構；工作流程、專案生命週期、搜尋請求與匯出狀態不再由入口檔的零散全域變數維護。
@@ -103,6 +103,11 @@
   - `export-controller.ts` 管理匯出格式、外框選擇、進度與輸出請求。
   - `app-command-controller.ts` 集中全域快捷鍵、Electron menu action 與 dialog request 路由。
   - `order-dialog-controller.ts` 管理項目排序 dialog、置頂／置底操作、拖曳 session 與 FLIP 動畫，排序結果再透過 Editor Core 命令提交。
+  - `inspector-controller.ts` 管理 Step 3 屬性面板的欄位同步、色票、滑桿、旋轉控制與編輯事件，物件變更仍透過 Editor Core 命令提交。
+  - `selection-controller.ts` 集中選取狀態、物件拖曳、鍵盤微調、空白區域取消選取與 Inspector 同步。
+  - `crop-controller.ts` 管理 Step 1 比例選擇、裁切框、專案裁切狀態、地圖 clip 與遮罩；純幾何運算位於 `crop-geometry.ts`。
+  - `map-viewport-controller.ts` 管理地圖縮放、平移、畫布適配、座標換算與循環世界偏移。
+  - `map-interaction-controller.ts` 管理地圖滾輪、平移、框選縮放及指標事件生命週期。
 - `src/renderer/bridge.ts`
   - 將 shared IPC 契約提供給 renderer，並宣告 `window.mapSchematic`；不再另外維護 preload API、GeoNames 或專案操作型別。
 - `src/renderer/editor/*`
@@ -123,8 +128,14 @@
   - 集中處理專案畫布比例、px／mm 邏輯尺寸與匯出像素換算。
 - `src/renderer/map/geometry.ts`
   - 集中 EPSG:4326／EPSG:3857 投影、循環經度正規化、跨日期變更線範圍轉換與 GeoJSON 至 SVG path 轉換。
+- `src/renderer/map/basemap-renderer.ts`
+  - 載入官方資料包底圖與地形陰影，集中 Canvas 繪製、風格切換、預覽與匯出所需的底圖狀態。
+- `src/renderer/overlay/object-order-model.ts`
+  - 集中標示顯示名稱、唯一名稱、排序鍵正規化、顯示順位與重複物件判斷。
 - `src/renderer/ui/slider.ts`
   - 提供共用滑桿建立、鍵盤操作、數值吸附與畫面同步。
+- `src/renderer/ui/input-selection.ts`
+  - 提供輸入框首次點擊全選行為，供屬性面板、座標 dialog 與比例欄位共用。
 
 共用模組（Shared）：
 

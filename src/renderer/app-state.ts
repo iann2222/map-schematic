@@ -26,11 +26,45 @@ export type ExportState = {
   inProgress: boolean;
 };
 
+export type LabelDragState = {
+  markerId: string;
+  startX: number;
+  startY: number;
+  startOffsetX: number;
+  startOffsetY: number;
+};
+
+export type MarkerDragState = {
+  markerId: string;
+  startX: number;
+  startY: number;
+  startLon: number;
+  startLat: number;
+};
+
+export type ShapeDragState = {
+  shapeId: string;
+  startX: number;
+  startY: number;
+  startLon: number;
+  startLat: number;
+};
+
+export type SelectionState = {
+  markerId: string | null;
+  shapeId: string | null;
+  labelMarkerId: string | null;
+  labelDrag: LabelDragState | null;
+  markerDrag: MarkerDragState | null;
+  shapeDrag: ShapeDragState | null;
+};
+
 export type AppState = {
   workflow: WorkflowState;
   project: ProjectState;
   search: SearchState;
   export: ExportState;
+  selection: SelectionState;
 };
 
 export function createAppState(): AppState {
@@ -53,6 +87,14 @@ export function createAppState(): AppState {
       selectedFrame: "none",
       frameResolver: null,
       inProgress: false,
+    },
+    selection: {
+      markerId: null,
+      shapeId: null,
+      labelMarkerId: null,
+      labelDrag: null,
+      markerDrag: null,
+      shapeDrag: null,
     },
   };
 }

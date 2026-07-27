@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createAppState } from "../../src/renderer/app-state.js";
 
 describe("renderer app state", () => {
-  it("creates independent workflow, project, and export state", () => {
+  it("creates independent workflow, project, export, and selection state", () => {
     const first = createAppState();
     const second = createAppState();
 
@@ -24,6 +24,14 @@ describe("renderer app state", () => {
         selectedFrame: "none",
         frameResolver: null,
         inProgress: false,
+      },
+      selection: {
+        markerId: null,
+        shapeId: null,
+        labelMarkerId: null,
+        labelDrag: null,
+        markerDrag: null,
+        shapeDrag: null,
       },
     });
 

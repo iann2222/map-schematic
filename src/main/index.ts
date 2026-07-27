@@ -173,6 +173,8 @@ function createMainWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      // Sandboxed preloads cannot resolve the local CommonJS IPC contract.
+      sandbox: false,
       preload: preloadPath
     }
   });
