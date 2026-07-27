@@ -87,6 +87,7 @@ import { SelectionController } from "./controllers/selection-controller.js";
 import { CropController } from "./controllers/crop-controller.js";
 import { MapViewportController } from "./controllers/map-viewport-controller.js";
 import { MapInteractionController } from "./controllers/map-interaction-controller.js";
+import { MapInitializationController } from "./controllers/map-initialization-controller.js";
 import { BasemapRenderer } from "./map/basemap-renderer.js";
 
 type BBox = MapProject["viewport"]["bbox"];
@@ -791,7 +792,7 @@ async function handleDatapackUpdate(): Promise<void> {
     return;
   }
   try {
-    await reloadDatapackAssets();
+    await mapInitializationController.initialize();
   } catch (error) {
     await refreshDatapackPreferences();
     await showAppDialog({
@@ -2089,15 +2090,11 @@ function mapPointFromEvent(event: MouseEvent): { x: number; y: number } {
   return mapViewport.mapPointFromEvent(event);
 }
 
-function attachMapInteractions(): void {
-  mapInteractionController.bind();
-}
-
 async function reloadDatapackAssets(): Promise<void> {
   const datapack = await window.mapSchematic?.getDatapack?.();
   await basemapRenderer.reload();
   if (!datapack) {
-    return;
+    throw new Error("資料包不可用");
   }
   currentPackId = datapack.id;
   currentPackVersion = datapack.version;
@@ -2107,6 +2104,32 @@ async function reloadDatapackAssets(): Promise<void> {
   }
 }
 
+const mapInitializationController = new MapInitializationController({
+  reloadAssets: reloadDatapackAssets,
+  prepareFirstReadyState: () => {
+    if (!appState.project.current) {
+      setActiveStyleButton("styleOriginal");
+      setActiveStep("0");
+    }
+  },
+  renderWorkspace: () => {
+    renderMarkers();
+    renderMarkerList();
+  },
+  syncViewport: () => {
+    applyViewTransform();
+    updateWrapTransforms(true);
+    updateCropFrame();
+    mapViewport.lastScaleFit = resizeCanvasToStage().scaleFit;
+  },
+  bindInteractions: () => mapInteractionController.bind(),
+  commitFirstReadyState: () => {
+    if (!appState.project.current) {
+      setProjectBaseline();
+    }
+  },
+});
+
 async function boot() {
   if (!statusEl) {
     return;
@@ -2115,21 +2138,7 @@ async function boot() {
   const ping = window.mapSchematic?.ping?.() ?? "no-bridge";
   statusEl.textContent = `橋接：${ping}。載入資料包中...`;
   try {
-    await reloadDatapackAssets();
-    renderMarkers();
-    renderMarkerList();
-    setActiveStyleButton("styleOriginal");
-    applyViewTransform();
-    updateWrapTransforms(true);
-    updateCropFrame();
-    setActiveStep("0");
-    attachMapInteractions();
-    mapViewport.lastScaleFit = resizeCanvasToStage().scaleFit;
-    if (currentPackId && currentPackVersion) {
-      setProjectBaseline();
-    } else {
-      statusEl.textContent = "資料包不可用。";
-    }
+    await mapInitializationController.initialize();
   } catch (err) {
     statusEl.textContent = `載入資料包失敗：${String(err)}`;
   }

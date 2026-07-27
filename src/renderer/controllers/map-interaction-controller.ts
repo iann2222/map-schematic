@@ -20,6 +20,7 @@ export class MapInteractionController {
   private dragStartMap: { x: number; y: number } | null = null;
   private dragMode: DragMode = null;
   private dragRect: SVGRectElement | null = null;
+  private bound = false;
 
   constructor(options: MapInteractionOptions) {
     this.options = options;
@@ -27,15 +28,32 @@ export class MapInteractionController {
 
   bind(): void {
     const { svg } = this.options;
-    if (!svg) {
+    if (!svg || this.bound) {
       return;
     }
+    this.bound = true;
     svg.addEventListener("contextmenu", this.preventContextMenu);
     svg.addEventListener("wheel", this.handleWheel, { passive: false });
     svg.addEventListener("mousedown", this.handleMouseDown);
     svg.addEventListener("mousemove", this.handleMouseMove);
     svg.addEventListener("mouseup", this.handleMouseUp);
     svg.addEventListener("mouseleave", this.handleMouseLeave);
+  }
+
+  unbind(): void {
+    const { svg } = this.options;
+    if (!svg || !this.bound) {
+      return;
+    }
+    svg.removeEventListener("contextmenu", this.preventContextMenu);
+    svg.removeEventListener("wheel", this.handleWheel);
+    svg.removeEventListener("mousedown", this.handleMouseDown);
+    svg.removeEventListener("mousemove", this.handleMouseMove);
+    svg.removeEventListener("mouseup", this.handleMouseUp);
+    svg.removeEventListener("mouseleave", this.handleMouseLeave);
+    this.clearDragRect();
+    this.resetDragClasses();
+    this.bound = false;
   }
 
   private readonly preventContextMenu = (event: MouseEvent): void => {

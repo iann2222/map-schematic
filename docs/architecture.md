@@ -126,6 +126,7 @@
   - `crop-controller.ts` 管理 Step 1 比例選擇、裁切框、專案裁切狀態、地圖 clip 與遮罩；純幾何運算位於 `crop-geometry.ts`。
   - `map-viewport-controller.ts` 管理地圖縮放、平移、畫布適配、座標換算與循環世界偏移。
   - `map-interaction-controller.ts` 管理地圖滾輪、平移、框選縮放及指標事件生命週期。
+  - `map-initialization-controller.ts` 統一首次啟動與資料包更新後的地圖載入、重繪、視角同步及互動初始化流程。
 - `src/renderer/bridge.ts`
   - 將 shared IPC 契約提供給 renderer，並宣告 `window.mapSchematic`；不再另外維護 preload API、GeoNames 或專案操作型別。
 - `src/renderer/editor/*`
