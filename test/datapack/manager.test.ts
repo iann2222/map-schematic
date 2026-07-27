@@ -37,7 +37,9 @@ describe("DataPackManager", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  async function createManager() {
+  async function createManager(
+    beforeReplace?: () => void | Promise<void>
+  ) {
     const release = await createTestRelease(archivePath, targetRef);
     const downloadFile = vi.fn(async (_url: string, destination: string) => {
       await fs.copyFile(archivePath, destination);
@@ -46,7 +48,13 @@ describe("DataPackManager", () => {
       await fs.cp(preparedPack, destination, { recursive: true });
     });
     return {
-      manager: new DataPackManager({ dataRoot, release, downloadFile, extractArchive }),
+      manager: new DataPackManager({
+        dataRoot,
+        release,
+        downloadFile,
+        extractArchive,
+        beforeReplace
+      }),
       downloadFile,
       extractArchive
     };
@@ -81,6 +89,46 @@ describe("DataPackManager", () => {
     expect(downloadFile).toHaveBeenCalledOnce();
     expect(extractArchive).toHaveBeenCalledOnce();
     expect((await readActivePack(dataRoot)).active).toEqual(targetRef);
+  });
+
+  it("serializes an explicit update behind an in-flight initialization", async () => {
+    const release = await createTestRelease(archivePath, targetRef);
+    let continueDownload = (): void => undefined;
+    let markDownloadStarted = (): void => undefined;
+    const downloadStarted = new Promise<void>((resolve) => {
+      markDownloadStarted = resolve;
+    });
+    const downloadGate = new Promise<void>((resolve) => {
+      continueDownload = resolve;
+    });
+    const downloadFile = vi.fn(async (_url: string, destination: string) => {
+      markDownloadStarted();
+      await downloadGate;
+      await fs.copyFile(archivePath, destination);
+    });
+    const extractArchive = vi.fn(async (_archive: string, destination: string) => {
+      await fs.cp(preparedPack, destination, { recursive: true });
+    });
+    const manager = new DataPackManager({
+      dataRoot,
+      release,
+      downloadFile,
+      extractArchive
+    });
+
+    const initialization = manager.ensureReady();
+    await downloadStarted;
+    const update = manager.update();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(downloadFile).toHaveBeenCalledOnce();
+    continueDownload();
+
+    const [initialized, updated] = await Promise.all([initialization, update]);
+    expect(initialized.source).toBe("downloaded");
+    expect(updated.source).toBe("installed");
+    expect(downloadFile).toHaveBeenCalledOnce();
   });
 
   it("uses a valid active pack without prompting when an update is available", async () => {
@@ -207,6 +255,21 @@ describe("DataPackManager", () => {
       manager.ensureReady({ confirmDownload: async (reason) => reason !== "repair" })
     ).rejects.toEqual(expect.any(DatapackDownloadDeclinedError));
     expect(downloadFile).not.toHaveBeenCalled();
+  });
+
+  it("prepares open data resources before replacing a damaged pack", async () => {
+    const targetRoot = getPackRoot(dataRoot, targetRef.id, targetRef.version);
+    await createTestDatapack(targetRoot, targetRef);
+    await fs.writeFile(path.join(targetRoot, "basemap", "land.geojson"), "damaged", "utf8");
+    const beforeReplace = vi.fn();
+    const { manager } = await createManager(beforeReplace);
+
+    const ready = await manager.ensureReady({
+      confirmDownload: async () => true
+    });
+
+    expect(ready.source).toBe("downloaded");
+    expect(beforeReplace).toHaveBeenCalledOnce();
   });
 
   it("recovers an interrupted replacement before downloading", async () => {

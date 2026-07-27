@@ -22,6 +22,7 @@ export type DataPackInstallerOptions = {
   release: DataPackRelease;
   downloadFile: (url: string, destination: string) => Promise<void>;
   extractArchive: (archivePath: string, destination: string) => Promise<void>;
+  beforeReplace?: () => void | Promise<void>;
 };
 
 export type ValidateReadyPack = (
@@ -71,12 +72,14 @@ export class DataPackInstaller {
   private readonly release: DataPackRelease;
   private readonly downloadFile: DataPackInstallerOptions["downloadFile"];
   private readonly extractArchive: DataPackInstallerOptions["extractArchive"];
+  private readonly beforeReplace: DataPackInstallerOptions["beforeReplace"];
 
   constructor(options: DataPackInstallerOptions) {
     this.dataRoot = options.dataRoot;
     this.release = options.release;
     this.downloadFile = options.downloadFile;
     this.extractArchive = options.extractArchive;
+    this.beforeReplace = options.beforeReplace;
   }
 
   async recoverInterruptedTarget(
@@ -100,6 +103,7 @@ export class DataPackInstaller {
       await fs.rm(previousPath, { recursive: true, force: true });
       return null;
     }
+    await this.beforeReplace?.();
     await replacePackRoot(rootPath, previousPath, false);
     return { ref, rootPath, manifest, source: "recovered" };
   }
@@ -137,6 +141,7 @@ export class DataPackInstaller {
         ref
       );
       await fs.mkdir(path.dirname(targetRoot), { recursive: true });
+      await this.beforeReplace?.();
       const previousPath = await replacePackRoot(
         targetRoot,
         installingPath,

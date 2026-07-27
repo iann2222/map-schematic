@@ -13,8 +13,9 @@ import {
 } from "../shared/datapack/manager";
 import { DataPackStatus, ReadyDataPack } from "../shared/datapack/types";
 import { resolveDataRoot } from "../shared/paths";
+import { closeGeonamesDatabase } from "./geonames";
 
-let manager: DataPackManager | null = null;
+let managerPromise: Promise<DataPackManager> | null = null;
 
 function releaseConfigPath(): string {
   return path.join(app.getAppPath(), "pack-release.json");
@@ -68,15 +69,24 @@ async function extractArchive(archivePath: string, destination: string): Promise
 }
 
 async function getManager(): Promise<DataPackManager> {
-  if (!manager) {
-    manager = new DataPackManager({
-      dataRoot: resolveDataRoot(),
-      release: await readReleaseConfig(),
-      downloadFile,
-      extractArchive
-    });
+  if (!managerPromise) {
+    managerPromise = readReleaseConfig()
+      .then(
+        (release) =>
+          new DataPackManager({
+            dataRoot: resolveDataRoot(),
+            release,
+            downloadFile,
+            extractArchive,
+            beforeReplace: closeGeonamesDatabase
+          })
+      )
+      .catch((error) => {
+        managerPromise = null;
+        throw error;
+      });
   }
-  return manager;
+  return managerPromise;
 }
 
 export async function ensureDatapackReady(

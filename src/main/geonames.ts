@@ -7,11 +7,17 @@ export type { GeonamesResult } from "../shared/ipc-contract";
 let cachedDb: Database.Database | null = null;
 let cachedDbPath: string | null = null;
 
+export function closeGeonamesDatabase(): void {
+  cachedDb?.close();
+  cachedDb = null;
+  cachedDbPath = null;
+}
+
 function openDatabase(dbPath: string): Database.Database {
   if (cachedDb && cachedDbPath === dbPath) {
     return cachedDb;
   }
-  cachedDb?.close();
+  closeGeonamesDatabase();
   cachedDb = new Database(dbPath, { readonly: true, fileMustExist: true });
   cachedDbPath = dbPath;
   return cachedDb;

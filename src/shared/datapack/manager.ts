@@ -38,6 +38,7 @@ export type DataPackManagerOptions = {
   release: unknown;
   downloadFile: (url: string, destination: string) => Promise<void>;
   extractArchive: (archivePath: string, destination: string) => Promise<void>;
+  beforeReplace?: () => void | Promise<void>;
 };
 
 export type EnsureDataPackOptions = {
@@ -60,6 +61,7 @@ export class DataPackManager {
   private readonly release: DataPackRelease;
   private readonly installer: DataPackInstaller;
   private readyPromise: Promise<ReadyDataPack> | null = null;
+  private operationTail: Promise<void> = Promise.resolve();
 
   constructor(options: DataPackManagerOptions) {
     this.dataRoot = path.resolve(options.dataRoot);
@@ -68,7 +70,8 @@ export class DataPackManager {
       dataRoot: this.dataRoot,
       release: this.release,
       downloadFile: options.downloadFile,
-      extractArchive: options.extractArchive
+      extractArchive: options.extractArchive,
+      beforeReplace: options.beforeReplace
     });
   }
 
@@ -78,23 +81,19 @@ export class DataPackManager {
 
   ensureReady(options: EnsureDataPackOptions = {}): Promise<ReadyDataPack> {
     if (!this.readyPromise) {
-      this.readyPromise = this.ensureReadyOnce(options).catch((error) => {
-        if (!(error instanceof DatapackDownloadDeclinedError)) {
-          this.readyPromise = null;
-        }
-        throw error;
-      });
+      this.readyPromise = this.queueReadyOperation(options);
     }
     return this.readyPromise;
   }
 
   update(options: EnsureDataPackOptions = {}): Promise<ReadyDataPack> {
-    this.readyPromise = null;
-    return this.ensureReady({
+    const operation = this.queueReadyOperation({
       ...options,
       allowUpdateDownload: true,
       confirmDownload: options.confirmDownload ?? (async () => true)
     });
+    this.readyPromise = operation;
+    return operation;
   }
 
   invalidate(): void {
@@ -133,6 +132,37 @@ export class DataPackManager {
   }
 
   async getStatus(): Promise<DataPackStatus> {
+    return this.runExclusive(() => this.getStatusOnce());
+  }
+
+  private queueReadyOperation(
+    options: EnsureDataPackOptions
+  ): Promise<ReadyDataPack> {
+    let operation: Promise<ReadyDataPack>;
+    operation = this.runExclusive(() => this.ensureReadyOnce(options)).catch(
+      (error) => {
+        if (
+          this.readyPromise === operation &&
+          !(error instanceof DatapackDownloadDeclinedError)
+        ) {
+          this.readyPromise = null;
+        }
+        throw error;
+      }
+    );
+    return operation;
+  }
+
+  private runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.operationTail.then(operation);
+    this.operationTail = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
+  }
+
+  private async getStatusOnce(): Promise<DataPackStatus> {
     await ensureDataRootExists(this.dataRoot);
     const target = await this.validatePack(this.targetRef);
     if (target) {
