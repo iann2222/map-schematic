@@ -7,7 +7,12 @@ import tempfile
 import unittest
 from unittest import mock
 
-from scripts import build_datapack, update_pack_release
+from scripts import (
+    build_datapack,
+    datapack_environment,
+    datapack_manifest,
+    update_pack_release,
+)
 from scripts.datapack_common import (
     conda_lock_fingerprint,
     is_safe_pack_segment,
@@ -71,8 +76,15 @@ class BuildEnvironmentTests(unittest.TestCase):
             stdout='GDAL 3.11.4 "Eganville", released 2025/09/04\n',
             stderr="",
         )
-        with mock.patch.object(build_datapack.subprocess, "run", return_value=completed):
-            self.assertEqual(build_datapack.read_gdal_version("gdalwarp"), "3.11.4")
+        with mock.patch.object(
+            datapack_environment.subprocess,
+            "run",
+            return_value=completed,
+        ):
+            self.assertEqual(
+                datapack_environment.read_gdal_version("gdalwarp"),
+                "3.11.4",
+            )
 
     def test_rejects_unparseable_gdal_output(self) -> None:
         completed = subprocess.CompletedProcess(
@@ -81,9 +93,13 @@ class BuildEnvironmentTests(unittest.TestCase):
             stdout="unknown tool\n",
             stderr="",
         )
-        with mock.patch.object(build_datapack.subprocess, "run", return_value=completed):
+        with mock.patch.object(
+            datapack_environment.subprocess,
+            "run",
+            return_value=completed,
+        ):
             with self.assertRaisesRegex(RuntimeError, "Unable to parse GDAL version"):
-                build_datapack.read_gdal_version("gdalwarp")
+                datapack_environment.read_gdal_version("gdalwarp")
 
     def test_environment_file_matches_runtime_contract(self) -> None:
         environment = (REPO_ROOT / "environment.yml").read_text(encoding="utf-8")
@@ -96,7 +112,7 @@ class BuildEnvironmentTests(unittest.TestCase):
             "gdal": "gdal",
         }
         for key, dependency in expected_dependencies.items():
-            version = build_datapack.EXPECTED_BUILD_ENVIRONMENT[key]
+            version = datapack_environment.EXPECTED_BUILD_ENVIRONMENT[key]
             self.assertIn(f"- {dependency}={version}", environment)
 
     def test_win_64_lock_is_explicit_and_matches_runtime_contract(self) -> None:
@@ -121,7 +137,7 @@ class BuildEnvironmentTests(unittest.TestCase):
             "gdal": "gdal",
         }
         for key, package in expected_packages.items():
-            version = build_datapack.EXPECTED_BUILD_ENVIRONMENT[key]
+            version = datapack_environment.EXPECTED_BUILD_ENVIRONMENT[key]
             self.assertTrue(
                 any(f"/{package}-{version}-" in line for line in package_lines),
                 f"{package} {version} is missing from the win-64 lock",
@@ -139,7 +155,7 @@ class BuildEnvironmentTests(unittest.TestCase):
         self.assertEqual(
             update_pack_release.expected_official_build_environment(),
             {
-                **build_datapack.EXPECTED_BUILD_ENVIRONMENT,
+                **datapack_environment.EXPECTED_BUILD_ENVIRONMENT,
                 **contract,
             },
         )
@@ -164,16 +180,18 @@ class BuildEnvironmentTests(unittest.TestCase):
                 ),
             ]
             with (
-                mock.patch.object(build_datapack.sys, "prefix", prefix),
+                mock.patch.object(datapack_environment.sys, "prefix", prefix),
                 mock.patch.dict(os.environ, {"CONDA_EXE": "conda"}, clear=False),
                 mock.patch.object(
-                    build_datapack.subprocess,
+                    datapack_environment.subprocess,
                     "run",
                     side_effect=results,
                 ),
             ):
                 self.assertEqual(
-                    build_datapack.validate_locked_conda_environment(lock_path),
+                    datapack_environment.validate_locked_conda_environment(
+                        lock_path
+                    ),
                     read_conda_lock_contract(lock_path),
                 )
 
@@ -193,10 +211,10 @@ class BuildEnvironmentTests(unittest.TestCase):
                 stderr="",
             )
             with (
-                mock.patch.object(build_datapack.sys, "prefix", prefix),
+                mock.patch.object(datapack_environment.sys, "prefix", prefix),
                 mock.patch.dict(os.environ, {"CONDA_EXE": "conda"}, clear=False),
                 mock.patch.object(
-                    build_datapack.subprocess,
+                    datapack_environment.subprocess,
                     "run",
                     return_value=completed,
                 ),
@@ -205,7 +223,9 @@ class BuildEnvironmentTests(unittest.TestCase):
                     RuntimeError,
                     "1 unexpected package",
                 ):
-                    build_datapack.validate_locked_conda_environment(lock_path)
+                    datapack_environment.validate_locked_conda_environment(
+                        lock_path
+                    )
 
     def test_rejects_pip_packages_outside_the_lock(self) -> None:
         lock_path = REPO_ROOT / "environment-win-64.lock.txt"
@@ -229,10 +249,10 @@ class BuildEnvironmentTests(unittest.TestCase):
                 ),
             ]
             with (
-                mock.patch.object(build_datapack.sys, "prefix", prefix),
+                mock.patch.object(datapack_environment.sys, "prefix", prefix),
                 mock.patch.dict(os.environ, {"CONDA_EXE": "conda"}, clear=False),
                 mock.patch.object(
-                    build_datapack.subprocess,
+                    datapack_environment.subprocess,
                     "run",
                     side_effect=results,
                 ),
@@ -241,7 +261,26 @@ class BuildEnvironmentTests(unittest.TestCase):
                     RuntimeError,
                     "extra-package",
                 ):
-                    build_datapack.validate_locked_conda_environment(lock_path)
+                    datapack_environment.validate_locked_conda_environment(
+                        lock_path
+                    )
+
+
+class DataPackManifestTests(unittest.TestCase):
+    def test_collects_payload_files_but_not_existing_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = pathlib.Path(temp_dir)
+            payload = root / "basemap" / "land.geojson"
+            payload.parent.mkdir(parents=True)
+            payload.write_text('{"type":"FeatureCollection"}', encoding="utf-8")
+            (root / "datapack.json").write_text("{}", encoding="utf-8")
+
+            files = datapack_manifest.collect_files(root)
+
+            self.assertEqual(len(files), 1)
+            self.assertEqual(files[0]["path"], "basemap/land.geojson")
+            self.assertEqual(files[0]["sizeBytes"], payload.stat().st_size)
+            self.assertRegex(files[0]["sha256"], r"^[0-9a-f]{64}$")
 
 
 if __name__ == "__main__":

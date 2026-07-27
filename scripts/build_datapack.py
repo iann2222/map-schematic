@@ -1,682 +1,52 @@
 import argparse
-import csv
-import hashlib
-from importlib import metadata
-import json
 import os
 import pathlib
-import platform
-import re
-import sqlite3
-import time
-import zipfile
-import tempfile
-import warnings
 import shutil
-import subprocess
-import sys
-from typing import Dict, Iterable, List, Optional, Tuple
+import time
+from typing import Dict, List
 
 try:
+    from .datapack_basemap import (
+        BASEMAP_LAYERS,
+        build_basemap,
+        try_import_geopandas,
+    )
     from .datapack_common import (
-        CONDA_LOCK_FILE_NAME,
         EXPECTED_BUILD_ENVIRONMENT,
-        conda_lock_fingerprint,
-        parse_conda_explicit_lock,
         require_safe_pack_segment,
     )
+    from .datapack_environment import (
+        read_gdal_version,
+        validate_build_environment,
+        validate_locked_conda_environment,
+    )
+    from .datapack_geonames import (
+        build_geonames_sqlite,
+        resolve_geonames_source,
+    )
+    from .datapack_manifest import collect_files, write_json
+    from .datapack_relief import build_hillshade
 except ImportError:
+    from datapack_basemap import (
+        BASEMAP_LAYERS,
+        build_basemap,
+        try_import_geopandas,
+    )
     from datapack_common import (
-        CONDA_LOCK_FILE_NAME,
         EXPECTED_BUILD_ENVIRONMENT,
-        conda_lock_fingerprint,
-        parse_conda_explicit_lock,
         require_safe_pack_segment,
     )
-
-
-BASEMAP_LAYERS = [
-    ("land", "ne_50m_land.shp"),
-    ("ocean", "ne_50m_ocean.shp"),
-    ("lakes", "ne_50m_lakes.shp"),
-    ("rivers", "ne_50m_rivers_lake_centerlines.shp"),
-    ("coastline", "ne_50m_coastline.shp"),
-]
-
-HILLSHADE_WIDTH = 1200
-HILLSHADE_HEIGHT = 800
-GDAL_VERSION_PATTERN = re.compile(r"\bGDAL\s+(\d+\.\d+\.\d+)\b", re.IGNORECASE)
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
-DEFAULT_CONDA_LOCK = REPO_ROOT / CONDA_LOCK_FILE_NAME
-
-
-def sha256_file(path: pathlib.Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
-def write_json(path: pathlib.Path, payload: Dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_name(f".{path.name}.writing")
-    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temp_path, path)
-
-
-def collect_files(root: pathlib.Path) -> List[Dict[str, object]]:
-    files: List[Dict[str, object]] = []
-    if not root.exists():
-        return files
-    for path in sorted(root.rglob("*")):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(root).as_posix()
-        if rel == "datapack.json":
-            continue
-        files.append(
-            {
-                "path": rel,
-                "sizeBytes": path.stat().st_size,
-                "sha256": sha256_file(path),
-            }
-        )
-    return files
-
-
-def try_import_geopandas():
-    try:
-        import geopandas  # type: ignore
-
-        return geopandas, None
-    except Exception as exc:
-        return None, str(exc)
-
-
-def try_import_shapely():
-    try:
-        from shapely.geometry import LineString  # type: ignore
-        from shapely.ops import split  # type: ignore
-
-        return LineString, split, None
-    except Exception as exc:
-        return None, None, str(exc)
-
-
-def try_import_pil():
-    try:
-        from PIL import Image  # type: ignore
-
-        return Image, None
-    except Exception as exc:
-        return None, str(exc)
-
-
-def split_antimeridian(geometry, splitter_180, splitter_neg_180, split_fn):
-    try:
-        if geometry is None:
-            return []
-        parts = split_fn(geometry, splitter_180)
-        output = []
-        for part in parts.geoms if hasattr(parts, "geoms") else [parts]:
-            subparts = split_fn(part, splitter_neg_180)
-            if hasattr(subparts, "geoms"):
-                output.extend(list(subparts.geoms))
-            else:
-                output.append(subparts)
-        return output
-    except Exception:
-        return [geometry] if geometry is not None else []
-
-
-def build_basemap(
-    geopandas_module,
-    source_dir: pathlib.Path,
-    out_dir: pathlib.Path,
-) -> List[Dict[str, str]]:
-    layers: List[Dict[str, str]] = []
-    LineString, split_fn, shapely_error = try_import_shapely()
-    splitter_180 = None
-    splitter_neg_180 = None
-    if LineString and split_fn:
-        splitter_180 = LineString([(180, -90), (180, 90)])
-        splitter_neg_180 = LineString([(-180, -90), (-180, 90)])
-    for layer_id, shp_name in BASEMAP_LAYERS:
-        shp_path = source_dir / shp_name
-        if not shp_path.exists():
-            continue
-        gdf = geopandas_module.read_file(shp_path)
-        if splitter_180 and splitter_neg_180 and split_fn:
-            crs = gdf.crs
-            gdf["geometry"] = gdf["geometry"].apply(
-                lambda geom: split_antimeridian(geom, splitter_180, splitter_neg_180, split_fn)
-            )
-            gdf = gdf.explode(index_parts=False, ignore_index=True)
-            gdf = geopandas_module.GeoDataFrame(gdf, geometry="geometry", crs=crs)
-            gdf = gdf[gdf.geometry.notnull()]
-        out_path = out_dir / f"{layer_id}.geojson"
-        gdf.to_file(out_path, driver="GeoJSON")
-        layers.append({"id": layer_id, "path": f"basemap/{layer_id}.geojson"})
-    return layers
-
-
-def resolve_hillshade_zip(raw_root: pathlib.Path) -> Optional[pathlib.Path]:
-    candidates = [
-        raw_root / "MSR_50M.zip",
-        raw_root / "US_MSR_10M.zip",
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    for path in raw_root.glob("*.zip"):
-        name = path.name.lower()
-        if "msr" in name and "10m" in name:
-            return path
-        if "msr" in name and "50m" in name:
-            return path
-    return None
-
-
-def resolve_hillshade_image(raw_root: pathlib.Path) -> Optional[pathlib.Path]:
-    candidates = [
-        raw_root / "hillshade_3857.png",
-        raw_root / "hillshade.png",
-        raw_root / "hillshade.jpg",
-        raw_root / "hillshade.jpeg",
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def resolve_gdalwarp() -> Optional[str]:
-    env_path = os.getenv("MAPSCHEM_GDALWARP")
-    if env_path:
-        candidate = pathlib.Path(env_path).expanduser()
-        if not candidate.is_file():
-            raise RuntimeError(
-                f"MAPSCHEM_GDALWARP does not point to a file: {candidate}"
-            )
-        return str(candidate.resolve())
-    return shutil.which("gdalwarp")
-
-
-def read_gdal_version(gdalwarp: str) -> str:
-    try:
-        result = subprocess.run(
-            [gdalwarp, "--version"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Unable to execute gdalwarp --version: {exc}") from exc
-    output = f"{result.stdout}\n{result.stderr}"
-    match = GDAL_VERSION_PATTERN.search(output)
-    if not match:
-        raise RuntimeError(f"Unable to parse GDAL version from: {output.strip()}")
-    return match.group(1)
-
-
-def run_conda_command(conda: str, arguments: List[str]) -> str:
-    command = [conda, *arguments]
-    try:
-        result = subprocess.run(
-            command,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except FileNotFoundError as error:
-        raise RuntimeError(
-            "Conda executable was not found; install Conda and activate the "
-            f"environment created from {CONDA_LOCK_FILE_NAME}"
-        ) from error
-    except subprocess.TimeoutExpired as error:
-        raise RuntimeError(f"Conda environment inspection timed out: {' '.join(command)}") from error
-    except subprocess.CalledProcessError as error:
-        detail = (error.stderr or error.stdout or str(error)).strip()
-        raise RuntimeError(f"Conda environment inspection failed: {detail}") from error
-    return result.stdout
-
-
-def format_conda_package(package_url: str) -> str:
-    return package_url.rsplit("/", 1)[-1].split("#", 1)[0]
-
-
-def validate_locked_conda_environment(
-    lock_path: pathlib.Path = DEFAULT_CONDA_LOCK,
-) -> Dict[str, str]:
-    try:
-        lock_content = lock_path.read_text(encoding="utf-8")
-        expected_platform, expected_packages = parse_conda_explicit_lock(lock_content)
-    except (OSError, ValueError) as error:
-        raise RuntimeError(f"Unable to validate Conda lock {lock_path}: {error}") from error
-
-    prefix = pathlib.Path(sys.prefix).resolve()
-    if not (prefix / "conda-meta").is_dir():
-        raise RuntimeError(
-            "The datapack builder is not running inside a Conda environment; "
-            f"activate the environment created from {CONDA_LOCK_FILE_NAME}"
-        )
-    conda = os.getenv("CONDA_EXE") or shutil.which("conda")
-    if not conda:
-        raise RuntimeError("Conda executable was not found in the active environment")
-
-    explicit_output = run_conda_command(
-        conda,
-        ["list", "--prefix", str(prefix), "--explicit", "--md5"],
+    from datapack_environment import (
+        read_gdal_version,
+        validate_build_environment,
+        validate_locked_conda_environment,
     )
-    try:
-        actual_platform, actual_packages = parse_conda_explicit_lock(
-            explicit_output,
-            require_official_source=False,
-        )
-    except ValueError as error:
-        raise RuntimeError(f"Unable to inspect the active Conda environment: {error}") from error
-
-    expected_set = set(expected_packages)
-    actual_set = set(actual_packages)
-    missing = sorted(expected_set - actual_set)
-    unexpected = sorted(actual_set - expected_set)
-    if actual_platform != expected_platform or missing or unexpected:
-        details = []
-        if actual_platform != expected_platform:
-            details.append(
-                f"platform expected {expected_platform}, found {actual_platform}"
-            )
-        if missing:
-            names = ", ".join(format_conda_package(item) for item in missing[:3])
-            details.append(f"{len(missing)} locked package(s) missing: {names}")
-        if unexpected:
-            names = ", ".join(format_conda_package(item) for item in unexpected[:3])
-            details.append(f"{len(unexpected)} unexpected package(s): {names}")
-        raise RuntimeError(
-            f"Active Conda environment does not match {CONDA_LOCK_FILE_NAME}: "
-            + "; ".join(details)
-        )
-
-    package_list_output = run_conda_command(
-        conda,
-        ["list", "--prefix", str(prefix), "--json"],
+    from datapack_geonames import (
+        build_geonames_sqlite,
+        resolve_geonames_source,
     )
-    try:
-        package_list = json.loads(package_list_output)
-    except json.JSONDecodeError as error:
-        raise RuntimeError("Conda returned invalid JSON while checking pip packages") from error
-    if not isinstance(package_list, list):
-        raise RuntimeError("Conda returned an invalid package list")
-    pip_packages = sorted(
-        str(entry.get("name"))
-        for entry in package_list
-        if isinstance(entry, dict)
-        and (
-            entry.get("channel") == "pypi"
-            or entry.get("build_string") == "pypi_0"
-        )
-    )
-    if pip_packages:
-        raise RuntimeError(
-            "Active Conda environment contains package(s) outside the lock: "
-            + ", ".join(pip_packages[:5])
-        )
-
-    contract = {
-        "condaPlatform": expected_platform,
-        "condaLockSha256": conda_lock_fingerprint(
-            expected_platform,
-            expected_packages,
-        ),
-    }
-    actual_fingerprint = conda_lock_fingerprint(actual_platform, actual_packages)
-    if actual_fingerprint != contract["condaLockSha256"]:
-        raise RuntimeError("Active Conda environment fingerprint does not match the lock")
-    return contract
-
-
-def inspect_build_environment(
-    lock_path: pathlib.Path = DEFAULT_CONDA_LOCK,
-) -> Dict[str, str]:
-    versions = {
-        "python": platform.python_version(),
-    }
-    for manifest_name, output_name in [
-        ("geopandas", "geopandas"),
-        ("pyogrio", "pyogrio"),
-        ("pyproj", "pyproj"),
-        ("Pillow", "pillow"),
-    ]:
-        try:
-            versions[output_name] = metadata.version(manifest_name)
-        except metadata.PackageNotFoundError as exc:
-            raise RuntimeError(
-                f"Required build package is missing: {manifest_name}"
-            ) from exc
-
-    gdalwarp = resolve_gdalwarp()
-    if not gdalwarp:
-        raise RuntimeError(
-            "gdalwarp is missing; create the official Conda environment from "
-            "environment-win-64.lock.txt"
-        )
-    versions["gdal"] = read_gdal_version(gdalwarp)
-    versions.update(validate_locked_conda_environment(lock_path))
-    return versions
-
-
-def validate_build_environment(
-    lock_path: pathlib.Path = DEFAULT_CONDA_LOCK,
-) -> Dict[str, str]:
-    versions = inspect_build_environment(lock_path)
-    mismatches = [
-        f"{name} expected {expected}, found {versions.get(name, 'missing')}"
-        for name, expected in EXPECTED_BUILD_ENVIRONMENT.items()
-        if versions.get(name) != expected
-    ]
-    if mismatches:
-        raise RuntimeError(
-            "Datapack build environment does not match the official toolchain: "
-            + "; ".join(mismatches)
-        )
-    direct_versions = {
-        name: versions[name] for name in EXPECTED_BUILD_ENVIRONMENT
-    }
-    print(
-        "Build environment verified: "
-        + ", ".join(
-            f"{name} {version}" for name, version in direct_versions.items()
-        )
-        + f", Conda lock {versions['condaPlatform']} "
-        + versions["condaLockSha256"][:12]
-    )
-    return versions
-
-
-def build_hillshade_gdal(
-    source_zip: pathlib.Path, out_dir: pathlib.Path, width: int, height: int
-) -> Optional[pathlib.Path]:
-    gdalwarp = resolve_gdalwarp()
-    if not gdalwarp:
-        return None
-    with zipfile.ZipFile(source_zip, "r") as archive:
-        tif_names = [name for name in archive.namelist() if name.lower().endswith(".tif")]
-    if not tif_names:
-        return None
-    tif_name = tif_names[0]
-    src_path = f"/vsizip/{source_zip.as_posix()}/{tif_name}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "hillshade_3857.png"
-    bounds = [
-        "-20037508.342789244",
-        "-20037508.342789244",
-        "20037508.342789244",
-        "20037508.342789244",
-    ]
-    cmd = [
-        gdalwarp,
-        "-t_srs",
-        "EPSG:3857",
-        "-te",
-        *bounds,
-        "-ts",
-        str(width),
-        str(height),
-        "-r",
-        "bilinear",
-        "-of",
-        "PNG",
-        src_path,
-        str(out_path),
-    ]
-    try:
-        subprocess.run(cmd, check=True, capture_output=True)
-    except Exception as exc:
-        print(f"Hillshade GDAL warp failed: {exc}.")
-        return None
-    return out_path
-
-
-def build_hillshade(raw_root: pathlib.Path, out_dir: pathlib.Path) -> Optional[Dict[str, str]]:
-    image_source = resolve_hillshade_image(raw_root)
-    if image_source:
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / image_source.name
-        shutil.copyfile(image_source, out_path)
-        projection = "EPSG:3857" if image_source.name.endswith("_3857.png") else "EPSG:4326"
-        return {
-            "format": image_source.suffix.lstrip(".").lower(),
-            "path": f"relief/{image_source.name}",
-            "source": image_source.name,
-            "projection": projection,
-        }
-
-    source_zip = resolve_hillshade_zip(raw_root)
-    if not source_zip:
-        print("Hillshade skipped (MSR zip missing).")
-        return None
-    gdal_output = build_hillshade_gdal(source_zip, out_dir, HILLSHADE_WIDTH, HILLSHADE_HEIGHT)
-    if gdal_output:
-        return {
-            "format": "png",
-            "path": f"relief/{gdal_output.name}",
-            "source": source_zip.name,
-            "projection": "EPSG:3857",
-        }
-    if os.getenv("MAPSCHEM_ENABLE_TIFF") != "1":
-        print("Hillshade skipped (provide hillshade.png or set MAPSCHEM_ENABLE_TIFF=1).")
-        return None
-    Image, pil_error = try_import_pil()
-    if not Image:
-        print(f"Hillshade skipped (Pillow missing: {pil_error}).")
-        return None
-    Image.MAX_IMAGE_PIXELS = None
-    warnings.simplefilter("ignore", Image.DecompressionBombWarning)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        with zipfile.ZipFile(source_zip, "r") as archive:
-            tif_names = [name for name in archive.namelist() if name.lower().endswith(".tif")]
-            if not tif_names:
-                print("Hillshade skipped (no .tif in MSR zip).")
-                return None
-            tif_name = tif_names[0]
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_dir_path = pathlib.Path(temp_dir)
-                archive.extract(tif_name, temp_dir)
-                tif_path = temp_dir_path / tif_name
-                out_path = out_dir / "hillshade.png"
-                try:
-                    with Image.open(tif_path) as img:
-                        img = img.convert("L")
-                        img.draft("L", (HILLSHADE_WIDTH, HILLSHADE_HEIGHT))
-                        img.thumbnail((HILLSHADE_WIDTH, HILLSHADE_HEIGHT))
-                        if img.size != (HILLSHADE_WIDTH, HILLSHADE_HEIGHT):
-                            img = img.resize((HILLSHADE_WIDTH, HILLSHADE_HEIGHT))
-                        img.save(out_path, "PNG", optimize=True)
-                except Exception as exc:
-                    print(f"Hillshade skipped (convert failed: {exc}).")
-                    return None
-    except Exception as exc:
-        print(f"Hillshade skipped (read failed: {exc}).")
-        return None
-    return {
-        "format": "png",
-        "path": "relief/hillshade.png",
-        "source": source_zip.name,
-        "projection": "EPSG:4326",
-    }
-
-
-def open_geonames_zip(zip_path: pathlib.Path, candidate_txt: str) -> Iterable[List[str]]:
-    with zipfile.ZipFile(zip_path, "r") as archive:
-        with archive.open(candidate_txt, "r") as handle:
-            reader = csv.reader(
-                (line.decode("utf-8") for line in handle),
-                delimiter="\t",
-            )
-            for row in reader:
-                yield row
-
-
-def ensure_sqlite(db_path: pathlib.Path) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    return conn
-
-
-def create_geonames_schema(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS geonames (
-          geonameid INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          asciiname TEXT,
-          latitude REAL NOT NULL,
-          longitude REAL NOT NULL,
-          feature_class TEXT,
-          feature_code TEXT,
-          country_code TEXT,
-          admin1_code TEXT,
-          admin2_code TEXT,
-          population INTEGER,
-          timezone TEXT,
-          modification_date TEXT
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS alternatenames (
-          geonameid INTEGER NOT NULL,
-          lang TEXT NOT NULL,
-          name TEXT NOT NULL,
-          is_preferred INTEGER,
-          is_short INTEGER,
-          is_colloquial INTEGER,
-          is_historic INTEGER
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE VIRTUAL TABLE IF NOT EXISTS geonames_fts
-        USING fts5(name, lang, geonameid UNINDEXED, is_preferred UNINDEXED)
-        """
-    )
-
-
-def insert_geonames_rows(
-    conn: sqlite3.Connection,
-    rows: Iterable[List[str]],
-) -> None:
-    insert_sql = """
-        INSERT INTO geonames (
-          geonameid, name, asciiname, latitude, longitude,
-          feature_class, feature_code, country_code, admin1_code, admin2_code,
-          population, timezone, modification_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """
-    batch: List[Tuple[object, ...]] = []
-    for row in rows:
-        if len(row) < 19:
-            continue
-        batch.append(
-            (
-                int(row[0]),
-                row[1],
-                row[2],
-                float(row[4]),
-                float(row[5]),
-                row[6],
-                row[7],
-                row[8],
-                row[10],
-                row[11],
-                int(row[14] or 0),
-                row[17],
-                row[18],
-            )
-        )
-        if len(batch) >= 5000:
-            conn.executemany(insert_sql, batch)
-            batch.clear()
-    if batch:
-        conn.executemany(insert_sql, batch)
-
-
-def insert_alternate_names(
-    conn: sqlite3.Connection,
-    rows: Iterable[List[str]],
-    keep_langs: List[str],
-) -> None:
-    insert_alt = """
-        INSERT INTO alternatenames (
-          geonameid, lang, name, is_preferred, is_short, is_colloquial, is_historic
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    """
-    insert_fts = "INSERT INTO geonames_fts (name, lang, geonameid, is_preferred) VALUES (?, ?, ?, ?)"
-    batch_alt: List[Tuple[object, ...]] = []
-    batch_fts: List[Tuple[object, ...]] = []
-    for row in rows:
-        if len(row) < 10:
-            continue
-        lang = row[2]
-        if lang not in keep_langs:
-            continue
-        geonameid = int(row[1])
-        name = row[3]
-        is_preferred = int(row[4] == "1")
-        is_short = int(row[5] == "1")
-        is_colloquial = int(row[6] == "1")
-        is_historic = int(row[7] == "1")
-        batch_alt.append(
-            (geonameid, lang, name, is_preferred, is_short, is_colloquial, is_historic)
-        )
-        batch_fts.append((name, lang, geonameid, is_preferred))
-        if len(batch_alt) >= 5000:
-            conn.executemany(insert_alt, batch_alt)
-            conn.executemany(insert_fts, batch_fts)
-            batch_alt.clear()
-            batch_fts.clear()
-    if batch_alt:
-        conn.executemany(insert_alt, batch_alt)
-        conn.executemany(insert_fts, batch_fts)
-
-
-def build_geonames_sqlite(
-    source_zip: pathlib.Path,
-    alternate_zip: pathlib.Path,
-    out_db: pathlib.Path,
-    keep_langs: List[str],
-    force: bool,
-) -> None:
-    if out_db.exists():
-        if not force:
-            raise RuntimeError(f"GeoNames DB already exists: {out_db}")
-        out_db.unlink()
-    conn = ensure_sqlite(out_db)
-    create_geonames_schema(conn)
-    rows = open_geonames_zip(source_zip, source_zip.stem + ".txt")
-    insert_geonames_rows(conn, rows)
-    alt_rows = open_geonames_zip(alternate_zip, alternate_zip.stem + ".txt")
-    insert_alternate_names(conn, alt_rows, keep_langs)
-    conn.commit()
-    conn.close()
-
-
-def resolve_geonames_source(raw_root: pathlib.Path, mode: str) -> pathlib.Path:
-    if mode == "all":
-        return raw_root / "allCountries.zip"
-    if mode == "cities1000":
-        return raw_root / "cities1000.zip"
-    if mode == "cities15000":
-        return raw_root / "cities15000.zip"
-    raise ValueError(f"Unsupported geonames mode: {mode}")
+    from datapack_manifest import collect_files, write_json
+    from datapack_relief import build_hillshade
 
 
 def safe_segment_argument(label: str):
@@ -689,7 +59,10 @@ def safe_segment_argument(label: str):
     return parse
 
 
-def resolve_version_root(out_root: pathlib.Path, version: str) -> pathlib.Path:
+def resolve_version_root(
+    out_root: pathlib.Path,
+    version: str,
+) -> pathlib.Path:
     safe_version = require_safe_pack_segment(version, "Data pack version")
     resolved_root = out_root.resolve()
     candidate = (resolved_root / safe_version).resolve()
@@ -698,10 +71,207 @@ def resolve_version_root(out_root: pathlib.Path, version: str) -> pathlib.Path:
     return candidate
 
 
+def discover_existing_basemap_layers(
+    basemap_dir: pathlib.Path,
+) -> List[Dict[str, str]]:
+    layers: List[Dict[str, str]] = []
+    for layer_id, _ in BASEMAP_LAYERS:
+        candidate = basemap_dir / f"{layer_id}.geojson"
+        if candidate.exists():
+            layers.append(
+                {
+                    "id": layer_id,
+                    "path": f"basemap/{layer_id}.geojson",
+                }
+            )
+    return layers
+
+
+def discover_existing_hillshade(
+    relief_dir: pathlib.Path,
+) -> Dict[str, str] | None:
+    candidates = [
+        relief_dir / "hillshade_3857.png",
+        relief_dir / "hillshade.png",
+        relief_dir / "hillshade.jpg",
+        relief_dir / "hillshade.jpeg",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return {
+                "format": candidate.suffix.lstrip(".").lower(),
+                "path": f"relief/{candidate.name}",
+                "source": candidate.name,
+                "projection": (
+                    "EPSG:3857"
+                    if candidate.name.endswith("_3857.png")
+                    else "EPSG:4326"
+                ),
+            }
+    return None
+
+
+def build_basemap_layers(
+    raw_root: pathlib.Path,
+    basemap_dir: pathlib.Path,
+    manifest_only: bool,
+) -> List[Dict[str, str]]:
+    if manifest_only:
+        return discover_existing_basemap_layers(basemap_dir)
+
+    source = raw_root / "50m_physical"
+    geopandas_module, geopandas_error = try_import_geopandas()
+    if geopandas_module and source.exists():
+        return build_basemap(geopandas_module, source, basemap_dir)
+
+    reasons = []
+    if not geopandas_module:
+        reasons.append(f"geopandas import failed: {geopandas_error}")
+    if not source.exists():
+        reasons.append(f"missing source: {source}")
+    detail = "; ".join(reasons) if reasons else "unknown"
+    print(f"Basemap skipped ({detail}).")
+    return []
+
+
+def build_geonames(
+    raw_root: pathlib.Path,
+    geonames_dir: pathlib.Path,
+    source_mode: str,
+    force: bool,
+    manifest_only: bool,
+) -> pathlib.Path:
+    database = geonames_dir / "geonames.sqlite"
+    if manifest_only:
+        if not database.exists():
+            print("GeoNames skipped (geonames.sqlite missing).")
+        return database
+
+    source_zip = resolve_geonames_source(raw_root, source_mode)
+    alternate_zip = raw_root / "alternateNamesV2.zip"
+    if source_zip.exists() and alternate_zip.exists():
+        build_geonames_sqlite(
+            source_zip,
+            alternate_zip,
+            database,
+            ["en", "zh", "zh-TW"],
+            force,
+        )
+    else:
+        print("GeoNames skipped (source zip missing).")
+    return database
+
+
+def validate_pack_outputs(
+    basemap_layers: List[Dict[str, str]],
+    geonames_database: pathlib.Path,
+) -> None:
+    expected_layer_ids = {layer_id for layer_id, _ in BASEMAP_LAYERS}
+    actual_layer_ids = {layer["id"] for layer in basemap_layers}
+    missing_layers = sorted(expected_layer_ids - actual_layer_ids)
+    if missing_layers:
+        raise SystemExit(
+            "Datapack build incomplete; missing basemap layers: "
+            + ", ".join(missing_layers)
+        )
+    if (
+        not geonames_database.is_file()
+        or geonames_database.stat().st_size == 0
+    ):
+        raise SystemExit(
+            "Datapack build incomplete; "
+            "GeoNames database is missing or empty"
+        )
+
+
+def create_manifest(
+    pack_id: str,
+    version: str,
+    build_environment: Dict[str, str],
+    basemap_layers: List[Dict[str, str]],
+    hillshade_info: Dict[str, str] | None,
+    pack_root: pathlib.Path,
+) -> Dict[str, object]:
+    manifest: Dict[str, object] = {
+        "id": pack_id,
+        "version": version,
+        "createdAt": time.strftime(
+            "%Y-%m-%dT%H:%M:%SZ",
+            time.gmtime(),
+        ),
+        "projection": "EPSG:4326",
+        "buildEnvironment": build_environment,
+        "basemap": {
+            "format": "geojson",
+            "layers": basemap_layers,
+        },
+        "geonames": {
+            "format": "sqlite+fts",
+            "dbPath": "geonames/geonames.sqlite",
+            "languages": ["en", "zh-TW", "zh"],
+        },
+        "relief": hillshade_info,
+        "files": collect_files(pack_root),
+    }
+
+    referenced_paths = {
+        layer["path"]
+        for layer in basemap_layers
+    }
+    referenced_paths.add("geonames/geonames.sqlite")
+    if hillshade_info:
+        referenced_paths.add(hillshade_info["path"])
+    files = manifest["files"]
+    if not isinstance(files, list):
+        raise RuntimeError("Manifest file collection returned an invalid value")
+    collected_paths = {
+        entry["path"]
+        for entry in files
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+    }
+    missing_files = sorted(referenced_paths - collected_paths)
+    if missing_files:
+        raise SystemExit(
+            "Datapack build incomplete; files missing from manifest: "
+            + ", ".join(missing_files)
+        )
+    return manifest
+
+
+def activate_built_pack(
+    pack_root: pathlib.Path,
+    final_pack_root: pathlib.Path,
+) -> None:
+    previous_root = (
+        final_pack_root.parent
+        / f".{final_pack_root.name}-previous-build"
+    )
+    shutil.rmtree(previous_root, ignore_errors=True)
+    if final_pack_root.exists():
+        final_pack_root.rename(previous_root)
+    try:
+        pack_root.rename(final_pack_root)
+    except Exception:
+        if previous_root.exists() and not final_pack_root.exists():
+            previous_root.rename(final_pack_root)
+        raise
+    shutil.rmtree(previous_root, ignore_errors=True)
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build map-schematic datapack.")
-    parser.add_argument("--raw", default="geodata_source", help="Raw data root")
-    parser.add_argument("--out", default="geodata/packs/standard", help="Output root")
+    parser = argparse.ArgumentParser(
+        description="Build map-schematic datapack."
+    )
+    parser.add_argument(
+        "--raw",
+        default="geodata_source",
+        help="Raw data root",
+    )
+    parser.add_argument(
+        "--out",
+        default="geodata/packs/standard",
+        help="Output root",
+    )
     parser.add_argument(
         "--id",
         default="standard",
@@ -746,13 +316,14 @@ def main() -> None:
 
     if manifest_only and not final_pack_root.is_dir():
         raise SystemExit(
-            f"Cannot rebuild manifest; target pack does not exist: {final_pack_root}"
+            "Cannot rebuild manifest; target pack does not exist: "
+            f"{final_pack_root}"
         )
-    if final_pack_root.exists() and not manifest_only:
-        if not args.force:
-            raise SystemExit(
-                f"Target pack already exists; use --force to rebuild: {final_pack_root}"
-            )
+    if final_pack_root.exists() and not manifest_only and not args.force:
+        raise SystemExit(
+            "Target pack already exists; use --force to rebuild: "
+            f"{final_pack_root}"
+        )
 
     if manifest_only:
         pack_root = final_pack_root
@@ -766,113 +337,37 @@ def main() -> None:
     basemap_dir.mkdir(parents=True, exist_ok=True)
     geonames_dir.mkdir(parents=True, exist_ok=True)
 
-    basemap_layers: List[Dict[str, str]] = []
-    basemap_source = raw_root / "50m_physical"
-    if manifest_only:
-        for layer_id, _ in BASEMAP_LAYERS:
-            candidate = basemap_dir / f"{layer_id}.geojson"
-            if candidate.exists():
-                basemap_layers.append({"id": layer_id, "path": f"basemap/{layer_id}.geojson"})
-    else:
-        geopandas_module, geopandas_error = try_import_geopandas()
-        if geopandas_module and basemap_source.exists():
-            basemap_layers = build_basemap(geopandas_module, basemap_source, basemap_dir)
-        else:
-            reason = []
-            if not geopandas_module:
-                reason.append(f"geopandas import failed: {geopandas_error}")
-            if not basemap_source.exists():
-                reason.append(f"missing source: {basemap_source}")
-            detail = "; ".join(reason) if reason else "unknown"
-            print(f"Basemap skipped ({detail}).")
+    basemap_layers = build_basemap_layers(
+        raw_root,
+        basemap_dir,
+        manifest_only,
+    )
+    geonames_database = build_geonames(
+        raw_root,
+        geonames_dir,
+        args.geonames,
+        args.force,
+        manifest_only,
+    )
+    hillshade_info = (
+        discover_existing_hillshade(relief_dir)
+        if manifest_only
+        else build_hillshade(raw_root, relief_dir)
+    )
 
-    geonames_source = resolve_geonames_source(raw_root, args.geonames)
-    alternate_zip = raw_root / "alternateNamesV2.zip"
-    geonames_db = geonames_dir / "geonames.sqlite"
-    if manifest_only:
-        if not geonames_db.exists():
-            print("GeoNames skipped (geonames.sqlite missing).")
-    else:
-        if geonames_source.exists() and alternate_zip.exists():
-            build_geonames_sqlite(
-                geonames_source,
-                alternate_zip,
-                geonames_db,
-                ["en", "zh", "zh-TW"],
-                args.force,
-            )
-        else:
-            print("GeoNames skipped (source zip missing).")
-
-    if manifest_only:
-        hillshade_info = None
-        for candidate in [
-            relief_dir / "hillshade_3857.png",
-            relief_dir / "hillshade.png",
-            relief_dir / "hillshade.jpg",
-            relief_dir / "hillshade.jpeg",
-        ]:
-            if candidate.exists():
-                hillshade_info = {
-                    "format": candidate.suffix.lstrip(".").lower(),
-                    "path": f"relief/{candidate.name}",
-                    "source": candidate.name,
-                    "projection": "EPSG:3857" if candidate.name.endswith("_3857.png") else "EPSG:4326",
-                }
-                break
-    else:
-        hillshade_info = build_hillshade(raw_root, relief_dir)
-
-    expected_layer_ids = {layer_id for layer_id, _ in BASEMAP_LAYERS}
-    actual_layer_ids = {layer["id"] for layer in basemap_layers}
-    missing_layers = sorted(expected_layer_ids - actual_layer_ids)
-    if missing_layers:
-        raise SystemExit(f"Datapack build incomplete; missing basemap layers: {', '.join(missing_layers)}")
-    if not geonames_db.is_file() or geonames_db.stat().st_size == 0:
-        raise SystemExit("Datapack build incomplete; GeoNames database is missing or empty")
-
-    datapack = {
-        "id": args.id,
-        "version": args.version,
-        "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "projection": "EPSG:4326",
-        "buildEnvironment": build_environment,
-        "basemap": {
-            "format": "geojson",
-            "layers": basemap_layers,
-        },
-        "geonames": {
-            "format": "sqlite+fts",
-            "dbPath": "geonames/geonames.sqlite",
-            "languages": ["en", "zh-TW", "zh"],
-        },
-        "relief": hillshade_info,
-        "files": [],
-    }
-
-    datapack["files"] = collect_files(pack_root)
-    referenced_paths = {layer["path"] for layer in basemap_layers}
-    referenced_paths.add("geonames/geonames.sqlite")
-    if hillshade_info:
-        referenced_paths.add(hillshade_info["path"])
-    collected_paths = {entry["path"] for entry in datapack["files"]}
-    missing_files = sorted(referenced_paths - collected_paths)
-    if missing_files:
-        raise SystemExit(f"Datapack build incomplete; files missing from manifest: {', '.join(missing_files)}")
-    write_json(pack_root / "datapack.json", datapack)
+    validate_pack_outputs(basemap_layers, geonames_database)
+    manifest = create_manifest(
+        args.id,
+        args.version,
+        build_environment,
+        basemap_layers,
+        hillshade_info,
+        pack_root,
+    )
+    write_json(pack_root / "datapack.json", manifest)
 
     if not manifest_only:
-        previous_root = out_root / f".{args.version}-previous-build"
-        shutil.rmtree(previous_root, ignore_errors=True)
-        if final_pack_root.exists():
-            final_pack_root.rename(previous_root)
-        try:
-            pack_root.rename(final_pack_root)
-        except Exception:
-            if previous_root.exists() and not final_pack_root.exists():
-                previous_root.rename(final_pack_root)
-            raise
-        shutil.rmtree(previous_root, ignore_errors=True)
+        activate_built_pack(pack_root, final_pack_root)
 
     print(f"Data pack initialized at: {final_pack_root}")
 

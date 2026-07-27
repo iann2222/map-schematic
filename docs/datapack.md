@@ -127,6 +127,16 @@ python -m unittest discover -s test/python -p "test_*.py"
 
 正式建置前仍應執行 `python scripts/build_datapack.py --check-environment`。缺少工具或版本不同時，腳本會在讀取原始資料前停止。
 
+資料包建置腳本依責任分為：
+
+- `build_datapack.py`：命令列參數、建置順序、完整性檢查與版本目錄切換。
+- `datapack_environment.py`：Conda 鎖定環境與 GDAL 工具鏈驗證。
+- `datapack_basemap.py`：Natural Earth 圖層轉換與跨日期變更線幾何處理。
+- `datapack_geonames.py`：GeoNames ZIP 讀取、SQLite schema、批次匯入與 FTS 索引。
+- `datapack_relief.py`：地形來源辨識、GDAL 投影與陰影圖片產生。
+- `datapack_manifest.py`：內容檔 checksum 收集與 manifest 安全寫入。
+- `datapack_common.py`：建置與發布腳本共用的版本、安全路徑及 Conda 鎖定契約。
+
 標準範例：
 
 ```powershell

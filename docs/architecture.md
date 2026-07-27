@@ -67,11 +67,19 @@
 主程序（Main）：
 
 - `src/main/index.ts`
-  - 建立安全隔離的 Electron 視窗與應用程式選單。
-  - 註冊資料包、底圖、地形、GeoNames、專案檔與匯出 IPC。
-  - 依開發版／封裝版路徑讀取同一份 `ATTRIBUTIONS.md`，供應用程式內的授權入口顯示。
-  - 讀取建置時固化的版本與 commit SHA，透過受限 IPC 提供給「說明 > 關於」。
-  - 管理檔案選擇、未儲存變更確認、專案備份恢復詢問、PDF 產生及開發版／封裝版輸出路徑。
+  - 作為 main process composition root，只負責 Electron 生命週期、建立控制器及註冊各領域 IPC。
+- `src/main/window-controller.ts`
+  - 建立安全隔離的 BrowserWindow，管理視窗生命週期、未儲存關閉確認與 renderer dialog 清理。
+- `src/main/renderer-dialog.ts`
+  - 集中 main 向 renderer 發出的應用程式內建 dialog 請求、回應驗證與待處理請求清理。
+- `src/main/app-menu.ts`
+  - 建立應用程式選單並將編輯、專案、匯出與偏好設定命令送至目前視窗。
+- `src/main/app-info-ipc.ts`
+  - 提供授權資訊、版本與 commit SHA，並設定「說明 > 關於」內容。
+- `src/main/datapack-ipc.ts`
+  - 註冊資料包狀態、更新、底圖、地形與 GeoNames IPC；地理資料只從已驗證的本機官方資料包讀取。
+- `src/main/project-ipc.ts`
+  - 序列化專案儲存，管理載入、備份恢復詢問、PNG／SVG／PDF 匯出及開發版／封裝版輸出路徑。
 - `src/main/data-root.ts`
   - 決定開發版與封裝版共用的官方資料包位置，並保留使用中的位置設定。
 - `src/main/preload.ts`
@@ -146,7 +154,10 @@
 - `src/shared/paths.ts`
   - 統一解析資料根目錄。
 - `src/shared/datapack/*`
-  - 定義 manifest／release 契約、檔案校驗、active 版本、初始化、更新、修復、安全啟用與 fallback。
+  - 定義 manifest／release 契約、檔案校驗、初始化、更新、修復、安全啟用與 fallback。
+  - `manager.ts` 負責目標版本、fallback、快取與產品層的資料包就緒決策。
+  - `local-store.ts` 負責掃描本機版本、讀寫 active 指標及載入已安裝 manifest。
+  - `installer.ts` 負責下載、ZIP 驗證、暫存安裝、完整性檢查、安全替換與中斷恢復。
   - `contract.d.ts` 保存跨 main／renderer 使用的資料包型別，runtime 模組只保留實際邏輯。
   - `pack-release.json` 是目標資料包 id／version 的唯一來源，不另在程式碼維護重複版本常數。
 - `src/shared/validation/primitives.ts`

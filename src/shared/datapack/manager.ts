@@ -1,33 +1,37 @@
-import { randomUUID } from "crypto";
-import fs from "fs/promises";
 import path from "path";
 
-import { getActivePath, getManifestPath, getPacksRoot, getPackRoot } from "./layout";
+import { getPackRoot } from "./layout";
 import {
-  isSafePackSegment,
   parseRelease,
-  sha256File,
   validateInstalledDatapack
 } from "./manifest";
 import {
+  ensureDataRootExists,
+  listLocalPacks,
+  pathExists,
+  readActivePack,
+  setActivePack
+} from "./local-store";
+import { DataPackInstaller } from "./installer";
+import {
   DataPackDownloadReason,
-  DataPackManifest,
   DataPackRef,
   DataPackRelease,
   DataPackStatus,
   ReadyDataPack
 } from "./types";
 
-export type ActivePackState = {
-  active: DataPackRef | null;
-};
-
-export type LocalPackInfo = {
-  ref: DataPackRef;
-  rootPath: string;
-  manifestPath: string;
-  manifest?: DataPackManifest;
-};
+export {
+  ensureDataRootExists,
+  listLocalPacks,
+  loadLocalPacksWithManifest,
+  readActivePack,
+  setActivePack
+} from "./local-store";
+export type {
+  ActivePackState,
+  LocalPackInfo
+} from "./local-store";
 
 export type DataPackManagerOptions = {
   dataRoot: string;
@@ -51,126 +55,21 @@ export class DatapackDownloadDeclinedError extends Error {
   }
 }
 
-async function pathExists(target: string): Promise<boolean> {
-  try {
-    await fs.access(target);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
-}
-
-export async function ensureDataRootExists(dataRoot: string): Promise<void> {
-  await fs.mkdir(getPacksRoot(dataRoot), { recursive: true });
-}
-
-export async function listLocalPacks(dataRoot: string): Promise<LocalPackInfo[]> {
-  const packsRoot = getPacksRoot(dataRoot);
-  const result: LocalPackInfo[] = [];
-  let idEntries;
-  try {
-    idEntries = await fs.readdir(packsRoot, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return result;
-    }
-    throw error;
-  }
-  for (const idEntry of idEntries) {
-    if (!idEntry.isDirectory() || !isSafePackSegment(idEntry.name)) {
-      continue;
-    }
-    const idPath = path.join(packsRoot, idEntry.name);
-    const versionEntries = await fs.readdir(idPath, { withFileTypes: true });
-    for (const versionEntry of versionEntries) {
-      if (!versionEntry.isDirectory() || !isSafePackSegment(versionEntry.name)) {
-        continue;
-      }
-      const ref = { id: idEntry.name, version: versionEntry.name };
-      result.push({
-        ref,
-        rootPath: getPackRoot(dataRoot, ref.id, ref.version),
-        manifestPath: getManifestPath(dataRoot, ref.id, ref.version)
-      });
-    }
-  }
-  return result;
-}
-
-export async function loadLocalPacksWithManifest(dataRoot: string): Promise<LocalPackInfo[]> {
-  const packs = await listLocalPacks(dataRoot);
-  return Promise.all(
-    packs.map(async (pack) => {
-      try {
-        const manifest = await validateInstalledDatapack(pack.rootPath, pack.ref);
-        return { ...pack, manifest };
-      } catch {
-        return pack;
-      }
-    })
-  );
-}
-
-export async function readActivePack(dataRoot: string): Promise<ActivePackState> {
-  try {
-    const raw = await fs.readFile(getActivePath(dataRoot), "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { active: null };
-    }
-    const active = (parsed as { active?: unknown }).active;
-    if (typeof active !== "object" || active === null || Array.isArray(active)) {
-      return { active: null };
-    }
-    const ref = active as { id?: unknown; version?: unknown };
-    if (!isSafePackSegment(ref.id) || !isSafePackSegment(ref.version)) {
-      return { active: null };
-    }
-    return { active: { id: ref.id, version: ref.version } };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) {
-      return { active: null };
-    }
-    throw error;
-  }
-}
-
-export async function setActivePack(dataRoot: string, ref: DataPackRef): Promise<void> {
-  if (!isSafePackSegment(ref.id) || !isSafePackSegment(ref.version)) {
-    throw new Error("Active datapack id and version must be safe path segments");
-  }
-  await ensureDataRootExists(dataRoot);
-  const activePath = getActivePath(dataRoot);
-  const tempPath = `${activePath}.saving-${process.pid}-${randomUUID()}`;
-  const handle = await fs.open(tempPath, "wx");
-  try {
-    await handle.writeFile(JSON.stringify({ active: ref }, null, 2), "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  try {
-    await fs.rename(tempPath, activePath);
-  } finally {
-    await fs.rm(tempPath, { force: true });
-  }
-}
-
 export class DataPackManager {
   private readonly dataRoot: string;
   private readonly release: DataPackRelease;
-  private readonly downloadFile: DataPackManagerOptions["downloadFile"];
-  private readonly extractArchive: DataPackManagerOptions["extractArchive"];
+  private readonly installer: DataPackInstaller;
   private readyPromise: Promise<ReadyDataPack> | null = null;
 
   constructor(options: DataPackManagerOptions) {
     this.dataRoot = path.resolve(options.dataRoot);
     this.release = parseRelease(options.release);
-    this.downloadFile = options.downloadFile;
-    this.extractArchive = options.extractArchive;
+    this.installer = new DataPackInstaller({
+      dataRoot: this.dataRoot,
+      release: this.release,
+      downloadFile: options.downloadFile,
+      extractArchive: options.extractArchive
+    });
   }
 
   get targetRef(): DataPackRef {
@@ -210,68 +109,6 @@ export class DataPackManager {
     } catch {
       return null;
     }
-  }
-
-  private async recoverInterruptedTarget(): Promise<ReadyDataPack | null> {
-    const ref = this.targetRef;
-    const rootPath = getPackRoot(this.dataRoot, ref.id, ref.version);
-    const previousPath = `${rootPath}-previous`;
-    if (!(await pathExists(previousPath))) {
-      return null;
-    }
-    const current = await this.validatePack(ref);
-    if (current) {
-      await fs.rm(previousPath, { recursive: true, force: true });
-      return current;
-    }
-    let manifest: DataPackManifest;
-    try {
-      manifest = await validateInstalledDatapack(previousPath, ref);
-    } catch {
-      await fs.rm(previousPath, { recursive: true, force: true });
-      return null;
-    }
-    await this.replaceTargetRoot(rootPath, previousPath, false);
-    return { ref, rootPath, manifest, source: "recovered" };
-  }
-
-  private async replaceTargetRoot(
-    targetRoot: string,
-    incomingRoot: string,
-    preserveCurrent: boolean
-  ): Promise<string | null> {
-    const previousPath = `${targetRoot}-previous`;
-    const displacedPath = `${targetRoot}-displaced-${randomUUID()}`;
-    let displacedCurrent = false;
-
-    if (await pathExists(targetRoot)) {
-      const destination = preserveCurrent ? previousPath : displacedPath;
-      if (preserveCurrent && (await pathExists(previousPath))) {
-        throw new Error("Datapack replacement has an unresolved previous pack");
-      }
-      await fs.rename(targetRoot, destination);
-      displacedCurrent = true;
-    }
-
-    try {
-      await fs.rename(incomingRoot, targetRoot);
-    } catch (error) {
-      if (displacedCurrent) {
-        const restoreSource = preserveCurrent ? previousPath : displacedPath;
-        try {
-          await fs.rename(restoreSource, targetRoot);
-        } catch {
-          // Keep the preserved directory intact for the next recovery attempt.
-        }
-      }
-      throw error;
-    }
-
-    if (displacedCurrent && !preserveCurrent) {
-      await fs.rm(displacedPath, { recursive: true, force: true });
-    }
-
-    return preserveCurrent && displacedCurrent ? previousPath : null;
   }
 
   private async findFallback(): Promise<ReadyDataPack | null> {
@@ -331,7 +168,9 @@ export class DataPackManager {
 
   private async ensureReadyOnce(options: EnsureDataPackOptions): Promise<ReadyDataPack> {
     await ensureDataRootExists(this.dataRoot);
-    const recovered = await this.recoverInterruptedTarget();
+    const recovered = await this.installer.recoverInterruptedTarget(
+      (ref) => this.validatePack(ref)
+    );
     if (recovered) {
       await setActivePack(this.dataRoot, recovered.ref);
       return recovered;
@@ -371,38 +210,6 @@ export class DataPackManager {
         throw new DatapackDownloadDeclinedError(reason);
       }
     }
-    return this.installRelease();
-  }
-
-  private async installRelease(): Promise<ReadyDataPack> {
-    const ref = this.targetRef;
-    const downloadRoot = path.join(this.dataRoot, ".download");
-    const archivePath = path.join(downloadRoot, `datapack-${ref.id}-${ref.version}.zip`);
-    const installingPath = path.join(
-      downloadRoot,
-      `datapack-${ref.id}-${ref.version}-installing`
-    );
-    const targetRoot = getPackRoot(this.dataRoot, ref.id, ref.version);
-    await fs.mkdir(downloadRoot, { recursive: true });
-    try {
-      await fs.rm(installingPath, { recursive: true, force: true });
-      await this.downloadFile(this.release.url, archivePath);
-      const actualChecksum = await sha256File(archivePath);
-      if (actualChecksum.toLowerCase() !== this.release.sha256.toLowerCase()) {
-        throw new Error("Datapack release checksum mismatch");
-      }
-      await this.extractArchive(archivePath, installingPath);
-      const manifest = await validateInstalledDatapack(installingPath, ref);
-      await fs.mkdir(path.dirname(targetRoot), { recursive: true });
-      const previousPath = await this.replaceTargetRoot(targetRoot, installingPath, true);
-      await setActivePack(this.dataRoot, ref);
-      if (previousPath) {
-        await fs.rm(previousPath, { recursive: true, force: true });
-      }
-      return { ref, rootPath: targetRoot, manifest, source: "downloaded" };
-    } finally {
-      await fs.rm(installingPath, { recursive: true, force: true });
-      await fs.rm(archivePath, { force: true });
-    }
+    return this.installer.installRelease();
   }
 }
