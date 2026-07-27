@@ -10,6 +10,10 @@ fs.copyFileSync(
   path.join(srcDir, "styles.css"),
   path.join(outDir, "styles.css")
 );
+fs.copyFileSync(
+  path.join(srcDir, "icons.svg"),
+  path.join(outDir, "icons.svg")
+);
 fs.cpSync(path.join(srcDir, "styles"), path.join(outDir, "styles"), {
   recursive: true
 });

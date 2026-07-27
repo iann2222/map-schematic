@@ -1,8 +1,5 @@
-@layer foundation, components;
-
-@layer foundation {
-/* Legacy baseline migrated from index.html. Component rules may override it. */
-/* Legacy baseline migrated from index.html. Component rules may override it. */
+@layer legacy {
+/* Legacy baseline retained below the current design-system layers. */
 :root {
   --bg: #0b0f19;
   --panel: #111827;

@@ -29,7 +29,9 @@ export function renderObjectList(options: {
     deleteButton.className = "marker-delete-button";
     deleteButton.type = "button";
     deleteButton.title = "刪除";
-    deleteButton.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"></path></svg>`;
+    deleteButton.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<use href="./icons.svg#icon-trash"></use></svg>';
 
     if (key.startsWith("marker:")) {
       const marker = markersById.get(key.slice("marker:".length));

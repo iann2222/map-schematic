@@ -218,8 +218,8 @@ export class OrderDialogController {
     button.title = isTop ? "移到最上" : "移到最下";
     button.setAttribute("aria-label", button.title);
     button.innerHTML = isTop
-      ? '<svg class="icon-double-up" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path><path d="M18 9l-6-6-6 6"></path></svg>'
-      : '<svg class="icon-double-down" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path><path d="M6 15l6 6 6-6"></path></svg>';
+      ? '<svg class="icon-double-up" viewBox="0 0 24 24" aria-hidden="true"><use href="./icons.svg#icon-chevrons-up"></use></svg>'
+      : '<svg class="icon-double-down" viewBox="0 0 24 24" aria-hidden="true"><use href="./icons.svg#icon-chevrons-down"></use></svg>';
     return button;
   }
 

@@ -330,12 +330,12 @@ export class InspectorController {
     const marker = this.options.getSelectedMarker();
     const shape = this.options.getSelectedShape();
     if (!marker && !shape) {
-      itemNameRow.style.display = "none";
+      itemNameRow.hidden = true;
       itemNameInput.value = "";
       itemNameInput.disabled = true;
       return;
     }
-    itemNameRow.style.display = "grid";
+    itemNameRow.hidden = false;
     itemNameInput.disabled = false;
     if (marker) {
       itemNameInput.value =
@@ -471,20 +471,19 @@ export class InspectorController {
     ) {
       return;
     }
-    settingsEmpty.style.display = marker || shape ? "none" : "flex";
+    settingsEmpty.hidden = Boolean(marker || shape);
     if (markerDisplayTextRow) {
       const canEdit =
         marker?.sourceType === "geonames" || marker?.sourceType === "coords";
-      markerDisplayTextRow.style.display = canEdit ? "grid" : "none";
+      markerDisplayTextRow.hidden = !canEdit;
     }
-    pointSettings.style.display = marker ? "flex" : "none";
-    textSettings.style.display = shape?.type === "text" ? "block" : "none";
-    lineSettings.style.display = shape?.type === "line" ? "block" : "none";
-    arrowSettings.style.display = shape?.type === "arrow" ? "block" : "none";
-    areaSettings.style.display = shape?.type === "area" ? "block" : "none";
+    pointSettings.hidden = !marker;
+    textSettings.hidden = shape?.type !== "text";
+    lineSettings.hidden = shape?.type !== "line";
+    arrowSettings.hidden = shape?.type !== "arrow";
+    areaSettings.hidden = shape?.type !== "area";
     if (pointTextControls) {
-      pointTextControls.style.display =
-        marker?.kind === "point" ? "none" : "flex";
+      pointTextControls.hidden = marker?.kind === "point";
     }
   }
 

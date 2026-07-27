@@ -92,11 +92,21 @@
 渲染程序（Renderer）：
 
 - `src/renderer/index.html`
-  - Step 0 至 Step 3 介面、搜尋與標示面板、匯出外框 dialog；不放置 inline CSS。
-- `src/renderer/styles/foundation.css`
-  - 保存由舊版 `index.html` 移出的基礎樣式，位於 `foundation` cascade layer；後續元件規則可穩定覆寫。
+  - Step 0 至 Step 3 的語意化介面骨架、搜尋與標示面板、匯出外框 dialog；不放置 inline CSS 或重複的 SVG path。
+- `src/renderer/icons.svg`
+  - 保存介面共用的 SVG symbol sprite；HTML 與動態清單只透過 `<use>` 引用 glyph，地圖 SVG 畫布不屬於此 sprite。
+- `src/renderer/styles/cascade.css`
+  - 固定 `legacy → tokens → base → components → utilities` 的 cascade layer 順序，避免載入順序或 selector specificity 意外改變覆寫結果。
+- `src/renderer/styles/legacy.css`
+  - 保存尚待淘汰的相容樣式，位於最低優先的 `legacy` layer；目前設計系統規則可穩定覆寫。
+- `src/renderer/styles/tokens.css`
+  - 定義深色／淺色主題 token、尺寸、陰影與舊變數的相容映射。
+- `src/renderer/styles/base.css`
+  - 定義 box model、應用程式根布局、字型、表單控制與鍵盤 focus 基礎規則。
 - `src/renderer/styles.css`
-  - 位於 `components` cascade layer，依 design token、共用控制、工作流程、地圖、屬性面板、dialog 與 responsive 區段組織。
+  - 位於 `components` cascade layer，依共用控制、工作流程、地圖、屬性面板、dialog 與 responsive 區段組織。
+- `src/renderer/styles/utilities.css`
+  - 位於最高優先的 `utilities` layer，保存 `hidden` 等單一用途狀態契約。
 - `src/renderer/index.ts`
   - 作為 renderer composition root，建立控制器、注入共享狀態與 callback，並負責應用程式啟動。
   - 專案、工作流程、搜尋、匯出、地圖、裁切、選取、排序與屬性面板的狀態及互動分別由對應模組管理。
