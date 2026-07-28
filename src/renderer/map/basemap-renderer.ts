@@ -65,6 +65,8 @@ export class BasemapRenderer {
   private reliefEffectValue: ReliefEffect = "relief-natural";
   private hillshadeImage: HTMLImageElement | null = null;
   private hillshadeTextureValue: HTMLCanvasElement | null = null;
+  private reliefLoadPromise: Promise<void> | null = null;
+  private reliefLoadGeneration = 0;
   private previewTimer: number | null = null;
   private previewPointer = { x: 0, y: 0 };
 
@@ -171,6 +173,9 @@ export class BasemapRenderer {
       button.classList.toggle("active", active);
       button.setAttribute("aria-checked", String(active));
     });
+    if (enabled && !this.hillshadeTextureValue) {
+      void this.ensureReliefLoaded();
+    }
     this.requestDraw();
   }
 
@@ -240,7 +245,12 @@ export class BasemapRenderer {
       return;
     }
     const rawLayers = await window.mapSchematic.getBasemapLayers();
-    this.layersValue = rawLayers.map((layer) => {
+    const layers: BasemapLayer[] = [];
+    for (let index = 0; index < rawLayers.length; index += 1) {
+      if (index > 0) {
+        await nextRenderTurn();
+      }
+      const layer = rawLayers[index];
       const geojson = JSON.parse(layer.geojson);
       const paths: Path2D[] = [];
       const pathData: string[] = [];
@@ -256,17 +266,24 @@ export class BasemapRenderer {
         paths.push(new Path2D(data));
         pathData.push(data);
       }
-      return { id: layer.id, paths, pathData };
-    });
+      layers.push({ id: layer.id, paths, pathData });
+    }
+    this.layersValue = layers;
     this.built = true;
     this.draw();
   }
 
   async reload(): Promise<void> {
-    await this.loadRelief();
+    this.reliefLoadGeneration += 1;
+    this.reliefLoadPromise = null;
+    this.hillshadeTextureValue = null;
+    this.hillshadeImage = null;
     this.built = false;
     this.layersValue = [];
-    await this.loadBasemap();
+    const reliefPromise = this.reliefEnabledValue
+      ? this.ensureReliefLoaded()
+      : Promise.resolve();
+    await Promise.all([this.loadBasemap(), reliefPromise]);
   }
 
   hideStylePreview(): void {
@@ -465,46 +482,87 @@ export class BasemapRenderer {
     )}px`;
   }
 
-  private async loadRelief(): Promise<void> {
-    this.hillshadeTextureValue = null;
-    this.hillshadeImage = null;
-    const relief = await window.mapSchematic?.getRelief?.();
-    if (!relief?.path) {
-      this.requestDraw();
-      return;
+  private ensureReliefLoaded(): Promise<void> {
+    if (this.hillshadeTextureValue) {
+      return Promise.resolve();
     }
-    const projection = relief.projection ?? null;
-    const texture = await loadHillshadeTexture(
-      relief.path,
-      projection,
-      this.options.mapWidth,
-      this.options.mapHeight,
+    if (this.reliefLoadPromise) {
+      return this.reliefLoadPromise;
+    }
+    const generation = this.reliefLoadGeneration;
+    const operation = this.loadRelief(generation);
+    this.reliefLoadPromise = operation;
+    void operation.then(
+      () => this.clearReliefLoad(operation),
+      () => this.clearReliefLoad(operation),
     );
-    if (texture) {
-      this.hillshadeTextureValue = texture;
-      this.requestDraw();
-      return;
-    }
-    const image = new Image();
-    this.hillshadeImage = image;
-    image.src = relief.path;
-    image.onload = () => {
-      if (this.hillshadeImage !== image) {
+    return operation;
+  }
+
+  private async loadRelief(generation: number): Promise<void> {
+    try {
+      const relief = await window.mapSchematic?.getRelief?.();
+      if (generation !== this.reliefLoadGeneration || !relief?.path) {
         return;
       }
-      this.hillshadeTextureValue = buildHillshadeTexture({
-        image,
-        width: this.options.mapWidth,
-        height: this.options.mapHeight,
-        unproject,
+      const texture = await loadHillshadeTexture(
+        relief.path,
+        relief.projection ?? null,
+        this.options.mapWidth,
+        this.options.mapHeight,
+      );
+      if (generation !== this.reliefLoadGeneration) {
+        return;
+      }
+      if (texture) {
+        this.hillshadeTextureValue = texture;
+        this.requestDraw();
+        return;
+      }
+      const image = new Image();
+      this.hillshadeImage = image;
+      await new Promise<void>((resolve) => {
+        image.onload = () => {
+          if (
+            generation === this.reliefLoadGeneration &&
+            this.hillshadeImage === image
+          ) {
+            this.hillshadeTextureValue = buildHillshadeTexture({
+              image,
+              width: this.options.mapWidth,
+              height: this.options.mapHeight,
+              unproject,
+            });
+            this.requestDraw();
+          }
+          resolve();
+        };
+        image.onerror = () => {
+          if (this.hillshadeImage === image) {
+            this.hillshadeImage = null;
+            this.requestDraw();
+          }
+          resolve();
+        };
+        image.src = relief.path;
       });
-      this.requestDraw();
-    };
-    image.onerror = () => {
-      if (this.hillshadeImage === image) {
+    } catch {
+      if (generation === this.reliefLoadGeneration) {
         this.hillshadeImage = null;
         this.requestDraw();
       }
-    };
+    }
   }
+
+  private clearReliefLoad(operation: Promise<void>): void {
+    if (this.reliefLoadPromise === operation) {
+      this.reliefLoadPromise = null;
+    }
+  }
+}
+
+function nextRenderTurn(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
 }

@@ -9,9 +9,9 @@ import {
   getPackRoot
 } from "./layout";
 import {
-  isSafePackSegment,
-  validateInstalledDatapack
+  isSafePackSegment
 } from "./manifest";
+import { validateInstalledDatapackCached } from "./validation-cache";
 import type {
   DataPackManifest,
   DataPackRef
@@ -89,7 +89,7 @@ export async function loadLocalPacksWithManifest(
   return Promise.all(
     packs.map(async (pack) => {
       try {
-        const manifest = await validateInstalledDatapack(
+        const manifest = await validateInstalledDatapackCached(
           pack.rootPath,
           pack.ref
         );

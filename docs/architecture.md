@@ -148,7 +148,7 @@
 - `src/renderer/map/geometry.ts`
   - 集中 EPSG:4326／EPSG:3857 投影、循環經度正規化、跨日期變更線範圍轉換與 GeoJSON 至 SVG path 轉換。
 - `src/renderer/map/basemap-renderer.ts`
-  - 載入官方資料包底圖與地形陰影，集中 Canvas 繪製、風格切換、預覽與匯出所需的底圖狀態。
+  - 載入官方資料包底圖並按需載入地形陰影，集中 Canvas 繪製、風格切換、預覽與匯出所需的底圖狀態。
 - `src/renderer/overlay/object-order-model.ts`
   - 集中標示顯示名稱、唯一名稱、排序鍵正規化、顯示順位與重複物件判斷。
 - `src/renderer/ui/slider.ts`
@@ -166,9 +166,11 @@
   - 統一解析資料根目錄。
 - `src/shared/datapack/*`
   - 定義 manifest／release 契約、檔案校驗、初始化、更新、修復、安全啟用與 fallback。
+  - 安裝時執行完整 checksum 驗證；後續啟動以可失效的本機驗證記錄避免重複雜湊未變更的大型檔案。
   - `manager.ts` 負責目標版本、fallback、快取與產品層的資料包就緒決策。
   - `local-store.ts` 負責掃描本機版本、讀寫 active 指標及載入已安裝 manifest。
   - `installer.ts` 負責下載、ZIP 驗證、暫存安裝、完整性檢查、安全替換與中斷恢復。
+  - `validation-cache.ts` 保存可失效的本機驗證記錄；檔案資訊不符時自動退回完整 checksum 驗證。
   - `contract.d.ts` 保存跨 main／renderer 使用的資料包型別，runtime 模組只保留實際邏輯。
   - `pack-release.json` 是目標資料包 id／version 的唯一來源，不另在程式碼維護重複版本常數。
 - `src/shared/validation/primitives.ts`

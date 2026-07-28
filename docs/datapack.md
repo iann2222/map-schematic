@@ -200,9 +200,12 @@ geodata/packs/standard/<version>/relief/hillshade_3857.png  # 可選
 3. 驗證 Release SHA-256。
 4. 防護性解壓至暫存安裝目錄。
 5. 驗證 manifest、路徑、必要檔案、size 與內容 checksum。
-6. 完整驗證後才切換 `active.json`。
+6. 寫入可重建的本機驗證記錄。
+7. 完整驗證後才切換 `active.json`。
 
 ZIP 安裝會拒絕路徑跳脫、符號連結與異常大的內容。下載、解壓或切換失敗時會清理暫存內容，不把半成品當成可用版本。
+
+安裝與修復仍會執行完整 SHA-256 驗證。後續啟動會先比對 manifest 雜湊、檔案大小與檔案修改資訊；內容未變時使用本機驗證記錄加速，任一項不一致、記錄缺失或記錄損壞時會自動退回完整 checksum 驗證並重建記錄。
 
 ## 更新、修復與 Fallback
 

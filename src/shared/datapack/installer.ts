@@ -7,6 +7,7 @@ import {
   sha256File,
   validateInstalledDatapack
 } from "./manifest";
+import { writeInstalledDatapackValidationCache } from "./validation-cache";
 import {
   pathExists,
   setActivePack
@@ -99,6 +100,10 @@ export class DataPackInstaller {
     let manifest;
     try {
       manifest = await validateInstalledDatapack(previousPath, ref);
+      await writeInstalledDatapackValidationCache(
+        previousPath,
+        manifest
+      ).catch(() => undefined);
     } catch {
       await fs.rm(previousPath, { recursive: true, force: true });
       return null;
@@ -140,6 +145,10 @@ export class DataPackInstaller {
         installingPath,
         ref
       );
+      await writeInstalledDatapackValidationCache(
+        installingPath,
+        manifest
+      ).catch(() => undefined);
       await fs.mkdir(path.dirname(targetRoot), { recursive: true });
       await this.beforeReplace?.();
       const previousPath = await replacePackRoot(

@@ -2,9 +2,9 @@ import path from "path";
 
 import { getPackRoot } from "./layout";
 import {
-  parseRelease,
-  validateInstalledDatapack
+  parseRelease
 } from "./manifest";
+import { validateInstalledDatapackCached } from "./validation-cache";
 import {
   ensureDataRootExists,
   listLocalPacks,
@@ -103,7 +103,7 @@ export class DataPackManager {
   private async validatePack(ref: DataPackRef): Promise<ReadyDataPack | null> {
     const rootPath = getPackRoot(this.dataRoot, ref.id, ref.version);
     try {
-      const manifest = await validateInstalledDatapack(rootPath, ref);
+      const manifest = await validateInstalledDatapackCached(rootPath, ref);
       return { ref, rootPath, manifest, source: "installed" };
     } catch {
       return null;

@@ -263,11 +263,7 @@ export async function validateInstalledDatapack(
   expected?: DataPackRef
 ): Promise<DataPackManifest> {
   const manifest = await readManifest(path.join(packRoot, "datapack.json"));
-  if (expected && (manifest.id !== expected.id || manifest.version !== expected.version)) {
-    throw new Error(
-      `Installed pack mismatch: expected ${expected.id} ${expected.version}, got ${manifest.id} ${manifest.version}`
-    );
-  }
+  validateExpectedRef(manifest, expected);
   for (const entry of manifest.files) {
     const filePath = resolveInsidePack(packRoot, entry.path);
     const stat = await fs.stat(filePath);
@@ -285,4 +281,18 @@ export async function validateInstalledDatapack(
     }
   }
   return manifest;
+}
+
+function validateExpectedRef(
+  manifest: DataPackManifest,
+  expected?: DataPackRef
+): void {
+  if (
+    expected &&
+    (manifest.id !== expected.id || manifest.version !== expected.version)
+  ) {
+    throw new Error(
+      `Installed pack mismatch: expected ${expected.id} ${expected.version}, got ${manifest.id} ${manifest.version}`
+    );
+  }
 }
