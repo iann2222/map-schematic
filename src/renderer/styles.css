@@ -277,7 +277,56 @@
 }
 
 .workflow-datapack-status .status {
+  display: -webkit-box;
+  max-height: 28px;
+  overflow: hidden;
   font-size: 10px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workflow-datapack-status.has-overflow::after {
+  position: absolute;
+  top: calc(100% + 9px);
+  left: 0;
+  z-index: 30;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 8px 10px;
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  content: attr(data-status-tooltip);
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  background: color-mix(
+    in srgb,
+    var(--ui-surface-strong) 82%,
+    transparent
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--ui-border-strong) 68%, transparent);
+  border-radius: var(--ui-radius);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--ui-stage) 24%, transparent);
+  backdrop-filter: blur(8px);
+  transform: translateY(-3px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 120ms ease;
+}
+
+.workflow-datapack-status.has-overflow:hover::after,
+.workflow-datapack-status.has-overflow:focus-within::after {
+  visibility: visible;
+  opacity: 0.94;
+  transform: translateY(0);
 }
 
 .workflow-step {

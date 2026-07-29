@@ -94,6 +94,8 @@ type BBox = MapProject["viewport"]["bbox"];
 const appState = createAppState();
 
 const statusEl = document.getElementById("status");
+const workspaceStatusEl =
+  statusEl?.closest<HTMLElement>(".workspace-status") ?? null;
 const workspaceStatusIcon = document.querySelector<SVGElement>(
   ".workspace-status-icon",
 );
@@ -1436,10 +1438,28 @@ function syncItemNameControl(): void {
 }
 
 function syncWorkspaceStatusIcon(): void {
-  const statusText = statusEl?.textContent ?? "";
+  const statusText = statusEl?.textContent?.trim() ?? "";
   const datapackReady =
     statusText.includes("資料包") && statusText.includes("已就緒");
   workspaceStatusIcon?.classList.toggle("ready", datapackReady);
+  workspaceStatusEl?.setAttribute("data-status-tooltip", statusText);
+
+  requestAnimationFrame(() => {
+    if (!statusEl || !workspaceStatusEl) {
+      return;
+    }
+    const hasOverflow =
+      statusEl.scrollHeight > statusEl.clientHeight + 1 ||
+      statusEl.scrollWidth > statusEl.clientWidth + 1;
+    workspaceStatusEl.classList.toggle("has-overflow", hasOverflow);
+    if (hasOverflow) {
+      statusEl.tabIndex = 0;
+      statusEl.setAttribute("aria-label", statusText);
+    } else {
+      statusEl.removeAttribute("tabindex");
+      statusEl.removeAttribute("aria-label");
+    }
+  });
 }
 
 function selectMarker(markerId: string | null): void {
@@ -2438,6 +2458,7 @@ syncWorkspaceStatusIcon();
 boot();
 
 window.addEventListener("resize", () => {
+  syncWorkspaceStatusIcon();
   syncStageSize();
   updateCropFrame();
   requestBasemapDraw();
