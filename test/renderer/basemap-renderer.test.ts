@@ -27,6 +27,7 @@ describe("BasemapRenderer loading", () => {
   it("defers hillshade loading until relief is enabled", async () => {
     const getBasemapLayers = vi.fn(async () => []);
     const getRelief = vi.fn(async () => null);
+    const onProjectChanged = vi.fn();
     vi.stubGlobal("window", {
       mapSchematic: { getBasemapLayers, getRelief },
       setTimeout
@@ -51,14 +52,23 @@ describe("BasemapRenderer loading", () => {
       reliefModeField: null,
       reliefEffectButtons: [],
       preview: null,
-      previewCanvas: null
+      previewCanvas: null,
+      onProjectChanged
     });
 
     await renderer.reload();
     expect(getBasemapLayers).toHaveBeenCalledOnce();
     expect(getRelief).not.toHaveBeenCalled();
+    renderer.setActiveStyle("styleOriginal");
+    renderer.setReliefMode(false);
+    expect(onProjectChanged).not.toHaveBeenCalled();
+    renderer.setActiveStyle("styleDark");
+    renderer.setActiveStyle("styleDark");
+    expect(onProjectChanged).toHaveBeenCalledTimes(1);
 
     renderer.setReliefMode(true);
     await vi.waitFor(() => expect(getRelief).toHaveBeenCalledOnce());
+    renderer.setReliefMode(true);
+    expect(onProjectChanged).toHaveBeenCalledTimes(2);
   });
 });

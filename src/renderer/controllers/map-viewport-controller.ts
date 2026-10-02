@@ -19,7 +19,6 @@ export type MapViewportOptions = {
   onViewChanged: () => void;
   renderMarkers: () => void;
   hasSelectedLabel: () => boolean;
-  scheduleDirtyCheck: () => void;
   mapWidth: number;
   mapHeight: number;
   minScale: number;
@@ -258,7 +257,6 @@ export class MapViewportController {
     if (this.options.hasSelectedLabel()) {
       this.options.renderMarkers();
     }
-    this.options.scheduleDirtyCheck();
   }
 
   zoomToScale(targetScale: number): void {
@@ -283,7 +281,6 @@ export class MapViewportController {
     if (this.options.hasSelectedLabel()) {
       this.options.renderMarkers();
     }
-    this.options.scheduleDirtyCheck();
   }
 
   handleWheel(event: WheelEvent, locked: boolean): void {

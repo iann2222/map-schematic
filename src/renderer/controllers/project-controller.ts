@@ -10,7 +10,6 @@ import {
   projectValidationMessage,
 } from "../project/project-messages.js";
 import { ProjectOperationCoordinator } from "../project/operation-coordinator.js";
-import { projectFingerprint } from "../project/project-state.js";
 
 export type { ProjectSaveResult } from "../bridge.js";
 
@@ -22,6 +21,8 @@ export type AppliedProjectSummary = {
 export type ProjectControllerOptions = {
   state: ProjectState;
   buildProject: () => MapProject | null;
+  getFingerprint: () => string | null;
+  prepareSave?: () => void;
   applyLoadedProject: (
     project: MapProject,
   ) => Promise<AppliedProjectSummary> | AppliedProjectSummary;
@@ -71,13 +72,13 @@ export class ProjectController {
   }
 
   syncDirtyState(): void {
-    const project = this.options.buildProject();
-    if (!project || this.state.savedFingerprint === null) {
+    const fingerprint = this.options.getFingerprint();
+    if (fingerprint === null || this.state.savedFingerprint === null) {
       this.setDirty(false);
       return;
     }
     this.setDirty(
-      projectFingerprint(project) !== this.state.savedFingerprint,
+      fingerprint !== this.state.savedFingerprint,
     );
   }
 
@@ -92,11 +93,8 @@ export class ProjectController {
     });
   }
 
-  setBaseline(project?: MapProject | null): void {
-    const baseline = project ?? this.options.buildProject();
-    this.state.savedFingerprint = baseline
-      ? projectFingerprint(baseline)
-      : null;
+  setBaseline(fingerprint = this.options.getFingerprint()): void {
+    this.state.savedFingerprint = fingerprint;
     this.syncDirtyState();
   }
 
@@ -110,6 +108,10 @@ export class ProjectController {
     return this.operations.enqueue("saveBeforeClose", async () => {
       const result = await this.performSave(false);
       if (!result?.ok) {
+        return;
+      }
+      if (this.state.dirty) {
+        this.options.setStatus("儲存期間有新的變更，請再次儲存後關閉。");
         return;
       }
       try {
@@ -131,7 +133,6 @@ export class ProjectController {
       this.state.dirty === dirty &&
       this.state.reportedDirty === dirty
     ) {
-      this.renderHeader();
       return;
     }
     this.state.dirty = dirty;
@@ -147,11 +148,13 @@ export class ProjectController {
     if (!window.mapSchematic?.saveProject) {
       return null;
     }
+    this.options.prepareSave?.();
     const project = this.options.buildProject();
     if (!project) {
       this.options.setStatus("資料包未載入，無法儲存。");
       return null;
     }
+    const savedFingerprint = this.options.getFingerprint();
     let result: ProjectSaveResult;
     try {
       result = await window.mapSchematic.saveProject({
@@ -168,7 +171,7 @@ export class ProjectController {
     }
     if (result.ok) {
       this.state.current = project;
-      this.setBaseline(project);
+      this.setBaseline(savedFingerprint);
     }
     if (result.canceled) {
       this.options.setStatus("已取消儲存。");

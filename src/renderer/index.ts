@@ -1,45 +1,22 @@
-﻿export {};
+export { };
 
-import type { DataPackStatus, GeonamesResult, MapProject } from "./bridge.js";
-import {
-  createAddObjectCommand,
-  createClearObjectsCommand,
-  createRemoveObjectCommand,
-  createReorderCommand,
-  createUpdateObjectCommand,
-} from "./editor/commands.js";
-import type { EditorCommand } from "./editor/commands.js";
+import { ProjectSnapshot } from "./project/project-snapshot.js";
+import { createObjectController } from "./controllers/object-controller.js";
+import { createPreferencesController } from "./controllers/preferences-controller.js";
+import { createExportRenderer } from "./export/export-renderer.js";
+
+import type { MapProject } from "./bridge.js";
+import { createReorderCommand } from "./editor/commands.js";
 import {
   EDITOR_HISTORY_LIMIT,
   EditorCore,
 } from "./editor/editor-core.js";
-import { cloneEditorObject } from "./editor/document.js";
-import {
-  defaultMarkerStyle,
-  defaultShapeStyle,
-} from "./editor/defaults.js";
 import { markerLabelText } from "./editor/presentation.js";
 import type { EditorDocument, Marker, ShapeItem } from "./editor/types.js";
 import { isMarker, isShape } from "./editor/types.js";
 import {
-  WORLD_BBOX,
-  geographicBBoxFromUnwrappedBounds,
-  normalizeLongitude,
-  project,
-  unproject,
-  unwrappedLongitudeBounds,
-} from "./map/geometry.js";
-import {
-  ensureBasemapContainer,
-  ensureMapRoot,
-} from "./map/rendering-utils.js";
-import {
-  canvasPixelDimensions,
-} from "./project/canvas.js";
-import {
   labelOffsetScale,
   labelZoomScale,
-  shapeStrokeScale,
 } from "./overlay/overlay-presentation.js";
 import { renderObjectList } from "./overlay/object-list.js";
 import {
@@ -52,15 +29,9 @@ import {
 import { createOverlayRenderer } from "./overlay/overlay-renderer.js";
 import { updateMarkerStyles as updateOverlayMarkerStyles } from "./overlay/marker-style-updater.js";
 import {
-  editorDocumentToProjectObjects,
-  mapProjectToEditorDocument,
-} from "./project/project-adapter.js";
-import { bindFirstClickSelect } from "./ui/input-selection.js";
-import {
   createAppDialogService,
   type AppDialogOptions,
 } from "./ui/app-dialog.js";
-import { initializeThemePreferences } from "./ui/theme-preferences.js";
 import { createAppState, type WorkflowStep } from "./app-state.js";
 import { WorkflowController } from "./controllers/workflow-controller.js";
 import {
@@ -90,7 +61,6 @@ import { MapInteractionController } from "./controllers/map-interaction-controll
 import { MapInitializationController } from "./controllers/map-initialization-controller.js";
 import { BasemapRenderer } from "./map/basemap-renderer.js";
 
-type BBox = MapProject["viewport"]["bbox"];
 const appState = createAppState();
 
 const statusEl = document.getElementById("status");
@@ -115,27 +85,6 @@ const editorTabPanels = Array.from(
 const topExportButton = document.getElementById(
   "topExportBtn",
 ) as HTMLButtonElement | null;
-const preferencesButton = document.getElementById(
-  "preferencesBtn",
-) as HTMLButtonElement | null;
-const preferencesModal = document.getElementById(
-  "preferencesModal",
-) as HTMLDivElement | null;
-const preferencesClose = document.getElementById(
-  "preferencesClose",
-) as HTMLButtonElement | null;
-const preferencesDone = document.getElementById(
-  "preferencesDone",
-) as HTMLButtonElement | null;
-const themePreferenceButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>("[data-theme-preference]"),
-);
-const datapackPreferenceState = document.getElementById("datapackPreferenceState");
-const datapackPreferenceDetail = document.getElementById("datapackPreferenceDetail");
-const datapackUpdateButton = document.getElementById(
-  "datapackUpdateBtn",
-) as HTMLButtonElement | null;
-const datapackUpdateLabel = document.getElementById("datapackUpdateLabel");
 const reliefToggle = document.getElementById(
   "reliefToggle",
 ) as HTMLInputElement | null;
@@ -274,20 +223,7 @@ const exportFrameCancel = document.getElementById(
 const exportFrameApply = document.getElementById(
   "exportFrameApply",
 ) as HTMLButtonElement | null;
-const coordEditModal = document.getElementById(
-  "coordEditModal",
-) as HTMLDivElement | null;
-const coordLabelInput = document.getElementById(
-  "coordLabelInput",
-) as HTMLInputElement | null;
-const coordEditCancel = document.getElementById(
-  "coordEditCancel",
-) as HTMLButtonElement | null;
-const coordEditSave = document.getElementById(
-  "coordEditSave",
-) as HTMLButtonElement | null;
 let appToastTimer: number | null = null;
-let preferencesPreviousFocus: HTMLElement | null = null;
 const toolZoomIn = document.getElementById(
   "toolZoomIn",
 ) as HTMLButtonElement | null;
@@ -358,7 +294,6 @@ const ZOOM_LEVELS = [0.4, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12];
 const MAP_WIDTH = 1200;
 const MAP_HEIGHT = 800;
 const PNG_EXPORT_SCALE = 2;
-let mapLocked = false;
 
 const editorCore = new EditorCore(
   { objects: [], listOrderKeys: [], displayOrderKeys: [] },
@@ -380,17 +315,7 @@ const objectOrderModel = new ObjectOrderModel({
   getShapes: shapeObjects,
 });
 
-let previewMarker: Marker | null = null;
-const preservedProjectObjects: MapProject["objects"] = [];
 const selectionState = appState.selection;
-let activeTool: "marker" | "line" | "area" | "text" | "arrow" = "marker";
-let hasActiveToolSelection = false;
-let manualMarkerCount = 0;
-let previewToolMarker: Marker | null = null;
-let previewShape: ShapeItem | null = null;
-let currentPackVersion = "";
-let currentPackId = "";
-let editingCoordMarker: Marker | null = null;
 
 let cropController: CropController;
 let basemapRenderer: BasemapRenderer;
@@ -410,7 +335,6 @@ const mapViewport = new MapViewportController({
   },
   renderMarkers,
   hasSelectedLabel: () => selectionState.labelMarkerId !== null,
-  scheduleDirtyCheck: scheduleProjectDirtyCheck,
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT,
   minScale: MIN_SCALE,
@@ -426,12 +350,13 @@ cropController = new CropController({
   applyViewTransform,
   updateWrapTransforms,
   requestBasemapDraw,
-  onWheel: (event) => mapViewport.handleWheel(event, mapLocked),
+  onWheel: (event) => mapViewport.handleWheel(event, appState.workflow.activeStep === "2" || appState.workflow.activeStep === "3"),
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT,
   minScale: MIN_SCALE,
   maxScale: MAX_SCALE,
   maxCropScale: MAX_SCALE_CROP,
+  onProjectChanged: scheduleProjectDirtyCheck,
 });
 
 basemapRenderer = new BasemapRenderer({
@@ -449,6 +374,24 @@ basemapRenderer = new BasemapRenderer({
   reliefEffectButtons,
   preview: mapStyleHoverPreview,
   previewCanvas: mapStyleHoverCanvas,
+  onProjectChanged: scheduleProjectDirtyCheck,
+});
+
+const projectSnapshot = new ProjectSnapshot({
+  state: appState.project, core: editorCore, crop: cropController, basemap: basemapRenderer,
+  getDatapack: () => appState.datapack, styleIds: styleButtons.map((button) => button.id),
+  mapWidth: MAP_WIDTH, mapHeight: MAP_HEIGHT,
+});
+const objectController = createObjectController({
+  core: editorCore, state: appState.objects, selectionState, order: objectOrderModel,
+  getActiveStep: () => appState.workflow.activeStep,
+  getDefaultLayerId: () => projectSnapshot.defaultLayerId(),
+  getViewCenter: () => mapViewport.centerLonLat(),
+  getVisibleBounds: () => mapViewport.visibleMapBounds(),
+  getScale: () => view.scale, mapWidth: MAP_WIDTH, mapHeight: MAP_HEIGHT,
+  selectMarker, selectShape, renderMapObjects: renderMarkers, renderObjectList: renderMarkerList,
+  syncMarkerInspector: syncMarkerControls, syncShapeInspector: syncShapeControls,
+  syncItemName: syncItemNameControl, setStatus,
 });
 
 function syncHistoryControls(): void {
@@ -460,28 +403,13 @@ function syncHistoryControls(): void {
   }
 }
 
-function dispatchEditorCommand(
-  command: EditorCommand | null,
-  mergeKey?: string,
-): boolean {
-  const changed = editorCore.dispatch(command, { mergeKey });
-  if (!changed) {
-    return false;
-  }
-  syncHistoryControls();
-  scheduleProjectDirtyCheck();
-  return true;
-}
 
 function beginEditorTransaction(): void {
   editorCore.beginTransaction();
 }
 
 function commitEditorTransaction(): void {
-  if (editorCore.commitTransaction()) {
-    syncHistoryControls();
-    scheduleProjectDirtyCheck();
-  }
+  editorCore.commitTransaction();
 }
 
 function cancelEditorTransaction(): void {
@@ -491,14 +419,10 @@ function cancelEditorTransaction(): void {
 function refreshEditorAfterHistoryChange(): void {
   orderDialogController.cancelActiveDrag();
   selectionController.reconcile();
-  previewMarker = null;
-  previewToolMarker = null;
-  previewShape = null;
-  editingCoordMarker = null;
-  coordEditModal?.classList.remove("active");
+  objectController.resetTransient();
   svg?.classList.remove("shape-moving");
   cancelEditorTransaction();
-  syncManualMarkerCount();
+  objectController.syncManualMarkerCount();
   renderMarkers();
   renderMarkerList();
   if (orderDialogController.isOpen()) {
@@ -514,8 +438,6 @@ function undoEditorChange(): void {
     return;
   }
   refreshEditorAfterHistoryChange();
-  syncHistoryControls();
-  scheduleProjectDirtyCheck();
 }
 
 function redoEditorChange(): void {
@@ -523,14 +445,6 @@ function redoEditorChange(): void {
     return;
   }
   refreshEditorAfterHistoryChange();
-  syncHistoryControls();
-  scheduleProjectDirtyCheck();
-}
-
-function resetEditorHistory(): void {
-  cancelEditorTransaction();
-  editorCore.clearHistory();
-  syncHistoryControls();
 }
 
 function applyViewTransform(): void {
@@ -571,7 +485,7 @@ function afterWorkflowStepChange(
   stepId: WorkflowStep,
 ): void {
   cropController.updateStepPresentation(stepId);
-  mapLocked = stepId === "2" || stepId === "3";
+  const mapLocked = stepId === "2" || stepId === "3";
   if (svg) {
     svg.classList.remove("dragging", "boxing");
     svg.style.cursor = mapLocked ? "default" : "grab";
@@ -596,9 +510,8 @@ function afterWorkflowStepChange(
   if (stepId === "3") {
     syncMarkerControls(getSelectedMarker());
   }
-  if (stepId !== "0" && stepId !== "3" && previewMarker) {
-    previewMarker = null;
-    renderMarkers();
+  if (stepId !== "0" && stepId !== "3" && appState.objects.previewMarker) {
+    objectController.clearSearchPreview();
   }
   if (previousStep !== stepId && (previousStep === "3" || stepId === "3")) {
     renderMarkers();
@@ -630,10 +543,6 @@ function setActiveStep(stepId: WorkflowStep): void {
 
 function setActiveStyleButton(targetId: string): void {
   basemapRenderer.setActiveStyle(targetId);
-}
-
-function setReliefMode(enabled: boolean, effect?: string): void {
-  basemapRenderer.setReliefMode(enabled, effect);
 }
 
 function updateCropFrame(): void {
@@ -695,184 +604,6 @@ function showAppToast(
   }
 }
 
-function syncDatapackPreferences(status: DataPackStatus): void {
-  if (!datapackPreferenceState || !datapackPreferenceDetail || !datapackUpdateButton) {
-    return;
-  }
-  const targetLabel = `${status.target.id} ${status.target.version}`;
-  const activeLabel = status.active
-    ? `${status.active.id} ${status.active.version}`
-    : null;
-  let buttonLabel = "已是最新版本";
-  let enabled = false;
-
-  if (status.availability === "ready") {
-    datapackPreferenceState.textContent = "官方資料包已就緒";
-    datapackPreferenceDetail.textContent = `${targetLabel} 已安裝，可離線使用。`;
-  } else if (status.availability === "updateAvailable") {
-    datapackPreferenceState.textContent = "有新版官方資料包可用";
-    datapackPreferenceDetail.textContent = `目前使用 ${activeLabel}，可更新至 ${targetLabel}。`;
-    buttonLabel = "下載並更新";
-    enabled = true;
-  } else if (status.availability === "repairRequired") {
-    datapackPreferenceState.textContent = "資料包需要修復";
-    datapackPreferenceDetail.textContent = activeLabel
-      ? `目前可使用 ${activeLabel}；重新下載後會修復 ${targetLabel}。`
-      : `${targetLabel} 無法使用，請重新下載官方資料包。`;
-    buttonLabel = "重新下載";
-    enabled = true;
-  } else {
-    datapackPreferenceState.textContent = "尚未安裝官方資料包";
-    datapackPreferenceDetail.textContent = `首次使用需要下載 ${targetLabel}，完成後即可離線使用。`;
-    buttonLabel = "下載資料包";
-    enabled = true;
-  }
-
-  datapackUpdateButton.disabled = !enabled;
-  if (datapackUpdateLabel) {
-    datapackUpdateLabel.textContent = buttonLabel;
-  }
-}
-
-async function refreshDatapackPreferences(): Promise<DataPackStatus | null> {
-  if (!window.mapSchematic?.getDatapackStatus) {
-    return null;
-  }
-  try {
-    const status = await window.mapSchematic.getDatapackStatus();
-    syncDatapackPreferences(status);
-    return status;
-  } catch {
-    if (datapackPreferenceState) {
-      datapackPreferenceState.textContent = "無法檢查資料包狀態";
-    }
-    if (datapackPreferenceDetail) {
-      datapackPreferenceDetail.textContent = "請稍後再試，或重新啟動應用程式。";
-    }
-    if (datapackUpdateButton) {
-      datapackUpdateButton.disabled = true;
-    }
-    if (datapackUpdateLabel) {
-      datapackUpdateLabel.textContent = "暫時無法使用";
-    }
-    return null;
-  }
-}
-
-async function handleDatapackUpdate(): Promise<void> {
-  if (!window.mapSchematic?.updateDatapack || !datapackUpdateButton) {
-    return;
-  }
-  datapackUpdateButton.disabled = true;
-  if (datapackUpdateLabel) {
-    datapackUpdateLabel.textContent = "正在處理";
-  }
-  showAppToast("正在下載、驗證並安裝官方資料包…", "loading", 0);
-  const result = await window.mapSchematic.updateDatapack();
-  if (!result.ok) {
-    await refreshDatapackPreferences();
-    await showAppDialog({
-      eyebrow: "資料包更新失敗",
-      title: "無法完成官方資料包更新",
-      message: "目前資料包沒有被替換，仍可繼續離線使用。",
-      detail: result.error ?? "請確認網路連線後再試一次。",
-      tone: "danger",
-      buttons: [{ label: "知道了", value: 0, variant: "primary" }],
-      defaultValue: 0,
-      cancelValue: 0,
-    });
-    showAppToast("資料包更新失敗", "error");
-    return;
-  }
-  if (result.canceled) {
-    if (result.status) {
-      syncDatapackPreferences(result.status);
-    } else {
-      await refreshDatapackPreferences();
-    }
-    showAppToast("已取消資料包更新", "success");
-    return;
-  }
-  try {
-    await mapInitializationController.initialize();
-  } catch (error) {
-    await refreshDatapackPreferences();
-    await showAppDialog({
-      eyebrow: "資料包已更新",
-      title: "資料包已安裝，但畫面重新載入失敗",
-      message: "請重新啟動應用程式後再繼續使用。",
-      detail: String(error),
-      tone: "warning",
-      buttons: [{ label: "知道了", value: 0, variant: "primary" }],
-      defaultValue: 0,
-      cancelValue: 0,
-    });
-    showAppToast("資料包已更新，請重新啟動應用程式", "error");
-    return;
-  }
-  if (result.status) {
-    syncDatapackPreferences(result.status);
-  } else {
-    await refreshDatapackPreferences();
-  }
-  showAppToast("官方資料包已更新並套用", "success");
-}
-
-function openPreferencesDialog(): void {
-  if (!preferencesModal) {
-    return;
-  }
-  preferencesPreviousFocus =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-  preferencesModal.classList.add("active");
-  void refreshDatapackPreferences();
-  window.requestAnimationFrame(() => {
-    themePreferenceButtons
-      .find((button) => button.classList.contains("active"))
-      ?.focus();
-  });
-}
-
-function closePreferencesDialog(): void {
-  if (!preferencesModal?.classList.contains("active")) {
-    return;
-  }
-  preferencesModal.classList.remove("active");
-  const previousFocus = preferencesPreviousFocus;
-  preferencesPreviousFocus = null;
-  if (previousFocus?.isConnected) {
-    previousFocus.focus();
-  }
-}
-
-function hookSteps(): void {
-  workflowController.bind();
-  document
-    .querySelectorAll<HTMLButtonElement>(".tool-select")
-    .forEach((button) => {
-      button.addEventListener("click", () => {
-        const tool = button.dataset.tool as typeof activeTool | undefined;
-        if (tool) {
-          setActiveTool(tool);
-        }
-      });
-    });
-  document
-    .querySelectorAll<HTMLButtonElement>(".tool-add")
-    .forEach((button) => {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        const tool = button.dataset.addTool as typeof activeTool | undefined;
-        if (!tool) {
-          return;
-        }
-        addToolItem(tool);
-      });
-    });
-}
-
 function resizeCanvasToStage(): {
   width: number;
   height: number;
@@ -899,123 +630,6 @@ function viewCenterLonLat(): [number, number] {
   return mapViewport.centerLonLat();
 }
 
-function visibleMapBounds(): {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-} | null {
-  return mapViewport.visibleMapBounds();
-}
-
-function placeMarkerLabelInsideView(marker: Marker): void {
-  const bounds = visibleMapBounds();
-  if (!bounds) {
-    return;
-  }
-  const [baseX, y] = project(
-    marker.longitude,
-    marker.latitude,
-    MAP_WIDTH,
-    MAP_HEIGHT,
-  );
-  const centerX = bounds.x + bounds.width / 2;
-  const x = baseX + Math.round((centerX - baseX) / MAP_WIDTH) * MAP_WIDTH;
-  const leftEdge = bounds.x + bounds.width * 0.22;
-  const rightEdge = bounds.x + bounds.width * 0.78;
-  const topEdge = bounds.y + bounds.height * 0.22;
-  const bottomEdge = bounds.y + bounds.height * 0.78;
-  const placeLeft = x > rightEdge;
-  marker.style.textOffsetX = placeLeft ? -8 : 8;
-  marker.style.textOffsetY = y < topEdge ? 10 : y > bottomEdge ? -6 : -6;
-  marker.style.textAnchor = placeLeft ? "end" : "start";
-}
-
-function setActiveTool(tool: typeof activeTool): void {
-  activeTool = tool;
-  hasActiveToolSelection = true;
-  document
-    .querySelectorAll<HTMLButtonElement>(".tool-select")
-    .forEach((button) => {
-      button.classList.toggle("active", button.dataset.tool === tool);
-    });
-  const [lon, lat] = viewCenterLonLat();
-  if (tool === "marker") {
-    previewShape = null;
-    previewToolMarker = buildPreviewMarkerAt({ lon, lat });
-  } else {
-    previewToolMarker = null;
-    previewShape = buildShapeAt(tool, { lon, lat });
-  }
-  renderMarkers();
-}
-
-function addToolItem(tool: typeof activeTool): void {
-  if (appState.workflow.activeStep !== "3") {
-    return;
-  }
-  activeTool = tool;
-  hasActiveToolSelection = true;
-  document
-    .querySelectorAll<HTMLButtonElement>(".tool-select")
-    .forEach((button) => {
-      button.classList.toggle("active", button.dataset.tool === tool);
-    });
-  const [lon, lat] = viewCenterLonLat();
-  if (tool === "marker") {
-    const marker = buildManualMarkerAt({ lon, lat });
-    if (hasDuplicateMarker(marker)) {
-      return;
-    }
-    if (
-      !dispatchEditorCommand(createAddObjectCommand(editorDocument, marker))
-    ) {
-      return;
-    }
-    previewMarker = null;
-    previewToolMarker = null;
-    selectMarker(marker.id);
-    renderMarkers();
-    renderMarkerList();
-    return;
-  }
-  if (
-    tool === "text" ||
-    tool === "line" ||
-    tool === "area" ||
-    tool === "arrow"
-  ) {
-    const shape = buildShapeAt(tool, { lon, lat });
-    if (hasDuplicateShape(shape)) {
-      return;
-    }
-    if (!dispatchEditorCommand(createAddObjectCommand(editorDocument, shape))) {
-      return;
-    }
-    previewShape = null;
-    selectShape(shape.id);
-    renderMarkerList();
-    return;
-  }
-}
-
-function syncManualMarkerCount(): void {
-  let maxIndex = 0;
-  markerObjects().forEach((marker) => {
-    if (!marker.name.startsWith("點標示")) {
-      return;
-    }
-    const match = marker.name.match(/點標示(\d+)/);
-    if (match) {
-      const value = Number(match[1]);
-      if (Number.isFinite(value)) {
-        maxIndex = Math.max(maxIndex, value);
-      }
-    }
-  });
-  manualMarkerCount = maxIndex;
-}
-
 const overlayRenderer = createOverlayRenderer({
   getState: () => ({
     svg,
@@ -1026,9 +640,9 @@ const overlayRenderer = createOverlayRenderer({
     selectedMarkerId: selectionState.markerId,
     selectedShapeId: selectionState.shapeId,
     selectedLabelMarkerId: selectionState.labelMarkerId,
-    previewMarker,
-    previewToolMarker,
-    previewShape,
+    previewMarker: appState.objects.previewMarker,
+    previewToolMarker: appState.objects.previewToolMarker,
+    previewShape: appState.objects.previewShape,
     labelDrag: selectionState.labelDrag,
     shapeDrag: selectionState.shapeDrag,
     lastScaleFit: mapViewport.lastScaleFit,
@@ -1070,126 +684,6 @@ function updateMarkerStyles(): void {
   });
 }
 
-function setPreviewMarker(result: GeonamesResult): void {
-  previewMarker = {
-    objectKind: "marker",
-    id: `preview-${result.id}`,
-    layerId: defaultObjectLayerId(),
-    name:
-      result.nameAlt && result.nameAlt !== result.name
-        ? result.nameAlt
-        : result.name,
-    nameAlt: result.name,
-    latitude: result.latitude,
-    longitude: result.longitude,
-    sourceId: String(result.id),
-    style: defaultMarkerStyle(),
-    sourceType: "geonames",
-    labelMode: "name",
-    showLabel: true,
-    kind: "label",
-  };
-  placeMarkerLabelInsideView(previewMarker);
-  renderMarkers();
-  syncMarkerControls(previewMarker);
-}
-
-function buildCoordMarker(
-  parsed: { lat: number; lon: number },
-  idPrefix = "coord",
-): Marker {
-  const coordsText = `(${parsed.lat.toFixed(4)}, ${parsed.lon.toFixed(4)})`;
-  return {
-    objectKind: "marker",
-    id: `${idPrefix}-${Date.now()}`,
-    layerId: defaultObjectLayerId(),
-    name: "座標標示",
-    nameAlt: coordsText,
-    latitude: parsed.lat,
-    longitude: parsed.lon,
-    sourceId: undefined,
-    style: defaultMarkerStyle(),
-    sourceType: "coords",
-    labelMode: "coords",
-    showLabel: true,
-    kind: "label",
-  };
-}
-
-function addMarkerFromCoordsValue(parsed: { lat: number; lon: number }): void {
-  const marker = buildCoordMarker(parsed);
-  if (hasDuplicateMarker(marker)) {
-    return;
-  }
-  placeMarkerLabelInsideView(marker);
-  if (!dispatchEditorCommand(createAddObjectCommand(editorDocument, marker))) {
-    return;
-  }
-  previewMarker = null;
-  if (appState.workflow.activeStep === "3") {
-    selectMarker(marker.id);
-  }
-  renderMarkers();
-  renderMarkerList();
-  if (statusEl) {
-    statusEl.textContent = `已新增座標：${marker.name}`;
-  }
-}
-
-function buildManualMarkerAt(center: { lon: number; lat: number }): Marker {
-  manualMarkerCount += 1;
-  return {
-    objectKind: "marker",
-    id: `manual-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-    layerId: defaultObjectLayerId(),
-    name: `點標示${manualMarkerCount}`,
-    latitude: center.lat,
-    longitude: normalizeLongitude(center.lon),
-    style: defaultMarkerStyle(),
-    sourceType: "manual",
-    labelMode: "name",
-    showLabel: false,
-    kind: "point",
-  };
-}
-
-function buildPreviewMarkerAt(center: { lon: number; lat: number }): Marker {
-  return {
-    objectKind: "marker",
-    id: "preview-tool-marker",
-    layerId: defaultObjectLayerId(),
-    name: "點標示",
-    latitude: center.lat,
-    longitude: normalizeLongitude(center.lon),
-    style: defaultMarkerStyle(),
-    sourceType: "manual",
-    labelMode: "name",
-    showLabel: false,
-    kind: "point",
-  };
-}
-
-function buildShapeAt(
-  type: ShapeItem["type"],
-  center: { lon: number; lat: number },
-): ShapeItem {
-  const size = 140 / Math.max(0.4, view.scale);
-  const height = type === "area" ? size * 0.7 : size * 0.4;
-  return {
-    objectKind: "shape",
-    id: `shape-${type}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-    layerId: defaultObjectLayerId(),
-    type,
-    longitude: normalizeLongitude(center.lon),
-    latitude: center.lat,
-    width: size,
-    height,
-    rotation: 0,
-    text: type === "text" ? "文字標示" : undefined,
-    style: defaultShapeStyle(type),
-  };
-}
-
 function markerOverlayKey(markerId: string): string {
   return markerOrderKey(markerId);
 }
@@ -1220,7 +714,7 @@ const orderDialogController = new OrderDialogController({
       ? editorDocument.listOrderKeys
       : editorDocument.displayOrderKeys,
   commitOrder: (mode, order) =>
-    dispatchEditorCommand(
+    editorCore.dispatch(
       createReorderCommand(
         mode,
         mode === "list"
@@ -1239,62 +733,6 @@ function getDisplayRankMap(): Map<string, number> {
   return objectOrderModel.displayRanks();
 }
 
-function hasDuplicateShape(candidate: ShapeItem): boolean {
-  return objectOrderModel.hasDuplicateShape(candidate);
-}
-
-function hasDuplicateMarker(candidate: {
-  name: string;
-  latitude: number;
-  longitude: number;
-}): boolean {
-  return objectOrderModel.hasDuplicateMarker(candidate);
-}
-
-function hasGeonamesMarker(result: GeonamesResult): boolean {
-  const sourceId = String(result.id);
-  return markerObjects().some(
-    (marker) =>
-      marker.sourceType === "geonames" &&
-      marker.sourceId === sourceId &&
-      marker.latitude === result.latitude &&
-      marker.longitude === result.longitude,
-  );
-}
-
-function addMarkerFromGeonames(result: GeonamesResult): void {
-  if (hasDuplicateMarker(result)) {
-    return;
-  }
-  const nameLocal = result.nameAlt ?? result.name;
-  const nameOriginal = result.name;
-  const marker: Marker = {
-    objectKind: "marker",
-    id: `geo-${result.id}-${Date.now()}`,
-    layerId: defaultObjectLayerId(),
-    name: nameLocal,
-    nameAlt: nameOriginal,
-    latitude: result.latitude,
-    longitude: result.longitude,
-    sourceId: String(result.id),
-    style: defaultMarkerStyle(),
-    sourceType: "geonames",
-    labelMode: "name",
-    showLabel: true,
-    kind: "label",
-  };
-  placeMarkerLabelInsideView(marker);
-  if (!dispatchEditorCommand(createAddObjectCommand(editorDocument, marker))) {
-    return;
-  }
-  previewMarker = null;
-  if (appState.workflow.activeStep === "3") {
-    selectMarker(marker.id);
-  }
-  renderMarkers();
-  renderMarkerList();
-}
-
 function getSelectedMarker(): Marker | null {
   return selectionController.getSelectedMarker();
 }
@@ -1303,63 +741,16 @@ function getSelectedShape(): ShapeItem | null {
   return selectionController.getSelectedShape();
 }
 
-function getEditableMarker(): Marker | null {
-  const selected = getSelectedMarker();
-  if (selected) {
-    return selected;
-  }
-  return previewMarker;
-}
-
-function updateMarkerObject(
-  marker: Marker,
-  update: (draft: Marker) => void,
-  mergeKey?: string,
-): boolean {
-  const stored = editorDocument.objects.find(
-    (object): object is Marker => isMarker(object) && object.id === marker.id,
-  );
-  if (!stored) {
-    update(marker);
-    return true;
-  }
-  const next = cloneEditorObject(stored) as Marker;
-  update(next);
-  return dispatchEditorCommand(
-    createUpdateObjectCommand(stored, next),
-    mergeKey,
-  );
-}
-
-function updateShapeObject(
-  shape: ShapeItem,
-  update: (draft: ShapeItem) => void,
-  mergeKey?: string,
-): boolean {
-  const stored = editorDocument.objects.find(
-    (object): object is ShapeItem => isShape(object) && object.id === shape.id,
-  );
-  if (!stored) {
-    update(shape);
-    return true;
-  }
-  const next = cloneEditorObject(stored) as ShapeItem;
-  update(next);
-  return dispatchEditorCommand(
-    createUpdateObjectCommand(stored, next),
-    mergeKey,
-  );
-}
 
 const inspectorController = new InspectorController({
   getSelectedMarker,
-  getEditableMarker,
+  getEditableMarker: objectController.getEditableMarker,
   getSelectedShape,
   getShapes: shapeObjects,
   markerListName,
   shapeDefaultName,
-  updateMarker: updateMarkerObject,
-  updateShape: updateShapeObject,
+  updateMarker: objectController.updateMarkerObject,
+  updateShape: objectController.updateShapeObject,
   renderMapObjects: renderMarkers,
   renderObjectList: renderMarkerList,
 });
@@ -1369,30 +760,17 @@ const selectionController = new SelectionController({
   getActiveStep: () => appState.workflow.activeStep,
   getMarkers: markerObjects,
   getShapes: shapeObjects,
-  clearToolPreviews: () => {
-    previewToolMarker = null;
-    previewShape = null;
-  },
-  clearMarkerPreview: () => {
-    previewMarker = null;
-  },
-  setActiveTool: (tool) => {
-    activeTool = tool;
-    hasActiveToolSelection = true;
-    document
-      .querySelectorAll<HTMLButtonElement>(".tool-select")
-      .forEach((button) => {
-        button.classList.toggle("active", button.dataset.tool === tool);
-      });
-  },
+  clearToolPreviews: objectController.clearToolPreviews,
+  clearMarkerPreview: objectController.clearMarkerPreview,
+  setActiveTool: objectController.activateTool,
   syncMarkerInspector: syncMarkerControls,
   syncShapeInspector: syncShapeControls,
   syncItemName: syncItemNameControl,
   updateMarkerStyles,
   renderMapObjects: renderMarkers,
   renderObjectList: renderMarkerList,
-  updateMarker: updateMarkerObject,
-  updateShape: updateShapeObject,
+  updateMarker: objectController.updateMarkerObject,
+  updateShape: objectController.updateShapeObject,
   getMapMetrics: () => ({
     scale: view.scale,
     scaleFit: mapViewport.lastScaleFit,
@@ -1409,7 +787,7 @@ const selectionController = new SelectionController({
 const mapInteractionController = new MapInteractionController({
   svg,
   viewport: mapViewport,
-  isLocked: () => mapLocked,
+  isLocked: () => appState.workflow.activeStep === "2" || appState.workflow.activeStep === "3",
   clearSelection: () => {
     if (appState.workflow.activeStep === "3") {
       clearStepThreeSelection();
@@ -1493,8 +871,8 @@ function renderMarkerList(): void {
       (isMarker(object) ? markerListName(object) : "標示"),
     onSelectMarker: selectMarker,
     onSelectShape: selectShape,
-    onDeleteMarker: deleteMarker,
-    onDeleteShape: deleteShape,
+    onDeleteMarker: objectController.deleteMarker,
+    onDeleteShape: objectController.deleteShape,
   });
   if (clearMarkersButton) {
     clearMarkersButton.disabled = renderedCount === 0;
@@ -1505,58 +883,6 @@ function openCompleteDialog(): void {
   exportController.openCompleteDialog();
 }
 
-function deleteMarker(markerId: string): void {
-  if (
-    !dispatchEditorCommand(createRemoveObjectCommand(editorDocument, markerId))
-  ) {
-    return;
-  }
-  if (selectionState.markerId === markerId) {
-    selectionState.markerId = null;
-    syncMarkerControls(null);
-    syncItemNameControl();
-  }
-  renderMarkers();
-  renderMarkerList();
-}
-
-function unprojectBBox(box: {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}): BBox {
-  const [minLon, minLat] = unproject(
-    box.x,
-    box.y + box.height,
-    MAP_WIDTH,
-    MAP_HEIGHT,
-  );
-  const [maxLon, maxLat] = unproject(
-    box.x + box.width,
-    box.y,
-    MAP_WIDTH,
-    MAP_HEIGHT,
-  );
-  return geographicBBoxFromUnwrappedBounds(
-    Math.min(minLon, maxLon),
-    Math.min(minLat, maxLat),
-    Math.max(minLon, maxLon),
-    Math.max(minLat, maxLat),
-  );
-}
-
-function clearSearchPreview(): void {
-  previewMarker = null;
-  renderMarkers();
-}
-
-function previewCoordinateMarker(marker: Marker): void {
-  placeMarkerLabelInsideView(marker);
-  previewMarker = marker;
-  renderMarkers();
-  syncMarkerControls(marker);
-}
 
 const searchController = new SearchController({
   state: appState.search,
@@ -1571,82 +897,19 @@ const searchController = new SearchController({
   getViewCenter: viewCenterLonLat,
   searchGeonames: async (query, limit) =>
     (await window.mapSchematic?.searchGeonames?.(query, limit)) ?? [],
-  clearPreview: clearSearchPreview,
-  previewGeonames: setPreviewMarker,
-  addGeonames: addMarkerFromGeonames,
-  hasGeonamesMarker,
+  clearPreview: objectController.clearSearchPreview,
+  previewGeonames: objectController.setPreviewMarker,
+  addGeonames: objectController.addMarkerFromGeonames,
+  hasGeonamesMarker: objectController.hasGeonamesMarker,
   createCoordinatePreview: (coordinates: ParsedCoordinates) => {
-    const marker = buildCoordMarker(coordinates, "coord-preview");
+    const marker = objectController.buildCoordMarker(coordinates, "coord-preview");
     marker.labelMode = "coords";
     return marker;
   },
-  previewCoordinate: previewCoordinateMarker,
-  addCoordinate: addMarkerFromCoordsValue,
+  previewCoordinate: objectController.previewCoordinateMarker,
+  addCoordinate: objectController.addMarkerFromCoordsValue,
   setStatus,
 });
-
-function currentSelectionBBox(): BBox {
-  if (!cropController.bbox && cropController.box) {
-    cropController.updateBBox();
-  }
-  if (cropController.bbox) {
-    return unprojectBBox(cropController.bbox);
-  }
-  return {
-    west: WORLD_BBOX.minLon,
-    south: WORLD_BBOX.minLat,
-    east: WORLD_BBOX.maxLon,
-    north: WORLD_BBOX.maxLat,
-    crossesAntimeridian: false,
-  };
-}
-
-function defaultObjectLayerId(): string {
-  return appState.project.current?.layers[0]?.id ?? "layer-1";
-}
-
-function buildProject(): MapProject | null {
-  if (!currentPackVersion || !currentPackId) {
-    return null;
-  }
-  const now = new Date().toISOString();
-  const base = appState.project.current?.createdAt ?? now;
-  const currentLayer = appState.project.current?.layers[0];
-  const layers = [
-    currentLayer
-      ? { id: currentLayer.id, name: currentLayer.name }
-      : { id: "layer-1", name: "Default" },
-  ];
-  return {
-    ...(appState.project.current ?? {}),
-    schemaVersion: "0.7",
-    createdAt: base,
-    updatedAt: now,
-    dataPackVersion: currentPackVersion,
-    dataPackId: currentPackId,
-    canvas: { ...cropController.projectCanvas },
-    viewport: {
-      bbox: currentSelectionBBox(),
-      projection: "EPSG:4326",
-    },
-    layers,
-    objects: editorDocumentToProjectObjects(
-      editorDocument,
-      preservedProjectObjects,
-      defaultObjectLayerId(),
-    ),
-    history: editorCore.exportHistory(),
-    ui: {
-      ...(appState.project.current?.ui ?? {}),
-      listOrderKeys: [...editorDocument.listOrderKeys],
-      displayOrderKeys: [...editorDocument.displayOrderKeys],
-      activeStyleId: basemapRenderer.activeStyleId,
-      hillshadeEnabled: basemapRenderer.reliefEnabled,
-      hillshadeBlend: basemapRenderer.reliefEffect,
-      ...cropController.projectUiState(),
-    },
-  };
-}
 
 function setStatus(message: string): void {
   if (statusEl) {
@@ -1658,76 +921,20 @@ function syncProjectHeader(): void {
   projectController.renderHeader();
 }
 
-function syncProjectDirtyState(): void {
-  projectController.syncDirtyState();
-}
-
 function scheduleProjectDirtyCheck(): void {
   projectController.scheduleDirtyCheck();
 }
 
-function setProjectBaseline(project?: MapProject | null): void {
-  projectController.setBaseline(project);
+function setProjectBaseline(): void {
+  projectController.setBaseline();
 }
 
 function applyLoadedProject(loadedProject: MapProject): AppliedProjectSummary {
-  cropController.setProjectCanvas(loadedProject.canvas);
-  const loadedEditor = mapProjectToEditorDocument(loadedProject);
-  editorCore.replaceDocument(loadedEditor.document);
-  selectionState.markerId = null;
-  selectionState.shapeId = null;
-  selectionState.labelMarkerId = null;
-  previewMarker = null;
-  previewShape = null;
-  previewToolMarker = null;
-  cropController.resetBox();
-  preservedProjectObjects.splice(
-    0,
-    preservedProjectObjects.length,
-    ...loadedEditor.preservedObjects,
-  );
-  if (loadedProject.viewport?.bbox) {
-    const bbox = loadedProject.viewport.bbox;
-    const longitudeBounds = unwrappedLongitudeBounds(bbox);
-    const min = project(
-      longitudeBounds.west,
-      bbox.south,
-      MAP_WIDTH,
-      MAP_HEIGHT,
-    );
-    const max = project(
-      longitudeBounds.east,
-      bbox.north,
-      MAP_WIDTH,
-      MAP_HEIGHT,
-    );
-    cropController.setBBox({
-      x: Math.min(min[0], max[0]),
-      y: Math.min(min[1], max[1]),
-      width: Math.abs(max[0] - min[0]),
-      height: Math.abs(max[1] - min[1]),
-    });
-  }
-  const loadedStyleId = loadedProject.ui?.activeStyleId;
-  if (
-    typeof loadedStyleId === "string" &&
-    styleButtons.some((button) => button.id === loadedStyleId)
-  ) {
-    setActiveStyleButton(loadedStyleId);
-  }
-  const loadedBlend = loadedProject.ui?.hillshadeBlend;
-  setReliefMode(
-    loadedProject.ui?.hillshadeEnabled === true,
-    typeof loadedBlend === "string" ? loadedBlend : undefined,
-  );
-  cropController.applyProjectUi(loadedProject.ui);
-  const historyRestored = editorCore.restoreHistory(loadedProject.history);
-  if (!historyRestored) {
-    resetEditorHistory();
-  } else {
-    syncHistoryControls();
-  }
-  syncManualMarkerCount();
+  const summary = projectSnapshot.apply(loadedProject);
+  selectionController.reconcile();
+  objectController.resetTransient();
+  syncHistoryControls();
+  objectController.syncManualMarkerCount();
   renderMarkers();
   renderMarkerList();
   syncMarkerControls(getSelectedMarker());
@@ -1737,19 +944,19 @@ function applyLoadedProject(loadedProject: MapProject): AppliedProjectSummary {
     cropController.updateOverlay();
     cropController.applyMapClip();
   }
-  return {
-    historyRestored,
-    preservedObjectCount: preservedProjectObjects.length,
-  };
+  scheduleProjectDirtyCheck();
+  return summary;
 }
 
 const projectController = new ProjectController({
   state: appState.project,
-  buildProject,
+  buildProject: () => projectSnapshot.build(),
+  getFingerprint: () => projectSnapshot.fingerprint(),
+  prepareSave: () => { selectionController.finishDrag(); },
   applyLoadedProject,
   getDatapack: () => ({
-    id: currentPackId,
-    version: currentPackVersion,
+    id: appState.datapack.id,
+    version: appState.datapack.version,
   }),
   setStatus,
   renderHeader: renderProjectHeader,
@@ -1769,224 +976,10 @@ function handleLoad(): Promise<void> {
   return projectController.load();
 }
 
-async function renderExportCanvas(exportScale = 1): Promise<{
-  canvas: HTMLCanvasElement;
-  width: number;
-  height: number;
-} | null> {
-  if (!canvas || !svg || !mapStage) {
-    return null;
-  }
-  const stageRect = mapStage.getBoundingClientRect();
-  const scaleX = canvas.width / stageRect.width;
-  const scaleY = canvas.height / stageRect.height;
-  const crop = cropController.currentExportRect();
-  if (!crop) {
-    return null;
-  }
-  const outputSize = canvasPixelDimensions(
-    cropController.projectCanvas,
-    exportScale,
-  );
-  const outWidth = outputSize.width;
-  const outHeight = outputSize.height;
-  const outCanvas = document.createElement("canvas");
-  outCanvas.width = outWidth;
-  outCanvas.height = outHeight;
-  const ctx = outCanvas.getContext("2d");
-  if (!ctx) {
-    return null;
-  }
-  const sourceX = crop.left * scaleX;
-  const sourceY = crop.top * scaleY;
-  const sourceWidth = crop.width * scaleX;
-  const sourceHeight = crop.height * scaleY;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(
-    canvas,
-    sourceX,
-    sourceY,
-    sourceWidth,
-    sourceHeight,
-    0,
-    0,
-    outWidth,
-    outHeight,
-  );
-  const serializer = new XMLSerializer();
-  const svgClone = svg.cloneNode(true) as SVGSVGElement;
-  svgClone.setAttribute("width", String(canvas.width));
-  svgClone.setAttribute("height", String(canvas.height));
-  const svgString = serializer.serializeToString(svgClone);
-  const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const img = new Image();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("svg load failed"));
-      img.src = url;
-    });
-    ctx.drawImage(
-      img,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
-      0,
-      0,
-      outWidth,
-      outHeight,
-    );
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-  return { canvas: outCanvas, width: outWidth, height: outHeight };
-}
-
-function renderExportSvg(): {
-  data: string;
-  width: number;
-  height: number;
-} | null {
-  if (!svg || !mapStage || !basemapRenderer.hasLayers) {
-    return null;
-  }
-  const crop = cropController.currentExportRect();
-  if (!crop) {
-    return null;
-  }
-  const stageRect = mapStage.getBoundingClientRect();
-  const { scaleFit, offsetX, offsetY } = resizeCanvasToStage();
-  if (scaleFit <= 0) {
-    return null;
-  }
-
-  const viewBoxX = (crop.left - offsetX) / scaleFit;
-  const viewBoxY = (crop.top - offsetY) / scaleFit;
-  const viewBoxWidth = crop.width / scaleFit;
-  const viewBoxHeight = crop.height / scaleFit;
-  const outputSize = canvasPixelDimensions(cropController.projectCanvas);
-  const outputWidth = outputSize.width;
-  const outputHeight = outputSize.height;
-  const svgNs = "http://www.w3.org/2000/svg";
-  const xlinkNs = "http://www.w3.org/1999/xlink";
-  const xmlnsNs = "http://www.w3.org/2000/xmlns/";
-  const svgClone = svg.cloneNode(true) as SVGSVGElement;
-  svgClone.setAttribute("xmlns", svgNs);
-  svgClone.setAttributeNS(xmlnsNs, "xmlns:xlink", xlinkNs);
-  svgClone.setAttribute(
-    "width",
-    cropController.projectCanvas.unit === "mm"
-      ? `${cropController.projectCanvas.width}mm`
-      : String(outputWidth),
-  );
-  svgClone.setAttribute(
-    "height",
-    cropController.projectCanvas.unit === "mm"
-      ? `${cropController.projectCanvas.height}mm`
-      : String(outputHeight),
-  );
-  svgClone.setAttribute(
-    "viewBox",
-    `${viewBoxX.toFixed(4)} ${viewBoxY.toFixed(4)} ${viewBoxWidth.toFixed(4)} ${viewBoxHeight.toFixed(4)}`,
-  );
-  svgClone.setAttribute("preserveAspectRatio", "none");
-  svgClone.removeAttribute("class");
-
-  svgClone
-    .querySelectorAll('[data-export-ignore="true"], [data-preview="true"]')
-    .forEach((element) => element.remove());
-  svgClone.querySelectorAll("[data-dragging]").forEach((element) => {
-    element.removeAttribute("data-dragging");
-  });
-  svgClone
-    .querySelectorAll<SVGCircleElement>('circle[data-marker="dot"]')
-    .forEach((dot) => dot.setAttribute("stroke", "#fff7ed"));
-
-  let defs = svgClone.querySelector("defs");
-  if (!defs) {
-    defs = document.createElementNS(svgNs, "defs");
-    svgClone.insertBefore(defs, svgClone.firstChild);
-  }
-  defs.querySelector("#map-clip")?.remove();
-  defs.querySelector("#export-basemap-world")?.remove();
-
-  const root = ensureMapRoot(svgClone);
-  root.removeAttribute("clip-path");
-  const basemapContainer = ensureBasemapContainer(root);
-  basemapContainer.innerHTML = "";
-  root.insertBefore(basemapContainer, root.firstChild);
-
-  const worldDefinition = document.createElementNS(svgNs, "g");
-  worldDefinition.setAttribute("id", "export-basemap-world");
-  for (const layer of basemapRenderer.layers) {
-    if (layer.pathData.length === 0) {
-      continue;
-    }
-    const style = basemapRenderer.exportStyle(layer.id);
-    const pathElement = document.createElementNS(svgNs, "path");
-    pathElement.setAttribute("d", layer.pathData.join(" "));
-    pathElement.setAttribute("fill", style.fill ?? "none");
-    pathElement.setAttribute("fill-rule", "evenodd");
-    pathElement.setAttribute("stroke", style.stroke ?? "none");
-    if (style.stroke && style.stroke !== "none") {
-      pathElement.setAttribute(
-        "stroke-width",
-        String((style.strokeWidth ?? 0.4) / view.scale),
-      );
-      pathElement.setAttribute("stroke-linejoin", "round");
-      pathElement.setAttribute("stroke-linecap", "round");
-    }
-    worldDefinition.appendChild(pathElement);
-  }
-
-  if (basemapRenderer.reliefEnabled && basemapRenderer.hillshadeTexture) {
-    const image = document.createElementNS(svgNs, "image");
-    const imageData = basemapRenderer.hillshadeTexture.toDataURL("image/png");
-    image.setAttribute("href", imageData);
-    image.setAttributeNS(xlinkNs, "xlink:href", imageData);
-    image.setAttribute("x", "0");
-    image.setAttribute("y", "0");
-    image.setAttribute("width", String(MAP_WIDTH));
-    image.setAttribute("height", String(MAP_HEIGHT));
-    image.setAttribute("preserveAspectRatio", "none");
-    image.setAttribute(
-      "opacity",
-      String(basemapRenderer.reliefAlpha),
-    );
-    image.setAttribute("style", "mix-blend-mode:multiply");
-    worldDefinition.appendChild(image);
-  }
-  defs.appendChild(worldDefinition);
-
-  const wrapShift = mapViewport.wrapShift;
-  const wrapSpan = basemapRenderer.exportWrapSpan(stageRect.width, scaleFit);
-  for (let i = -wrapSpan; i <= wrapSpan; i += 1) {
-    const use = document.createElementNS(svgNs, "use");
-    use.setAttribute("href", "#export-basemap-world");
-    use.setAttributeNS(xlinkNs, "xlink:href", "#export-basemap-world");
-    use.setAttribute(
-      "transform",
-      `translate(${(i + wrapShift) * MAP_WIDTH} 0)`,
-    );
-    basemapContainer.appendChild(use);
-  }
-
-  const background = document.createElementNS(svgNs, "rect");
-  background.setAttribute("x", viewBoxX.toFixed(4));
-  background.setAttribute("y", viewBoxY.toFixed(4));
-  background.setAttribute("width", viewBoxWidth.toFixed(4));
-  background.setAttribute("height", viewBoxHeight.toFixed(4));
-  background.setAttribute("fill", "#0a1020");
-  svgClone.insertBefore(background, svgClone.firstChild);
-
-  const serializer = new XMLSerializer();
-  const data = `<?xml version="1.0" encoding="UTF-8"?>\n${serializer.serializeToString(svgClone)}`;
-  return { data, width: outputWidth, height: outputHeight };
-}
-
+const exportRenderer = createExportRenderer({
+  canvas, svg, mapStage, cropController, mapViewport, basemapRenderer,
+  mapWidth: MAP_WIDTH, mapHeight: MAP_HEIGHT,
+});
 const exportController = new ExportController({
   state: appState.export,
   elements: {
@@ -2003,8 +996,8 @@ const exportController = new ExportController({
     frameApplyButton: exportFrameApply,
   },
   pngScale: PNG_EXPORT_SCALE,
-  renderCanvas: renderExportCanvas,
-  renderSvg: renderExportSvg,
+  renderCanvas: exportRenderer.renderCanvas,
+  renderSvg: exportRenderer.renderSvg,
   setStatus,
   showToast: showAppToast,
   hideToast: () => appToast?.classList.remove("show"),
@@ -2013,91 +1006,6 @@ const exportController = new ExportController({
 function handleExport(format: ExportFormat): Promise<void> {
   return exportController.export(format);
 }
-
-function handleClearMarkers(): void {
-  if (!dispatchEditorCommand(createClearObjectsCommand(editorDocument))) {
-    return;
-  }
-  selectionState.markerId = null;
-  selectionState.shapeId = null;
-  previewMarker = null;
-  previewToolMarker = null;
-  previewShape = null;
-  manualMarkerCount = 0;
-  syncMarkerControls(null);
-  syncShapeControls(null);
-  syncItemNameControl();
-  renderMarkers();
-  renderMarkerList();
-}
-
-function deleteShape(shapeId: string): void {
-  if (
-    !dispatchEditorCommand(createRemoveObjectCommand(editorDocument, shapeId))
-  ) {
-    return;
-  }
-  if (selectionState.shapeId === shapeId) {
-    selectionState.shapeId = null;
-    syncShapeControls(null);
-    syncItemNameControl();
-  }
-  renderMarkers();
-  renderMarkerList();
-}
-
-function openCoordEditor(marker: Marker): void {
-  if (
-    !coordEditModal ||
-    !coordLabelInput ||
-    !coordEditSave ||
-    !coordEditCancel
-  ) {
-    return;
-  }
-  editingCoordMarker = marker;
-  coordEditModal.classList.add("active");
-  coordLabelInput.value = marker.labelName ?? "";
-  window.requestAnimationFrame(() => {
-    coordLabelInput.focus();
-    coordLabelInput.select();
-  });
-  const radios = coordEditModal.querySelectorAll<HTMLInputElement>(
-    'input[name="coordLabelMode"]',
-  );
-  radios.forEach((radio) => {
-    radio.checked = radio.value === marker.labelMode;
-  });
-  coordEditSave.onclick = () => {
-    const selected = coordEditModal.querySelector<HTMLInputElement>(
-      'input[name="coordLabelMode"]:checked',
-    );
-    updateMarkerObject(marker, (draft) => {
-      draft.labelName = coordLabelInput.value.trim() || undefined;
-      draft.labelMode = selected?.value === "name" ? "name" : "coords";
-    });
-    editingCoordMarker = null;
-    coordEditModal.classList.remove("active");
-    renderMarkers();
-    renderMarkerList();
-  };
-  coordEditCancel.onclick = () => {
-    editingCoordMarker = null;
-    coordEditModal.classList.remove("active");
-  };
-}
-
-function isCoordLabelDefault(): boolean {
-  if (!editingCoordMarker) {
-    return false;
-  }
-  return (
-    !editingCoordMarker.labelName ||
-    editingCoordMarker.labelName.trim().length === 0
-  );
-}
-
-bindFirstClickSelect(coordLabelInput, isCoordLabelDefault);
 
 function mapPointFromEvent(event: MouseEvent): { x: number; y: number } {
   return mapViewport.mapPointFromEvent(event);
@@ -2109,8 +1017,8 @@ async function reloadDatapackAssets(): Promise<void> {
   if (!datapack) {
     throw new Error("資料包不可用");
   }
-  currentPackId = datapack.id;
-  currentPackVersion = datapack.version;
+  appState.datapack.id = datapack.id;
+  appState.datapack.version = datapack.version;
   scheduleProjectDirtyCheck();
   if (statusEl) {
     statusEl.textContent = `資料包 ${datapack.id} ${datapack.version} 已就緒`;
@@ -2143,6 +1051,11 @@ const mapInitializationController = new MapInitializationController({
   },
 });
 
+const preferencesController = createPreferencesController({
+  reloadMap: () => mapInitializationController.initialize(),
+  showDialog: showAppDialog, showToast: showAppToast,
+});
+
 async function boot() {
   if (!statusEl) {
     return;
@@ -2164,7 +1077,7 @@ function hookToolbar(): void {
     );
     let nearestIndex = 0;
     let nearestDelta = Infinity;
-    for (let i = 0; i < levels.length; i += 1) {
+    for (let i = 0;i < levels.length;i += 1) {
       const delta = Math.abs(levels[i] - target);
       if (delta < nearestDelta) {
         nearestDelta = delta;
@@ -2248,17 +1161,6 @@ saveAsButton?.addEventListener("click", async () => {
 });
 loadButton?.addEventListener("click", handleLoad);
 topExportButton?.addEventListener("click", openCompleteDialog);
-preferencesButton?.addEventListener("click", openPreferencesDialog);
-preferencesClose?.addEventListener("click", closePreferencesDialog);
-preferencesDone?.addEventListener("click", closePreferencesDialog);
-datapackUpdateButton?.addEventListener("click", () => {
-  void handleDatapackUpdate();
-});
-preferencesModal?.addEventListener("click", (event) => {
-  if (event.target === preferencesModal) {
-    closePreferencesDialog();
-  }
-});
 clearMarkersButton?.addEventListener("click", async () => {
   if (editorDocument.objects.length === 0) {
     return;
@@ -2277,7 +1179,7 @@ clearMarkersButton?.addEventListener("click", async () => {
     cancelValue: 0,
   });
   if (response === 1) {
-    handleClearMarkers();
+    objectController.handleClearMarkers();
   }
 });
 undoButton?.addEventListener("click", undoEditorChange);
@@ -2285,11 +1187,6 @@ redoButton?.addEventListener("click", redoEditorChange);
 appDialogModal?.addEventListener("click", (event) => {
   if (event.target === appDialogModal) {
     appDialog.closeCancel();
-  }
-});
-coordEditModal?.addEventListener("click", (event) => {
-  if (event.target === coordEditModal) {
-    coordEditCancel?.click();
   }
 });
 exportController.bind();
@@ -2368,7 +1265,7 @@ async function showAbout(): Promise<void> {
     title: "Map Schematic",
     message: "離線地圖示意圖製作工具",
     detail:
-      `資料包：${currentPackId || "尚未載入"} ${currentPackVersion}\n`
+      `資料包：${appState.datapack.id || "尚未載入"} ${appState.datapack.version}\n`
       + "資料來源：Natural Earth / GeoNames / Natural Earth Shaded Relief\n\n"
       + `版本：${version}\n`
       + `Commit SHA：${shortCommitSha}${commitState}`,
@@ -2379,15 +1276,13 @@ async function showAbout(): Promise<void> {
 const appCommandController = new AppCommandController({
   getActiveStep: () => appState.workflow.activeStep,
   handleAppDialogKeyDown: (event) => appDialog.handleKeyDown(event),
-  isPreferencesOpen: () =>
-    preferencesModal?.classList.contains("active") === true,
-  closePreferences: closePreferencesDialog,
+  isPreferencesOpen: preferencesController.isOpen,
+  closePreferences: preferencesController.close,
   handleExportEscape: () => exportController.handleEscape(),
   isOrderDialogOpen: () => orderDialogController.isOpen(),
   closeOrderDialog: () => orderDialogController.close(),
-  isCoordinateDialogOpen: () =>
-    coordEditModal?.classList.contains("active") === true,
-  cancelCoordinateDialog: () => coordEditCancel?.click(),
+  isCoordinateDialogOpen: objectController.isCoordinateDialogOpen,
+  cancelCoordinateDialog: objectController.cancelCoordinateDialog,
   isCompletionDialogOpen: () =>
     completeModal?.classList.contains("active") === true,
   undo: undoEditorChange,
@@ -2396,9 +1291,9 @@ const appCommandController = new AppCommandController({
   clearSelection: clearStepThreeSelection,
   deleteSelection: () => {
     if (selectionState.markerId) {
-      deleteMarker(selectionState.markerId);
+      objectController.deleteMarker(selectionState.markerId);
     } else if (selectionState.shapeId) {
-      deleteShape(selectionState.shapeId);
+      objectController.deleteShape(selectionState.shapeId);
     }
   },
   loadProject: () => {
@@ -2428,17 +1323,19 @@ const appCommandController = new AppCommandController({
 });
 appCommandController.bind();
 
-initializeThemePreferences({ buttons: themePreferenceButtons });
+preferencesController.bind();
+objectController.bind();
 hookToolbar();
-hookSteps();
+workflowController.bind();
 basemapRenderer.bind();
 orderDialogController.bind();
 cropController.bind();
 inspectorController.bind();
-document.addEventListener("click", scheduleProjectDirtyCheck, true);
-document.addEventListener("input", scheduleProjectDirtyCheck, true);
-document.addEventListener("change", scheduleProjectDirtyCheck, true);
-document.addEventListener("pointerup", scheduleProjectDirtyCheck, true);
+editorCore.subscribe((change) => {
+  if (change.kind === "transaction") return;
+  syncHistoryControls();
+  scheduleProjectDirtyCheck();
+});
 syncHistoryControls();
 if (statusEl) {
   new MutationObserver(syncWorkspaceStatusIcon).observe(statusEl, {

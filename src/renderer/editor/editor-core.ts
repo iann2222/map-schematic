@@ -14,7 +14,7 @@ import type {
 } from "../../shared/schema/mapproj-contract.js";
 
 export type EditorCoreChange = {
-  kind: "execute" | "undo" | "redo" | "reset";
+  kind: "execute" | "undo" | "redo" | "reset" | "transaction";
   command: EditorCommand | null;
 };
 
@@ -66,6 +66,11 @@ export class EditorCore {
   private future: HistoryEntry[] = [];
   private transactionBefore: EditorDocument | null = null;
   private listeners = new Set<(change: EditorCoreChange) => void>();
+  private documentRevisionValue = 0;
+  private historyRevisionValue = 0;
+
+  get documentRevision(): number { return this.documentRevisionValue; }
+  get historyRevision(): number { return this.historyRevisionValue; }
 
   constructor(
     document: EditorDocument,
@@ -129,7 +134,9 @@ export class EditorCore {
     const draft = cloneEditorObject(current);
     update(draft);
     const command = createUpdateObjectCommand(current, draft);
-    return command !== null && applyEditorCommand(this.document, command, "forward");
+    if (!command || !applyEditorCommand(this.document, command, "forward")) return false;
+    this.emit({ kind: "transaction", command });
+    return true;
   }
 
   commitTransaction(options: EditorCoreRecordOptions = {}): boolean {
@@ -317,6 +324,8 @@ export class EditorCore {
   }
 
   private emit(change: EditorCoreChange): void {
+    this.documentRevisionValue += 1;
+    if (change.kind !== "transaction") this.historyRevisionValue += 1;
     this.listeners.forEach((listener) => listener(change));
   }
 }

@@ -90,7 +90,7 @@ describe("overlay display order", () => {
       svg: svg as unknown as SVGSVGElement, canvas: null, mapStage: null, zoomIndicator: null,
       getActiveStep: () => "3", getCropBBox: () => null,
       requestBasemapDraw: vi.fn(), updateMarkerStyles: vi.fn(), onViewChanged: vi.fn(),
-      renderMarkers: renderer.renderMarkers, hasSelectedLabel: () => false, scheduleDirtyCheck: vi.fn(),
+      renderMarkers: renderer.renderMarkers, hasSelectedLabel: () => false,
       mapWidth: 1200, mapHeight: 800, minScale: 0.5, maxScale: 10, wraps: [-1, 0, 1],
     });
     viewport.view.tx = -600;

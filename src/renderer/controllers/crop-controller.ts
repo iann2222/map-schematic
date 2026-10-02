@@ -79,6 +79,7 @@ export type CropControllerOptions = {
   maxScale: number;
   maxCropScale: number;
   root?: Document;
+  onProjectChanged?: () => void;
 };
 
 type CropElements = {
@@ -143,6 +144,7 @@ export class CropController {
   private drag: CropDrag | null = null;
   private snapshot: CropSnapshot | null = null;
   private lastStageRect: { width: number; height: number } | null = null;
+  private lastProjectState = "";
 
   constructor(options: CropControllerOptions) {
     this.options = options;
@@ -156,6 +158,7 @@ export class CropController {
       bbox: null,
       box: null,
     };
+    this.lastProjectState = this.projectStateFingerprint();
   }
 
   bind(): void {
@@ -177,11 +180,13 @@ export class CropController {
 
   setProjectCanvas(canvas: MapProject["canvas"]): void {
     this.state.projectCanvas = { ...canvas };
+    this.notifyProjectChanged();
   }
 
   setBBox(bbox: CropBBox | null): void {
     this.state.bbox = bbox ? { ...bbox } : null;
     this.state.box = null;
+    this.notifyProjectChanged();
   }
 
   resetBox(): void {
@@ -191,6 +196,7 @@ export class CropController {
   resetForLocationChange(): void {
     this.state.bbox = null;
     this.snapshot = null;
+    this.notifyProjectChanged();
   }
 
   saveSnapshot(): void {
@@ -222,6 +228,7 @@ export class CropController {
       : null;
     this.options.applyViewTransform();
     this.options.updateWrapTransforms(true);
+    this.notifyProjectChanged();
     return true;
   }
 
@@ -329,6 +336,7 @@ export class CropController {
     const box = this.state.box;
     if (!box || !this.elements.mapStage) {
       this.state.bbox = null;
+      this.notifyProjectChanged();
       return;
     }
     const { scaleFit, offsetX, offsetY } =
@@ -347,6 +355,7 @@ export class CropController {
         this.state.ratio,
       );
     }
+    this.notifyProjectChanged();
   }
 
   zoomToBounds(): void {
@@ -565,6 +574,7 @@ export class CropController {
     ) {
       this.setActiveRatio(ui.activeRatioId);
     }
+    this.notifyProjectChanged();
   }
 
   projectUiState(): Pick<
@@ -642,6 +652,7 @@ export class CropController {
     if (this.elements.ratioSwap) {
       this.elements.ratioSwap.disabled = targetId === "ratioFree";
     }
+    this.notifyProjectChanged();
   }
 
   private handleRatioInput(): void {
@@ -650,6 +661,7 @@ export class CropController {
       !this.elements.ratioInputA ||
       !this.elements.ratioInputB
     ) {
+      this.notifyProjectChanged();
       return;
     }
     const first = Number(this.elements.ratioInputA.value);
@@ -662,6 +674,18 @@ export class CropController {
     ) {
       this.applyRatio(first / second, "ratioCustom");
     }
+    this.notifyProjectChanged();
+  }
+
+  private projectStateFingerprint(): string {
+    return JSON.stringify([this.state.bbox, this.state.projectCanvas, this.projectUiState()]);
+  }
+
+  private notifyProjectChanged(): void {
+    const fingerprint = this.projectStateFingerprint();
+    if (fingerprint === this.lastProjectState) return;
+    this.lastProjectState = fingerprint;
+    this.options.onProjectChanged?.();
   }
 
   private swapRatio(): void {

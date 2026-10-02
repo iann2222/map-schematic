@@ -8,6 +8,9 @@ describe("renderer app state", () => {
     const second = createAppState();
 
     expect(first).toEqual({
+      objects: { activeTool: "marker", hasActiveToolSelection: false, manualMarkerCount: 0,
+        previewMarker: null, previewToolMarker: null, previewShape: null, editingCoordMarker: null },
+      datapack: { id: "", version: "" },
       workflow: { activeStep: "0" },
       project: {
         current: null,

@@ -53,6 +53,7 @@ export type BasemapRendererOptions = {
   reliefEffectButtons: HTMLButtonElement[];
   preview: HTMLDivElement | null;
   previewCanvas: HTMLCanvasElement | null;
+  onProjectChanged?: () => void;
 };
 
 export class BasemapRenderer {
@@ -148,14 +149,17 @@ export class BasemapRenderer {
 
   setActiveStyle(styleId: string): void {
     this.hideStylePreview();
+    const changed = this.activeStyleValue !== styleId;
     this.activeStyleValue = styleId;
     this.options.styleButtons.forEach((button) => {
       button.classList.toggle("active", button.id === styleId);
     });
     this.requestDraw();
+    if (changed) this.options.onProjectChanged?.();
   }
 
   setReliefMode(enabled: boolean, effect?: string): void {
+    const previous = [this.reliefEnabledValue, this.reliefEffectValue];
     this.reliefEnabledValue = enabled;
     if (enabled) {
       this.reliefEffectValue = normalizeReliefEffect(
@@ -177,6 +181,9 @@ export class BasemapRenderer {
       void this.ensureReliefLoaded();
     }
     this.requestDraw();
+    if (previous[0] !== this.reliefEnabledValue || previous[1] !== this.reliefEffectValue) {
+      this.options.onProjectChanged?.();
+    }
   }
 
   requestDraw(): void {

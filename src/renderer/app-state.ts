@@ -1,5 +1,17 @@
 import type { MapProject } from "./bridge.js";
 import type { ExportFrameStyle } from "./export/export-frame.js";
+import type { Marker, ShapeItem } from "./editor/types.js";
+
+export type ObjectTool = "marker" | ShapeItem["type"];
+export type ObjectToolState = {
+  activeTool: ObjectTool;
+  hasActiveToolSelection: boolean;
+  manualMarkerCount: number;
+  previewMarker: Marker | null;
+  previewToolMarker: Marker | null;
+  previewShape: ShapeItem | null;
+  editingCoordMarker: Marker | null;
+};
 
 export type WorkflowStep = "0" | "1" | "2" | "3";
 
@@ -60,6 +72,8 @@ export type SelectionState = {
 };
 
 export type AppState = {
+  objects: ObjectToolState;
+  datapack: { id: string; version: string };
   workflow: WorkflowState;
   project: ProjectState;
   search: SearchState;
@@ -69,6 +83,9 @@ export type AppState = {
 
 export function createAppState(): AppState {
   return {
+    objects: { activeTool: "marker", hasActiveToolSelection: false, manualMarkerCount: 0,
+      previewMarker: null, previewToolMarker: null, previewShape: null, editingCoordMarker: null },
+    datapack: { id: "", version: "" },
     workflow: {
       activeStep: "0",
     },

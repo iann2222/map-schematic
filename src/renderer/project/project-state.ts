@@ -34,5 +34,12 @@ export function partitionProjectObjects(
 
 export function projectFingerprint(project: MapProject): string {
   const { createdAt: _createdAt, updatedAt: _updatedAt, ...content } = project;
-  return JSON.stringify(content);
+  return serializeProjectContent(content);
+}
+
+export function serializeProjectContent(value: unknown): string {
+  return JSON.stringify(value, (_key, entry: unknown) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return entry;
+    return Object.fromEntries(Object.entries(entry).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+  });
 }

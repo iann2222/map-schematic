@@ -110,13 +110,17 @@
 - `src/renderer/index.ts`
   - 作為 renderer composition root，建立控制器、注入共享狀態與 callback，並負責應用程式啟動。
   - 專案、工作流程、搜尋、匯出、地圖、裁切、選取、排序與屬性面板的狀態及互動分別由對應模組管理。
-  - 保留跨控制器的 Editor Core 命令組裝、專案資料轉換與匯出內容組裝。
-  - 產生高解析 PNG、PDF 輸入與真正向量 SVG；地形陰影啟用時僅陰影部分維持點陣圖片。
+  - 保留跨控制器的畫面刷新與流程接線；物件操作、專案快照與匯出內容由獨立模組處理。
 - `src/renderer/app-state.ts`
-  - 定義 renderer 唯一的 `AppState` 根結構；工作流程、專案生命週期、搜尋請求與匯出狀態不再由入口檔的零散全域變數維護。
+  - 定義 renderer 的 `AppState` 根結構，集中工作流程、專案生命週期、搜尋、匯出、選取、物件工具／預覽及目前資料包版本。
+  - Core 擁有編輯文件與歷史，Crop Controller 擁有裁切與畫布設定，Basemap Renderer 擁有底圖設定；偏好設定的焦點與更新請求由自己的控制器管理，不重複存入 App State。
 - `src/renderer/controllers/*`
   - `workflow-controller.ts` 管理步驟切換、導覽、工作區分頁與搜尋模式分頁。
   - `project-controller.ts` 管理載入、儲存、另存、未儲存狀態與資料包版本確認，並透過 operation coordinator 序列化操作。
+  - 未儲存檢查僅由 Core、裁切、底圖設定與資料包版本變更通知，不監聽整份文件的 click／input／pointerup；通知按畫面幀合併，物件拖曳完成交易後再比對完整內容。
+  - 儲存以送出時的內容指紋為基準；等待期間的新修改仍保留未儲存提示，關閉前儲存也不會丟棄這些變更。
+  - `object-controller.ts` 管理工具與搜尋預覽、新增、修改、刪除、清空及座標標示編輯；已加入文件的物件一律提交 Core 命令，預覽不寫入文件或歷史。
+  - `preferences-controller.ts` 管理主題偏好、資料包狀態與更新按鈕，防止重複更新及過期狀態回應，並區分更新失敗與更新後畫面載入失敗。
   - `search-controller.ts` 管理離線地名搜尋、座標解析、結果排序與結果清單。
   - `export-controller.ts` 管理匯出格式、外框選擇、進度與輸出請求。
   - `app-command-controller.ts` 集中全域快捷鍵、Electron menu action 與 dialog request 路由。
@@ -138,8 +142,14 @@
   - `commands.ts` 定義可序列化的新增、刪除、欄位更新、排序與清空命令，套用前會檢查目前資料狀態。
   - 命令只保存實際變更欄位；連續文字與滑桿修改可合併，拖曳期間即時預覽並在結束時記為單一命令。
 - `src/renderer/project/project-state.ts`
-  - 比較目前專案與最近一次成功儲存／載入的內容，供未儲存狀態提示使用。
+  - 提供專案檔內容比較工具。
   - 分離目前 renderer 可編輯的 point 物件與尚未支援的幾何物件；後者不顯示，但再次儲存時會原樣保留。
+- `src/renderer/project/project-snapshot.ts`
+  - 統一組裝儲存內容及套用專案資料，保存未支援物件，處理 Core 歷史恢復、canvas／bbox 與底圖設定。
+  - 根據 Core 的文件 revision 快取內容指紋；dirty 檢查不轉換物件，也不複製歷史。歷史依 history revision 快取，僅儲存時需要完整快照。
+  - 未儲存判斷比較物件、排序、畫布、裁切、底圖及資料版本，不把歷史清單本身視為地圖內容變更；Undo 回到儲存內容時可恢復已儲存狀態。
+- `src/renderer/export/export-renderer.ts`
+  - 產生高解析 PNG、PDF 輸入與真正向量 SVG；地形陰影啟用時僅陰影部分維持點陣圖片，匯出互動及檔案輸出仍由 Export Controller 管理。
 - `src/renderer/project/operation-coordinator.ts`
   - 依照請求順序逐一執行載入、儲存、另存與關閉前儲存，避免非同步結果互相覆寫專案路徑與狀態。
   - 單一操作失敗後仍會繼續處理後續操作，不讓整條佇列永久停止。
