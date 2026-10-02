@@ -82,6 +82,52 @@ function markerFrom(core: EditorCore): Marker {
 }
 
 describe("EditorCore history", () => {
+  it("commits an active drag before recording a separate command", () => {
+    const core = new EditorCore(createDocument([createMarker()]));
+    core.beginTransaction();
+    core.updateTransactionObject("marker-1", (draft) => { draft.longitude = 122; });
+    core.dispatch(createAddObjectCommand(core.document, createShape()));
+    expect(core.undoCount).toBe(2);
+    core.undo();
+    expect(core.document.objects).toHaveLength(1);
+    expect(markerFrom(core).longitude).toBe(122);
+    core.undo();
+    expect(markerFrom(core).longitude).toBe(121);
+  });
+  it("records live transaction updates as one reversible command", () => {
+    const core = new EditorCore(createDocument([createMarker()]));
+    expect(core.updateTransactionObject("marker-1", (draft) => {
+      draft.longitude = 122;
+    })).toBe(false);
+    core.beginTransaction();
+    for (const longitude of [122, 123, 124]) {
+      expect(core.updateTransactionObject("marker-1", (draft) => {
+        draft.longitude = longitude;
+      })).toBe(true);
+    }
+    expect(markerFrom(core).longitude).toBe(124);
+    expect(core.undoCount).toBe(0);
+    expect(core.commitTransaction()).toBe(true);
+    expect(core.undoCount).toBe(1);
+    core.undo();
+    expect(markerFrom(core).longitude).toBe(121);
+    core.redo();
+    expect(markerFrom(core).longitude).toBe(124);
+    const restored = new EditorCore(core.document);
+    expect(restored.restoreHistory(core.exportHistory())).toBe(true);
+  });
+
+  it("restores canceled transactions without adding history", () => {
+    const core = new EditorCore(createDocument([createMarker()]));
+    core.beginTransaction();
+    core.updateTransactionObject("marker-1", (draft) => {
+      if (draft.objectKind === "marker") draft.style.textOffsetX = 42;
+    });
+    core.cancelTransaction(true);
+    expect(markerFrom(core).style.textOffsetX).toBe(8);
+    expect(core.undoCount).toBe(0);
+  });
+
   it("exports commands that satisfy the shared history contract", () => {
     const core = new EditorCore(createDocument([createMarker(), createShape()]));
     core.dispatch(createClearObjectsCommand(core.document));

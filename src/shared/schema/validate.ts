@@ -16,6 +16,17 @@ export type ValidationResult = {
   errors: ValidationError[];
 };
 
+const OBJECT_CONTRACTS = new Map<string, {
+  shapeType?: string;
+  geometryKinds: readonly string[];
+}>([
+  ["pointLabel", { geometryKinds: ["point"] }],
+  ["areaLabel", { shapeType: "area", geometryKinds: ["point", "polygon"] }],
+  ["textOnly", { shapeType: "text", geometryKinds: ["point", "none"] }],
+  ["arrow", { shapeType: "arrow", geometryKinds: ["point", "none"] }],
+  ["polyline", { shapeType: "line", geometryKinds: ["point", "none"] }]
+]);
+
 function isIsoDateString(value: unknown): value is string {
   return isNonEmptyString(value) && Number.isFinite(Date.parse(value));
 }
@@ -194,7 +205,6 @@ export function validateProject(input: unknown): ValidationResult {
   if (!Array.isArray(objects)) {
     errors.push({ path: "objects", message: "must be an array" });
   } else {
-    const objectTypes = new Set(["pointLabel", "areaLabel", "textOnly", "arrow", "polyline"]);
     const layerIds = new Set(
       Array.isArray(layers)
         ? layers
@@ -223,7 +233,8 @@ export function validateProject(input: unknown): ValidationResult {
       } else if (!layerIds.has(obj.layerId)) {
         errors.push({ path: `${prefix}.layerId`, message: "must reference an existing layer" });
       }
-      if (typeof obj.type !== "string" || !objectTypes.has(obj.type)) {
+      const objectContract = typeof obj.type === "string" ? OBJECT_CONTRACTS.get(obj.type) : undefined;
+      if (!objectContract) {
         errors.push({ path: `${prefix}.type`, message: "unsupported object type" });
       }
 
@@ -264,6 +275,23 @@ export function validateProject(input: unknown): ValidationResult {
       }
 
       const style = obj.style;
+      if (
+        objectContract && isRecord(style) && style.shapeType !== undefined &&
+        style.shapeType !== objectContract.shapeType
+      ) {
+        errors.push({
+          path: `${prefix}.style.shapeType`,
+          message: "must match the object type"
+        });
+      }
+      if (objectContract && isRecord(geometry)) {
+        if (!objectContract.geometryKinds.includes(String(geometry.kind))) {
+          errors.push({
+            path: `${prefix}.geometry.kind`,
+            message: "must be compatible with the object type"
+          });
+        }
+      }
       if (!isRecord(style)) {
         errors.push({ path: `${prefix}.style`, message: "must be an object" });
       } else {

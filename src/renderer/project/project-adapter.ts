@@ -50,15 +50,6 @@ function projectObjectTypeForShape(
 function shapeTypeFromProjectObject(
   object: MapProject["objects"][number],
 ): ShapeItem["type"] | null {
-  const shapeType = object.style.shapeType;
-  if (
-    shapeType === "line" ||
-    shapeType === "area" ||
-    shapeType === "text" ||
-    shapeType === "arrow"
-  ) {
-    return shapeType;
-  }
   if (object.type === "textOnly") {
     return "text";
   }
@@ -154,7 +145,14 @@ export function editorDocumentToProjectObjects(
     provenance: { source: "manual", query: `shape:${shape.type}` }
   }));
 
-  return [...markerObjects, ...shapeObjects, ...preservedObjects];
+  let markerIndex = 0;
+  let shapeIndex = 0;
+  return [
+    ...document.objects.map((object) => object.objectKind === "marker"
+      ? markerObjects[markerIndex++]
+      : shapeObjects[shapeIndex++]),
+    ...preservedObjects,
+  ];
 }
 
 export function mapProjectToEditorDocument(

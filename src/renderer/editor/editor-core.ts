@@ -1,11 +1,12 @@
 import {
   applyEditorCommand,
   createDocumentChangeCommand,
+  createUpdateObjectCommand,
   mergeEditorCommands,
 } from "./commands.js";
 import type { EditorCommand } from "./commands.js";
-import { cloneEditorDocument } from "./document.js";
-import type { EditorDocument } from "./types.js";
+import { cloneEditorDocument, cloneEditorObject, normalizeEditorOrders } from "./document.js";
+import type { EditorDocument, EditorObject } from "./types.js";
 import type {
   HistoryCommandLimit,
   HistoryVersion,
@@ -71,6 +72,7 @@ export class EditorCore {
     options: { limit?: number; mergeWindowMs?: number } = {},
   ) {
     this.document = cloneEditorDocument(document);
+    normalizeEditorOrders(this.document);
     this.limit = Math.max(1, options.limit ?? EDITOR_HISTORY_LIMIT);
     this.mergeWindowMs = Math.max(0, options.mergeWindowMs ?? 750);
   }
@@ -100,6 +102,9 @@ export class EditorCore {
     command: EditorCommand | null,
     options: EditorCoreRecordOptions = {},
   ): boolean {
+    if (this.transactionBefore) {
+      this.commitTransaction();
+    }
     if (!command || !applyEditorCommand(this.document, command, "forward")) {
       return false;
     }
@@ -112,6 +117,19 @@ export class EditorCore {
     if (!this.transactionBefore) {
       this.transactionBefore = cloneEditorDocument(this.document);
     }
+  }
+
+  updateTransactionObject(
+    objectId: string,
+    update: (draft: EditorObject) => void,
+  ): boolean {
+    if (!this.transactionBefore) return false;
+    const current = this.document.objects.find((object) => object.id === objectId);
+    if (!current) return false;
+    const draft = cloneEditorObject(current);
+    update(draft);
+    const command = createUpdateObjectCommand(current, draft);
+    return command !== null && applyEditorCommand(this.document, command, "forward");
   }
 
   commitTransaction(options: EditorCoreRecordOptions = {}): boolean {
@@ -174,6 +192,7 @@ export class EditorCore {
 
   replaceDocument(document: EditorDocument, clearHistory = true): void {
     const cloned = cloneEditorDocument(document);
+    normalizeEditorOrders(cloned);
     this.document.objects.splice(
       0,
       this.document.objects.length,

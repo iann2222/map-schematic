@@ -133,6 +133,8 @@
   - 以單一 `EditorDocument.objects` 管理點標示與形狀，並以可辨識物件型別提供安全存取。
   - `defaults.ts` 與 `presentation.ts` 分別集中物件預設樣式、標示顯示文字與座標格式，供建立、載入與畫面呈現共用。
   - `editor-core.ts` 集中套用編輯命令、交易與最多 300 筆的 Undo/Redo 歷史；UI 不再自行維護完整文件快照。
+  - 拖曳使用 Core 的 `updateTransactionObject` 即時更新，結束時提交一筆歷史；切換步驟或執行其他命令前先完成交易。
+  - 排序鍵只在 Core 建立或替換文件時正規化；查詢名稱、顯示順位與繪製不修改文件。
   - `commands.ts` 定義可序列化的新增、刪除、欄位更新、排序與清空命令，套用前會檢查目前資料狀態。
   - 命令只保存實際變更欄位；連續文字與滑桿修改可合併，拖曳期間即時預覽並在結束時記為單一命令。
 - `src/renderer/project/project-state.ts`
@@ -150,7 +152,8 @@
 - `src/renderer/map/basemap-renderer.ts`
   - 載入官方資料包底圖並按需載入地形陰影，集中 Canvas 繪製、風格切換、預覽與匯出所需的底圖狀態。
 - `src/renderer/overlay/object-order-model.ts`
-  - 集中標示顯示名稱、唯一名稱、排序鍵正規化、顯示順位與重複物件判斷。
+  - 集中標示顯示名稱、唯一名稱、顯示順位與重複物件判斷，保持查詢無副作用。
+  - 標示與圖形使用同一個 SVG 物件容器，每個物件的文字、圖形及命中範圍位於同一群組，依共用顯示順序排列；畫面與匯出沿用相同順序。
 - `src/renderer/ui/slider.ts`
   - 提供共用滑桿建立、鍵盤操作、數值吸附與畫面同步。
 - `src/renderer/ui/input-selection.ts`

@@ -91,12 +91,8 @@ export function ensureBasemapContainer(root: SVGGElement): SVGGElement {
   return ensureGroup(root, "basemap-wrap", "data-layer");
 }
 
-export function ensureMarkersContainer(root: SVGGElement): SVGGElement {
-  return ensureGroup(root, "markers-wrap", "data-layer");
-}
-
-export function ensureShapesContainer(root: SVGGElement): SVGGElement {
-  return ensureGroup(root, "shapes-wrap", "data-layer");
+export function ensureObjectsContainer(root: SVGGElement): SVGGElement {
+  return ensureGroup(root, "objects-wrap", "data-layer");
 }
 
 function ensureGroup(parent: SVGElement, id: string, attribute: string): SVGGElement {

@@ -1,6 +1,6 @@
 ﻿import type { Marker, ShapeItem } from "../editor/types.js";
 import { project } from "../map/geometry.js";
-import { ensureMapRoot, ensureMarkersContainer, ensureShapesContainer, ensureWrapGroup } from "../map/rendering-utils.js";
+import { ensureMapRoot, ensureObjectsContainer, ensureWrapGroup } from "../map/rendering-utils.js";
 import { labelOffsetScale, labelZoomScale, shapeStrokeScale } from "./overlay-presentation.js";
 import { insertDashedSelectionBox } from "./selection-box.js";
 import { createOverlayInteractionController } from "./interaction-controller.js";
@@ -56,7 +56,7 @@ type OverlayRenderHost = {
   } | null) => void;
 };
 
-export function createOverlayRenderer(host: OverlayRenderHost): { renderMarkers: () => void; renderShapes: () => void } {
+export function createOverlayRenderer(host: OverlayRenderHost): { renderMarkers: () => void } {
 function renderMarkers() {
   const state = host.getState();
   const { svg, view, WRAPS, worldShift, activeStep, selectedMarkerId, selectedLabelMarkerId, previewMarker, previewToolMarker, labelDrag, lastScaleFit } = state;
@@ -90,7 +90,7 @@ function renderMarkers() {
   const width = svg.viewBox.baseVal.width || 1200;
   const height = svg.viewBox.baseVal.height || 800;
   const root = ensureMapRoot(svg);
-  const markerWrap = ensureMarkersContainer(root);
+  const markerWrap = ensureObjectsContainer(root);
   const rankMap = getDisplayRankMap();
   const sortedMarkers = [...markerObjects()].sort((a, b) => {
     const ra = rankMap.get(markerOverlayKey(a.id)) ?? Number.MAX_SAFE_INTEGER;
@@ -111,14 +111,18 @@ function renderMarkers() {
   }
 
   for (const i of WRAPS) {
-    const wrap = ensureWrapGroup(
+    const worldWrap = ensureWrapGroup(
       markerWrap,
-      `marker-${i}`,
+      `object-${i}`,
       (i + worldShift) * width,
     );
-    wrap.innerHTML = "";
+    worldWrap.replaceChildren();
     for (const item of renderItems) {
       const marker = item.marker;
+      const wrap = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      wrap.setAttribute("data-order-key", markerOverlayKey(marker.id));
+      if (item.preview) wrap.setAttribute("data-preview", "true");
+      worldWrap.appendChild(wrap);
       const [x, y] = project(marker.longitude, marker.latitude, width, height);
       const circle = document.createElementNS(
         "http://www.w3.org/2000/svg",
@@ -300,7 +304,7 @@ function renderShapes(): void {
   const width = svg.viewBox.baseVal.width || 1200;
   const height = svg.viewBox.baseVal.height || 800;
   const root = ensureMapRoot(svg);
-  const shapeWrap = ensureShapesContainer(root);
+  const shapeWrap = ensureObjectsContainer(root);
   const rankMap = getDisplayRankMap();
   const sortedShapes = [...shapeObjects()].sort((a, b) => {
     const ra = rankMap.get(shapeOverlayKey(a.id)) ?? Number.MAX_SAFE_INTEGER;
@@ -317,14 +321,17 @@ function renderShapes(): void {
     renderItems.push({ shape: previewShape, preview: true });
   }
   for (const i of WRAPS) {
-    const wrap = ensureWrapGroup(
+    const worldWrap = ensureWrapGroup(
       shapeWrap,
-      `shape-${i}`,
+      `object-${i}`,
       (i + worldShift) * width,
     );
-    wrap.innerHTML = "";
     for (const item of renderItems) {
       const shape = item.shape;
+      const wrap = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      wrap.setAttribute("data-order-key", shapeOverlayKey(shape.id));
+      if (item.preview) wrap.setAttribute("data-preview", "true");
+      worldWrap.appendChild(wrap);
       const [x, y] = project(shape.longitude, shape.latitude, width, height);
       const rotation = Number.isFinite(shape.rotation) ? (shape.rotation ?? 0) : 0;
       const rotationTransform = `rotate(${rotation.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})`;
@@ -612,8 +619,15 @@ function renderShapes(): void {
         }
       }
     }
+    const orderedGroups = Array.from(worldWrap.children).sort((left, right) => {
+      const rank = (element: Element) => element.hasAttribute("data-preview")
+        ? Number.MAX_SAFE_INTEGER
+        : rankMap.get(element.getAttribute("data-order-key") ?? "") ?? Number.MAX_SAFE_INTEGER - 1;
+      return rank(left) - rank(right);
+    });
+    orderedGroups.forEach((group) => worldWrap.appendChild(group));
   }
 }
 
-  return { renderMarkers, renderShapes };
+  return { renderMarkers };
 }

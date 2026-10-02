@@ -75,6 +75,10 @@ renderer 內部地圖座標固定為 1200 × 800；PNG、SVG 與 PDF 匯出時�
 
 目前物件種類為 `pointLabel`、`areaLabel`、`textOnly`、`arrow` 與 `polyline`；geometry 可為 point、polygon 或 none。`provenance` 可保存 `geonames`／`manual` 來源、GeoNames id 與原始查詢。
 
+物件種類與幾何須一致：`pointLabel` 使用 point；`areaLabel` 支援 point 或 polygon；`textOnly`、`arrow`、`polyline` 支援 point 或 none。polygon 與 none 的未支援物件仍原樣保存。
+
+`style.shapeType` 若存在，須對應 `areaLabel` → area、`textOnly` → text、`arrow` → arrow、`polyline` → line；`pointLabel` 不使用此欄位。舊專案可省略 `shapeType`，由物件 `type` 決定，矛盾組合會驗證失敗。可編輯物件的陣列順序在轉換及儲存時保持一致，以便還原編輯歷史。
+
 v0.7 為維持既有 JSON 相容性，仍將部分標記資料、圖形尺寸與旋轉資訊保存在 `style`。這些欄位已在 shared schema 分成明確型別，不再接受任意 TypeScript 欄位；若未來搬移其實體位置，必須透過新版 schema migration 完成。
 
 schema 合法但目前 renderer 尚不能編輯的幾何物件會在載入時提示，且再次儲存時原樣保留。

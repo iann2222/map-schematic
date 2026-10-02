@@ -1,4 +1,4 @@
-import { ensureMapRoot, ensureMarkersContainer } from "../map/rendering-utils.js";
+import { ensureMapRoot, ensureObjectsContainer } from "../map/rendering-utils.js";
 
 export function updateMarkerStyles(options: {
   svg: SVGSVGElement | null;
@@ -10,7 +10,7 @@ export function updateMarkerStyles(options: {
 }): void {
   if (!options.svg) return;
   const root = ensureMapRoot(options.svg);
-  const markerWrap = ensureMarkersContainer(root);
+  const markerWrap = ensureObjectsContainer(root);
   markerWrap.querySelectorAll<SVGCircleElement>('circle[data-marker="dot"]').forEach((dot) => {
     const base = Number(dot.getAttribute("data-base") ?? "4");
     dot.setAttribute("r", (base / options.scale).toFixed(2));

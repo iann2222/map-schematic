@@ -5,6 +5,8 @@ import {
   editorDocumentToProjectObjects,
   mapProjectToEditorDocument
 } from "../../src/renderer/project/project-adapter.js";
+import { EditorCore } from "../../src/renderer/editor/editor-core.js";
+import { createAddObjectCommand } from "../../src/renderer/editor/commands.js";
 
 function createProject(): MapProject {
   return {
@@ -87,6 +89,23 @@ function createProject(): MapProject {
 }
 
 describe("map project editor adapter", () => {
+  it("preserves mixed object order so saved history can be restored", () => {
+    const source = mapProjectToEditorDocument(createProject());
+    const core = new EditorCore({ objects: [], listOrderKeys: [], displayOrderKeys: [] });
+    for (const object of [...source.document.objects].reverse()) {
+      core.dispatch(createAddObjectCommand(core.document, object));
+    }
+    const project = createProject();
+    project.objects = editorDocumentToProjectObjects(core.document);
+    project.ui.listOrderKeys = [...core.document.listOrderKeys];
+    project.ui.displayOrderKeys = [...core.document.displayOrderKeys];
+    project.history = core.exportHistory();
+    expect(project.objects.map((object) => object.id)).toEqual(["arrow-1", "marker-1"]);
+    const loaded = new EditorCore(mapProjectToEditorDocument(project).document);
+    expect(loaded.restoreHistory(project.history)).toBe(true);
+    expect(loaded.undo()).not.toBeNull();
+    expect(loaded.document.objects.map((object) => object.id)).toEqual(["arrow-1"]);
+  });
   it("loads markers and shapes into one editor document", () => {
     const loaded = mapProjectToEditorDocument(createProject());
 

@@ -3,8 +3,7 @@ import type { CropBBox, StageLayout, ViewTransform } from "./crop-controller.js"
 import { project, unproject } from "../map/geometry.js";
 import {
   ensureMapRoot,
-  ensureMarkersContainer,
-  ensureShapesContainer,
+  ensureObjectsContainer,
   ensureWrapGroup,
 } from "../map/rendering-utils.js";
 
@@ -147,17 +146,11 @@ export class MapViewportController {
       this.worldShiftValue = Math.round(centerX / width);
     }
     const root = ensureMapRoot(svg);
-    const markerWrap = ensureMarkersContainer(root);
-    const shapeWrap = ensureShapesContainer(root);
+    const objectsWrap = ensureObjectsContainer(root);
     for (const wrap of wraps) {
       ensureWrapGroup(
-        markerWrap,
-        `marker-${wrap}`,
-        (wrap + this.wrapShift) * width,
-      );
-      ensureWrapGroup(
-        shapeWrap,
-        `shape-${wrap}`,
+        objectsWrap,
+        `object-${wrap}`,
         (wrap + this.wrapShift) * width,
       );
     }

@@ -1,5 +1,5 @@
 import type { WorkflowStep, SelectionState } from "../app-state.js";
-import type { Marker, ShapeItem } from "../editor/types.js";
+import type { Marker, ShapeItem, EditorObject } from "../editor/types.js";
 import {
   normalizeLongitude,
   project,
@@ -42,6 +42,7 @@ export type SelectionControllerOptions = {
   };
   mapPointFromEvent: (event: MouseEvent) => { x: number; y: number };
   commitTransaction: () => void;
+  updateTransactionObject: (id: string, update: (draft: EditorObject) => void) => boolean;
   hasOpenModal: () => boolean;
   mapElement: SVGSVGElement | null;
 };
@@ -147,10 +148,11 @@ export class SelectionController {
       if (marker) {
         const current = this.options.mapPointFromEvent(event);
         const offsetScale = labelOffsetScale(metrics.scale);
-        marker.style.textOffsetX =
-          drag.startOffsetX + (current.x - drag.startX) / offsetScale;
-        marker.style.textOffsetY =
-          drag.startOffsetY + (current.y - drag.startY) / offsetScale;
+        this.options.updateTransactionObject(marker.id, (draft) => {
+          if (draft.objectKind !== "marker") return;
+          draft.style.textOffsetX = drag.startOffsetX + (current.x - drag.startX) / offsetScale;
+          draft.style.textOffsetY = drag.startOffsetY + (current.y - drag.startY) / offsetScale;
+        });
         this.options.renderMapObjects();
       }
       return true;
@@ -174,8 +176,10 @@ export class SelectionController {
           metrics.width,
           metrics.height,
         );
-        marker.longitude = normalizeLongitude(longitude);
-        marker.latitude = latitude;
+        this.options.updateTransactionObject(marker.id, (draft) => {
+          draft.longitude = normalizeLongitude(longitude);
+          draft.latitude = latitude;
+        });
         this.options.renderMapObjects();
       }
       return true;
@@ -199,8 +203,10 @@ export class SelectionController {
           metrics.width,
           metrics.height,
         );
-        shape.longitude = normalizeLongitude(longitude);
-        shape.latitude = latitude;
+        this.options.updateTransactionObject(shape.id, (draft) => {
+          draft.longitude = normalizeLongitude(longitude);
+          draft.latitude = latitude;
+        });
         this.options.renderMapObjects();
       }
       return true;

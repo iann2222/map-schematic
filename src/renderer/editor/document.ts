@@ -24,3 +24,18 @@ export function cloneEditorDocument(document: EditorDocument): EditorDocument {
     displayOrderKeys: [...document.displayOrderKeys],
   };
 }
+
+export function normalizeEditorOrders(document: EditorDocument): void {
+  const keys = document.objects.map((object) => `${object.objectKind}:${object.id}`);
+  const valid = new Set(keys);
+  const normalize = (source: string[]): string[] => {
+    const seen = new Set<string>();
+    return [...source, ...keys].filter((key) => {
+      if (!valid.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+  document.listOrderKeys = normalize(document.listOrderKeys);
+  document.displayOrderKeys = normalize(document.displayOrderKeys);
+}

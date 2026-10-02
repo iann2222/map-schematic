@@ -114,29 +114,7 @@ export class ObjectOrderModel {
     ];
   }
 
-  normalize(): void {
-    const items = this.items();
-    const valid = new Set(items.map((item) => item.key));
-    const normalizeKeys = (source: string[]): string[] =>
-      source.filter(
-        (key, index) => valid.has(key) && source.indexOf(key) === index,
-      );
-    const listOrder = normalizeKeys(this.document.listOrderKeys);
-    const displayOrder = normalizeKeys(this.document.displayOrderKeys);
-    items.forEach(({ key }) => {
-      if (!listOrder.includes(key)) {
-        listOrder.push(key);
-      }
-      if (!displayOrder.includes(key)) {
-        displayOrder.push(key);
-      }
-    });
-    this.document.listOrderKeys = listOrder;
-    this.document.displayOrderKeys = displayOrder;
-  }
-
   displayRanks(): Map<string, number> {
-    this.normalize();
     return new Map(
       this.document.displayOrderKeys.map((key, index) => [key, index]),
     );

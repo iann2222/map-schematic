@@ -10,6 +10,7 @@ import {
   defaultMarkerStyle,
   defaultShapeStyle,
 } from "../../src/renderer/editor/defaults.js";
+import { EditorCore } from "../../src/renderer/editor/editor-core.js";
 
 function marker(id: string, name: string): Marker {
   return {
@@ -52,20 +53,19 @@ describe("ObjectOrderModel", () => {
       listOrderKeys: ["missing", markerOrderKey("m2"), markerOrderKey("m2")],
       displayOrderKeys: [],
     };
+    const core = new EditorCore(document);
     const model = new ObjectOrderModel({
-      document,
+      document: core.document,
       getMarkers: () => [firstMarker, secondMarker],
       getShapes: () => [line],
     });
 
-    model.normalize();
-
-    expect(document.listOrderKeys).toEqual([
+    expect(core.document.listOrderKeys).toEqual([
       markerOrderKey("m2"),
       markerOrderKey("m1"),
       shapeOrderKey("s1"),
     ]);
-    expect(document.displayOrderKeys).toEqual([
+    expect(core.document.displayOrderKeys).toEqual([
       markerOrderKey("m1"),
       markerOrderKey("m2"),
       shapeOrderKey("s1"),
@@ -75,5 +75,10 @@ describe("ObjectOrderModel", () => {
       "台北 (2)",
       "線段1",
     ]);
+    const before = JSON.stringify(core.document);
+    model.displayRanks();
+    model.items();
+    model.shapeNames();
+    expect(JSON.stringify(core.document)).toBe(before);
   });
 });

@@ -19,6 +19,39 @@ function createHistoryCommand(): Record<string, unknown> {
 }
 
 describe("validateProject", () => {
+  it.each([
+    ["pointLabel", "area"], ["arrow", "line"],
+    ["polyline", "arrow"], ["areaLabel", "text"], ["textOnly", "area"]
+  ])("rejects mismatched %s and shapeType %s", (type, shapeType) => {
+    const project = createTestProject();
+    Object.assign(project.objects[0], { type, style: { shapeType } });
+    expect(validateProject(project).errors).toContainEqual({
+      path: "objects[0].style.shapeType", message: "must match the object type"
+    });
+  });
+
+  it("rejects point labels with polygon geometry", () => {
+    const project = createTestProject();
+    project.objects[0].geometry = {
+      kind: "polygon", rings: [[[0, 0], [1, 0], [1, 1]]]
+    };
+    expect(validateProject(project).errors).toContainEqual({
+      path: "objects[0].geometry.kind", message: "must be compatible with the object type"
+    });
+    project.objects[0].type = "areaLabel";
+    expect(validateProject(project).valid).toBe(true);
+  });
+
+  it.each([
+    ["pointLabel", undefined], ["arrow", "arrow"],
+    ["polyline", "line"], ["areaLabel", "area"], ["textOnly", "text"]
+  ])("accepts matching %s metadata and legacy missing metadata", (type, shapeType) => {
+    const project = createTestProject();
+    Object.assign(project.objects[0], { type, style: { shapeType } });
+    expect(validateProject(project).valid).toBe(true);
+    delete project.objects[0].style.shapeType;
+    expect(validateProject(project).valid).toBe(true);
+  });
   it("accepts a complete project", () => {
     expect(validateProject(createTestProject())).toEqual({
       valid: true,

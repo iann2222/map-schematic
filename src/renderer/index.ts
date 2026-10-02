@@ -498,7 +498,6 @@ function refreshEditorAfterHistoryChange(): void {
   coordEditModal?.classList.remove("active");
   svg?.classList.remove("shape-moving");
   cancelEditorTransaction();
-  syncOrderKeys();
   syncManualMarkerCount();
   renderMarkers();
   renderMarkerList();
@@ -550,6 +549,7 @@ function beforeWorkflowStepChange(
   previousStep: WorkflowStep,
   stepId: WorkflowStep,
 ): void {
+  selectionController.finishDrag();
   hideMapStylePreview();
   if (previousStep === "1" && (stepId === "2" || stepId === "3")) {
     saveStepOneCropSnapshot();
@@ -1206,10 +1206,6 @@ function getOverlayRefs(): OrderDialogItem[] {
   return objectOrderModel.items();
 }
 
-function syncOrderKeys(): void {
-  objectOrderModel.normalize();
-}
-
 const orderDialogController = new OrderDialogController({
   elements: {
     triggerButton: listOrderSettingsBtn,
@@ -1218,7 +1214,6 @@ const orderDialogController = new OrderDialogController({
     displayOrder: displayOrderList,
     closeButton: listOrderClose,
   },
-  normalizeOrders: syncOrderKeys,
   getItems: getOverlayRefs,
   getOrder: (mode: OrderMode) =>
     mode === "list"
@@ -1406,6 +1401,7 @@ const selectionController = new SelectionController({
   }),
   mapPointFromEvent: (event) => mapViewport.mapPointFromEvent(event),
   commitTransaction: commitEditorTransaction,
+  updateTransactionObject: (id, update) => editorCore.updateTransactionObject(id, update),
   hasOpenModal: () => Boolean(document.querySelector(".modal-backdrop.active")),
   mapElement: svg,
 });
@@ -1482,7 +1478,6 @@ function renderMarkerList(): void {
   if (!markerList) {
     return;
   }
-  syncOrderKeys();
   const uniqueNames = new Map(
     objectOrderModel.items().map((item) => [item.key, item.name]),
   );
@@ -1614,7 +1609,6 @@ function buildProject(): MapProject | null {
   if (!currentPackVersion || !currentPackId) {
     return null;
   }
-  syncOrderKeys();
   const now = new Date().toISOString();
   const base = appState.project.current?.createdAt ?? now;
   const currentLayer = appState.project.current?.layers[0];
@@ -1733,7 +1727,6 @@ function applyLoadedProject(loadedProject: MapProject): AppliedProjectSummary {
   } else {
     syncHistoryControls();
   }
-  syncOrderKeys();
   syncManualMarkerCount();
   renderMarkers();
   renderMarkerList();

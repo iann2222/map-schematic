@@ -15,7 +15,6 @@ export type OrderDialogElements = {
 
 export type OrderDialogControllerOptions = {
   elements: OrderDialogElements;
-  normalizeOrders: () => void;
   getItems: () => OrderDialogItem[];
   getOrder: (mode: OrderMode) => readonly string[];
   commitOrder: (mode: OrderMode, order: string[]) => boolean;
@@ -131,7 +130,6 @@ export class OrderDialogController {
     if (!listOrder || !displayOrder) {
       return;
     }
-    this.options.normalizeOrders();
     const items = new Map(
       this.options.getItems().map((item) => [item.key, item]),
     );
