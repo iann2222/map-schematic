@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { invalidDatapack } from "./errors";
 
 import {
   isSafePackSegment,
@@ -145,7 +146,7 @@ function validateExpectedRef(
     expected &&
     (manifest.id !== expected.id || manifest.version !== expected.version)
   ) {
-    throw new Error(
+    throw invalidDatapack(
       `Installed pack mismatch: expected ${expected.id} ${expected.version}, got ${manifest.id} ${manifest.version}`
     );
   }

@@ -358,4 +358,109 @@ describe("DataPackManager", () => {
     await expect(manager.ensureReady()).rejects.toThrow("release checksum mismatch");
     await expect(fs.access(getPackRoot(dataRoot, targetRef.id, targetRef.version))).rejects.toThrow();
   });
+  it.each([
+    ["EACCES", "permissionDenied"], ["EPERM", "permissionDenied"],
+    ["EIO", "storageFailure"], ["ENOSPC", "storageFailure"],
+  ])("does not mistake %s for corruption or prompt for downloading", async (code, issueCode) => {
+    const targetRoot = getPackRoot(dataRoot, targetRef.id, targetRef.version);
+    await createTestDatapack(targetRoot, targetRef);
+    const { manager, downloadFile } = await createManager();
+    const read = fs.readFile.bind(fs);
+    vi.spyOn(fs, "readFile").mockImplementation(async (...args: Parameters<typeof fs.readFile>) => {
+      if (String(args[0]) === path.join(targetRoot, "datapack.json")) {
+        throw Object.assign(new Error("manifest read failure"), { code });
+      }
+      return read(...args);
+    });
+    const confirmDownload = vi.fn(async () => true);
+    await expect(manager.ensureReady({ confirmDownload })).rejects.toMatchObject({ issue: { code: issueCode, stage: "validation" } });
+    expect(confirmDownload).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+  it("preserves previous data when recovery cannot read it", async () => {
+    const previousRoot = `${getPackRoot(dataRoot, targetRef.id, targetRef.version)}-previous`;
+    await createTestDatapack(previousRoot, targetRef);
+    const { manager, downloadFile } = await createManager();
+    const read = fs.readFile.bind(fs);
+    vi.spyOn(fs, "readFile").mockImplementation(async (...args: Parameters<typeof fs.readFile>) => {
+      if (String(args[0]) === path.join(previousRoot, "datapack.json")) {
+        throw Object.assign(new Error("recovery permission denied"), { code: "EPERM" });
+      }
+      return read(...args);
+    });
+    await expect(manager.ensureReady()).rejects.toMatchObject({ issue: { code: "permissionDenied", stage: "validation" } });
+    await expect(fs.access(previousRoot)).resolves.toBeUndefined();
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+  it("returns success with a cleanup warning after a pack has been activated", async () => {
+    const targetRoot = getPackRoot(dataRoot, targetRef.id, targetRef.version);
+    await createTestDatapack(targetRoot, targetRef);
+    await fs.writeFile(path.join(targetRoot, "basemap", "land.geojson"), "damaged");
+    const { manager } = await createManager();
+    const remove = fs.rm.bind(fs);
+    vi.spyOn(fs, "rm").mockImplementation(async (target, options) => {
+      if (String(target) === `${targetRoot}-previous`) throw Object.assign(new Error("cleanup denied"), { code: "EACCES" });
+      return remove(target, options);
+    });
+    const ready = await manager.ensureReady({ confirmDownload: async () => true });
+    expect(ready.source).toBe("downloaded");
+    expect(ready.warnings).toContainEqual(expect.objectContaining({ code: "permissionDenied", stage: "cleanup" }));
+    expect((await readActivePack(dataRoot)).active).toEqual(targetRef);
+  });
+  it("preserves a download error even when temporary directory cleanup fails", async () => {
+    const { manager, downloadFile } = await createManager();
+    downloadFile.mockRejectedValue(new Error("primary download failure"));
+    const remove = fs.rm.bind(fs);
+    vi.spyOn(fs, "rm").mockImplementation(async (target, options) => {
+      if (path.dirname(String(target)) === path.join(dataRoot, ".download")) throw new Error("secondary cleanup failure");
+      return remove(target, options);
+    });
+    await expect(manager.ensureReady()).rejects.toMatchObject({ message: "primary download failure", issue: { stage: "download" } });
+  });
+  it("rolls back the newly installed target if active state cannot be committed", async () => {
+    const oldRef = { id: "standard", version: "2026.02" };
+    await createTestDatapack(getPackRoot(dataRoot, oldRef.id, oldRef.version), oldRef);
+    await setActivePack(dataRoot, oldRef);
+    const { manager } = await createManager();
+    const rename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      if (String(to) === getActivePath(dataRoot)) throw Object.assign(new Error("activation disk failure"), { code: "EIO" });
+      return rename(from, to);
+    });
+    await expect(manager.update()).rejects.toMatchObject({ issue: { code: "storageFailure", stage: "activate" } });
+    expect((await readActivePack(dataRoot)).active).toEqual(oldRef);
+    await expect(fs.access(getPackRoot(dataRoot, targetRef.id, targetRef.version))).rejects.toThrow();
+  });
+  it("shares installation coordination across independent manager instances", async () => {
+    const first = await createManager();
+    const second = await createManager();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    first.downloadFile.mockImplementation(async (_url, destination) => {
+      await gate;
+      await fs.copyFile(archivePath, destination);
+    });
+    const initialization = first.manager.ensureReady();
+    await vi.waitFor(() => expect(first.downloadFile).toHaveBeenCalledOnce());
+    const concurrent = second.manager.ensureReady();
+    release();
+    const [one, two] = await Promise.all([initialization, concurrent]);
+    expect(one.source).toBe("downloaded");
+    expect(two.source).toBe("installed");
+    expect(second.downloadFile).not.toHaveBeenCalled();
+  });
+  it("returns success when the unique temporary directory cannot be cleaned", async () => {
+    const { manager } = await createManager();
+    const remove = fs.rm.bind(fs);
+    vi.spyOn(fs, "rm").mockImplementation(async (target, options) => {
+      if (path.dirname(String(target)) === path.join(dataRoot, ".download")) {
+        throw Object.assign(new Error("temporary cleanup denied"), { code: "EACCES" });
+      }
+      return remove(target, options);
+    });
+    const ready = await manager.ensureReady();
+    expect(ready.source).toBe("downloaded");
+    expect(ready.warnings).toContainEqual(expect.objectContaining({ stage: "cleanup", message: "temporary cleanup denied" }));
+    expect((await readActivePack(dataRoot)).active).toEqual(targetRef);
+  });
 });

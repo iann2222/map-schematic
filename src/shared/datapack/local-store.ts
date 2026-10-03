@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
+import { datapackError, isInvalidOrMissingDatapack } from "./errors";
 
 import {
   getActivePath,
@@ -94,8 +95,9 @@ export async function loadLocalPacksWithManifest(
           pack.ref
         );
         return { ...pack, manifest };
-      } catch {
-        return pack;
+      } catch (error) {
+        if (isInvalidOrMissingDatapack(error)) return pack;
+        throw datapackError(error, "validation");
       }
     })
   );

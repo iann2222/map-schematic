@@ -78,6 +78,7 @@
   - 提供授權資訊、版本與 commit SHA，並設定「說明 > 關於」內容。
 - `src/main/datapack-ipc.ts`
   - 註冊資料包狀態、更新、底圖、地形與 GeoNames IPC；地理資料只從已驗證的本機官方資料包讀取。
+  - 底圖、地形與搜尋在資料根目錄的短期存取鎖內讀取；GeoNames 查詢結束即關閉 SQLite，地形回傳本機圖片的 data URL，避免背景解碼時檔案已被替換。
 - `src/main/project-ipc.ts`
   - 序列化專案儲存，管理載入、備份恢復詢問、PNG／SVG／PDF 匯出及開發版／封裝版輸出路徑。
 - `src/main/data-root.ts`
@@ -205,6 +206,9 @@
   - `manager.ts` 負責目標版本、fallback、快取與產品層的資料包就緒決策。
   - `local-store.ts` 負責掃描本機版本、讀寫 active 指標及載入已安裝 manifest。
   - `installer.ts` 負責下載、ZIP 驗證、暫存安裝、完整性檢查、安全替換與中斷恢復。
+  - 每次安裝使用獨立工作目錄；完整驗證後才取得存取鎖替換並啟用，啟用失敗時嘗試還原原目標。
+  - `data-root-lock.ts` 以唯一程序紀錄與順位協調共用根目錄，各階段只發布一次，不覆寫其他程序可能正在讀取的紀錄；安裝鎖保護安裝／狀態決策，存取鎖保護實際讀取及替換。程序退出後可回收紀錄，不以檔案年齡強制解除仍在使用的鎖。
+  - `errors.ts` 統一資料包錯誤代碼、階段與原始原因；權限、磁碟與占用錯誤不視為資料損壞，已完成安裝的清理失敗以 warning 回報。
   - `validation-cache.ts` 保存可失效的本機驗證記錄；檔案資訊不符時自動退回完整 checksum 驗證。
   - `contract.d.ts` 保存跨 main／renderer 使用的資料包型別，runtime 模組只保留實際邏輯。
   - `pack-release.json` 是目標資料包 id／version 的唯一來源，不另在程式碼維護重複版本常數。

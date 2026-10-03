@@ -3,7 +3,10 @@ import {
   ipcMain
 } from "electron";
 import fs from "fs/promises";
-import { pathToFileURL } from "url";
+import { withDatapackLock } from "../shared/datapack/data-root-lock";
+import { datapackError } from "../shared/datapack/errors";
+import { resolveDataRoot } from "../shared/paths";
+import type { DatapackUpdateResult } from "../shared/ipc-contract";
 
 import { resolveInsidePack } from "../shared/datapack/manifest";
 import type {
@@ -19,7 +22,7 @@ import {
   getDatapackStatus,
   updateDatapack
 } from "./datapack-download";
-import { searchGeonames } from "./geonames";
+import { closeGeonamesDatabase, searchGeonames } from "./geonames";
 import type { RendererDialogService } from "./renderer-dialog";
 
 export function registerDatapackIpc(
@@ -39,74 +42,62 @@ export function registerDatapackIpc(
     IPC_CHANNELS.datapackStatus,
     async () => getDatapackStatus()
   );
-  ipcMain.handle(IPC_CHANNELS.datapackUpdate, async () => {
+  ipcMain.handle(IPC_CHANNELS.datapackUpdate, async (): Promise<DatapackUpdateResult> => {
     try {
       const ready = await updateDatapack(
         (reason, release) =>
           confirmDatapackDownload(dialogs, reason, release)
       );
-      const status = await getDatapackStatus();
+      const warnings = [...(ready.warnings ?? [])];
+      let status: DataPackStatus | undefined;
+      try { status = await getDatapackStatus(); }
+      catch (error) { warnings.push(datapackError(error, "validation").issue); }
       return {
         ok: true,
-        canceled: !isTargetPack(ready.ref, status),
+        canceled: ready.source === "fallback",
         datapack: ready.manifest,
-        status
+        status,
+        warnings
       };
     } catch (error) {
-      return { ok: false, error: String(error) };
+      const failure = datapackError(error, "validation");
+      return { ok: false, error: failure.message, issue: failure.issue };
     }
   });
   ipcMain.handle(IPC_CHANNELS.basemapGet, async () => {
     const ready = await getReadyDatapack();
-    const payload: Array<{ id: string; geojson: string }> = [];
-    for (const layer of ready.manifest.basemap.layers) {
-      const filePath = resolveInsidePack(
-        ready.rootPath,
-        layer.path
-      );
-      payload.push({
-        id: layer.id,
-        geojson: await fs.readFile(filePath, "utf8")
-      });
-    }
-    return payload;
+    return withDatapackLock(resolveDataRoot(), "access", async () => {
+      const payload: Array<{ id: string; geojson: string }> = [];
+      for (const layer of ready.manifest.basemap.layers) {
+        const filePath = resolveInsidePack(ready.rootPath, layer.path);
+        payload.push({ id: layer.id, geojson: await fs.readFile(filePath, "utf8") });
+      }
+      return payload;
+    });
   });
   ipcMain.handle(IPC_CHANNELS.reliefGet, async () => {
     const ready = await getReadyDatapack();
-    const reliefPath = ready.manifest.relief?.path;
-    if (!reliefPath) {
-      return null;
-    }
-    const filePath = resolveInsidePack(
-      ready.rootPath,
-      reliefPath
-    );
-    return {
-      path: pathToFileURL(filePath).toString(),
-      projection:
-        ready.manifest.relief?.projection ?? null
-    };
+    return withDatapackLock(resolveDataRoot(), "access", async () => {
+      const reliefPath = ready.manifest.relief?.path;
+      if (!reliefPath) return null;
+      const filePath = resolveInsidePack(ready.rootPath, reliefPath);
+      return {
+        // Return immutable bytes, not a file URL that may be replaced after IPC returns.
+        path: `data:image/png;base64,${(await fs.readFile(filePath)).toString("base64")}`,
+        projection: ready.manifest.relief?.projection ?? null,
+      };
+    });
   });
   ipcMain.handle(
     IPC_CHANNELS.geonamesSearch,
     async (_event, query: string, limit: number) => {
       const ready = await getReadyDatapack();
-      const dbPath = resolveInsidePack(
-        ready.rootPath,
-        ready.manifest.geonames.dbPath
-      );
-      return searchGeonames(query, limit, dbPath);
+      return withDatapackLock(resolveDataRoot(), "access", async () => {
+        const dbPath = resolveInsidePack(ready.rootPath, ready.manifest.geonames.dbPath);
+        try { return searchGeonames(query, limit, dbPath); }
+        finally { closeGeonamesDatabase(); }
+      });
     }
-  );
-}
-
-function isTargetPack(
-  ref: { id: string; version: string },
-  status: DataPackStatus
-): boolean {
-  return (
-    ref.id === status.target.id &&
-    ref.version === status.target.version
   );
 }
 

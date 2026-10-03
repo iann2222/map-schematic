@@ -63,4 +63,19 @@ describe("PreferencesController update lifecycle", () => {
     expect(showDialog).toHaveBeenCalledWith(expect.objectContaining({ eyebrow: "資料包已更新", tone: "warning" }));
     expect(elements.get("datapackUpdateBtn")!.disabled).toBe(false);
   });
+  it("shows cleanup warnings as completed installation without asking for another download", async () => {
+    const { controller, updateDatapack, reloadMap, showDialog, showToast } = setup();
+    updateDatapack.mockResolvedValue({ ok: true, warnings: [{ code: "permissionDenied", stage: "cleanup", message: "old directory could not be removed" }] });
+    await controller.updateDatapack();
+    expect(reloadMap).toHaveBeenCalledOnce();
+    expect(showDialog).toHaveBeenCalledWith(expect.objectContaining({ tone: "warning", title: "資料包可用，但仍有後續事項" }));
+    expect(showToast).toHaveBeenLastCalledWith("官方資料包已更新並套用", "success");
+  });
+  it("explains access errors without recommending an immediate redownload", async () => {
+    const { controller, updateDatapack, reloadMap, showDialog } = setup();
+    updateDatapack.mockResolvedValue({ ok: false, issue: { code: "permissionDenied", stage: "validation", message: "denied" }, error: "denied" });
+    await controller.updateDatapack();
+    expect(reloadMap).not.toHaveBeenCalled();
+    expect(showDialog).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("不需要立即重新下載") }));
+  });
 });

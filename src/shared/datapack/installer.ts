@@ -1,6 +1,9 @@
 import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
+import { withDatapackLock } from "./data-root-lock";
+import { DataPackError, datapackError, invalidDatapack, isInvalidOrMissingDatapack } from "./errors";
+import type { DataPackIssue } from "./types";
 
 import { getPackRoot } from "./layout";
 import {
@@ -33,7 +36,8 @@ export type ValidateReadyPack = (
 export async function replacePackRoot(
   targetRoot: string,
   incomingRoot: string,
-  preserveCurrent: boolean
+  preserveCurrent: boolean,
+  onWarning: (issue: DataPackIssue) => void = (issue) => console.warn("Datapack cleanup:", issue.message)
 ): Promise<string | null> {
   const previousPath = `${targetRoot}-previous`;
   const displacedPath = `${targetRoot}-displaced-${randomUUID()}`;
@@ -63,7 +67,7 @@ export async function replacePackRoot(
   }
 
   if (displacedCurrent && !preserveCurrent) {
-    await fs.rm(displacedPath, { recursive: true, force: true });
+    await cleanupPath(displacedPath, onWarning);
   }
   return preserveCurrent && displacedCurrent ? previousPath : null;
 }
@@ -89,13 +93,15 @@ export class DataPackInstaller {
     const ref = this.targetRef;
     const rootPath = getPackRoot(this.dataRoot, ref.id, ref.version);
     const previousPath = `${rootPath}-previous`;
+    const warnings: DataPackIssue[] = [];
+    const warn = (issue: DataPackIssue) => warnings.push(issue);
     if (!(await pathExists(previousPath))) {
       return null;
     }
     const current = await validatePack(ref);
     if (current) {
-      await fs.rm(previousPath, { recursive: true, force: true });
-      return current;
+      await cleanupPath(previousPath, warn);
+      return { ...current, warnings };
     }
     let manifest;
     try {
@@ -104,24 +110,25 @@ export class DataPackInstaller {
         previousPath,
         manifest
       ).catch(() => undefined);
-    } catch {
-      await fs.rm(previousPath, { recursive: true, force: true });
+    } catch (error) {
+      if (!isInvalidOrMissingDatapack(error)) throw datapackError(error, "validation");
+      await cleanupPath(previousPath, warn);
       return null;
     }
-    await this.beforeReplace?.();
-    await replacePackRoot(rootPath, previousPath, false);
-    return { ref, rootPath, manifest, source: "recovered" };
+    try {
+      await this.beforeReplace?.();
+      await replacePackRoot(rootPath, previousPath, false, warn);
+    } catch (error) { throw datapackError(error, "replace"); }
+    return { ref, rootPath, manifest, source: "recovered", warnings };
   }
 
   async installRelease(): Promise<ReadyDataPack> {
     const ref = this.targetRef;
     const downloadRoot = path.join(this.dataRoot, ".download");
-    const archivePath = path.join(
-      downloadRoot,
-      `datapack-${ref.id}-${ref.version}.zip`
-    );
+    const workRoot = path.join(downloadRoot, `datapack-${ref.id}-${ref.version}-${randomUUID()}`);
+    const archivePath = path.join(workRoot, "release.zip");
     const installingPath = path.join(
-      downloadRoot,
+      workRoot,
       `datapack-${ref.id}-${ref.version}-installing`
     );
     const targetRoot = getPackRoot(
@@ -129,18 +136,23 @@ export class DataPackInstaller {
       ref.id,
       ref.version
     );
-    await fs.mkdir(downloadRoot, { recursive: true });
+    const warnings: DataPackIssue[] = [];
+    const warn = (issue: DataPackIssue) => warnings.push(issue);
+    let stage: DataPackIssue["stage"] = "download";
     try {
-      await fs.rm(installingPath, { recursive: true, force: true });
+      await fs.mkdir(workRoot, { recursive: true });
       await this.downloadFile(this.release.url, archivePath);
+      stage = "validation";
       const actualChecksum = await sha256File(archivePath);
       if (
         actualChecksum.toLowerCase() !==
         this.release.sha256.toLowerCase()
       ) {
-        throw new Error("Datapack release checksum mismatch");
+        throw invalidDatapack("Datapack release checksum mismatch");
       }
+      stage = "extract";
       await this.extractArchive(archivePath, installingPath);
+      stage = "validation";
       const manifest = await validateInstalledDatapack(
         installingPath,
         ref
@@ -149,30 +161,52 @@ export class DataPackInstaller {
         installingPath,
         manifest
       ).catch(() => undefined);
-      await fs.mkdir(path.dirname(targetRoot), { recursive: true });
-      await this.beforeReplace?.();
-      const previousPath = await replacePackRoot(
-        targetRoot,
-        installingPath,
-        true
-      );
-      await setActivePack(this.dataRoot, ref);
-      if (previousPath) {
-        await fs.rm(previousPath, { recursive: true, force: true });
-      }
+      await withDatapackLock(this.dataRoot, "access", async () => {
+        stage = "replace";
+        await fs.mkdir(path.dirname(targetRoot), { recursive: true });
+        await this.beforeReplace?.();
+        const previous = `${targetRoot}-previous`;
+        if (await pathExists(previous)) {
+          // A verified incoming pack supersedes an abandoned previous directory.
+          // Do not displace the current target until this removal succeeds.
+          await fs.rm(previous, { recursive: true, force: true });
+        }
+        const previousPath = await replacePackRoot(targetRoot, installingPath, true, warn);
+        stage = "activate";
+        try {
+          await setActivePack(this.dataRoot, ref);
+        } catch (error) {
+          try {
+            await fs.rename(targetRoot, installingPath);
+            if (previousPath) await fs.rename(previousPath, targetRoot);
+          } catch (rollbackError) {
+            const failure = datapackError(error, "activate");
+            throw new DataPackError({ ...failure.issue, message: `${failure.message}; rollback: ${String(rollbackError)}` }, error);
+          }
+          throw error;
+        }
+        if (previousPath) await cleanupPath(previousPath, warn);
+      }, { onWarning: warn });
       return {
         ref,
         rootPath: targetRoot,
         manifest,
-        source: "downloaded"
+        source: "downloaded",
+        warnings
       };
+    } catch (error) {
+      throw datapackError(error, stage);
     } finally {
-      await fs.rm(installingPath, { recursive: true, force: true });
-      await fs.rm(archivePath, { force: true });
+      await cleanupPath(workRoot, warn);
     }
   }
 
   private get targetRef(): DataPackRef {
     return { id: this.release.id, version: this.release.version };
   }
+}
+
+async function cleanupPath(target: string, warn: (issue: DataPackIssue) => void): Promise<void> {
+  try { await fs.rm(target, { recursive: true, force: true }); }
+  catch (error) { warn(datapackError(error, "cleanup").issue); }
 }

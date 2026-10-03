@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { createReadStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
+import { invalidDatapack } from "./errors";
 
 import {
   DataPackManifest,
@@ -240,14 +241,19 @@ export function validateManifest(input: unknown): string[] {
 export function parseManifest(input: unknown): DataPackManifest {
   const errors = validateManifest(input);
   if (errors.length > 0) {
-    throw new Error(`Invalid datapack manifest: ${errors.join("; ")}`);
+    throw invalidDatapack(`Invalid datapack manifest: ${errors.join("; ")}`);
   }
   return input as DataPackManifest;
 }
 
 export async function readManifest(manifestPath: string): Promise<DataPackManifest> {
   const raw = await fs.readFile(manifestPath, "utf8");
-  return parseManifest(JSON.parse(raw) as unknown);
+  try {
+    return parseManifest(JSON.parse(raw) as unknown);
+  } catch (error) {
+    if (error instanceof SyntaxError) throw invalidDatapack(`Invalid datapack JSON: ${error.message}`);
+    throw error;
+  }
 }
 
 export async function sha256File(target: string): Promise<string> {
@@ -268,15 +274,15 @@ export async function validateInstalledDatapack(
     const filePath = resolveInsidePack(packRoot, entry.path);
     const stat = await fs.stat(filePath);
     if (!stat.isFile()) {
-      throw new Error(`Datapack path is not a file: ${entry.path}`);
+      throw invalidDatapack(`Datapack path is not a file: ${entry.path}`);
     }
     if (stat.size !== entry.sizeBytes) {
-      throw new Error(`Datapack file size mismatch: ${entry.path}`);
+      throw invalidDatapack(`Datapack file size mismatch: ${entry.path}`);
     }
     if (entry.path !== "datapack.json") {
       const actual = await sha256File(filePath);
       if (actual.toLowerCase() !== entry.sha256.toLowerCase()) {
-        throw new Error(`Datapack file checksum mismatch: ${entry.path}`);
+        throw invalidDatapack(`Datapack file checksum mismatch: ${entry.path}`);
       }
     }
   }
@@ -291,7 +297,7 @@ function validateExpectedRef(
     expected &&
     (manifest.id !== expected.id || manifest.version !== expected.version)
   ) {
-    throw new Error(
+    throw invalidDatapack(
       `Installed pack mismatch: expected ${expected.id} ${expected.version}, got ${manifest.id} ${manifest.version}`
     );
   }

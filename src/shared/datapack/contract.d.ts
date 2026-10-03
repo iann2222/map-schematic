@@ -65,4 +65,11 @@ export type ReadyDataPack = {
   rootPath: string;
   manifest: DataPackManifest;
   source: "installed" | "downloaded" | "recovered" | "fallback";
+  warnings?: DataPackIssue[];
+};
+
+export type DataPackIssue = {
+  code: "busy" | "permissionDenied" | "storageFailure" | "invalidData" | "operationFailed";
+  stage: "lock" | "validation" | "download" | "extract" | "replace" | "activate" | "cleanup";
+  message: string;
 };

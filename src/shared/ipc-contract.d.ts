@@ -1,12 +1,14 @@
 import type {
   DataPackManifest,
   DataPackStatus,
+  DataPackIssue,
 } from "./datapack/contract";
 import type { MapProject } from "./schema/mapproj-contract";
 
 export type {
   DataPackManifest,
   DataPackStatus,
+  DataPackIssue,
   MapProject,
 };
 
@@ -79,6 +81,8 @@ export type DatapackUpdateResult = {
   datapack?: DataPackManifest;
   status?: DataPackStatus;
   error?: string;
+  issue?: DataPackIssue;
+  warnings?: DataPackIssue[];
 };
 
 export type BasemapLayerPayload = {

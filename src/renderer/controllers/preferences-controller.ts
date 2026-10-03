@@ -1,4 +1,5 @@
 import type { DataPackStatus } from "../bridge.js";
+import type { DatapackUpdateResult } from "../../shared/ipc-contract.js";
 import type { AppDialogOptions } from "../ui/app-dialog.js";
 import { initializeThemePreferences } from "../ui/theme-preferences.js";
 import type { ModalManager } from "../ui/modal-manager.js";
@@ -104,7 +105,7 @@ export function createPreferencesController(options: {
         datapackUpdateLabel.textContent = "正在處理";
       }
       showAppToast("正在下載、驗證並安裝官方資料包…", "loading", 0);
-      let result;
+      let result: DatapackUpdateResult;
       try {
         result = await window.mapSchematic.updateDatapack();
       } catch (error) {
@@ -114,7 +115,13 @@ export function createPreferencesController(options: {
         await showAppDialog({
           eyebrow: "資料包更新失敗",
           title: "無法完成官方資料包更新",
-          message: "目前資料包沒有被替換，仍可繼續離線使用。",
+          message: result.issue?.code === "busy"
+            ? "資料包正由其他程式使用或更新。請稍後再試，或先關閉共用資料包的其他程式。"
+            : result.issue?.code === "permissionDenied"
+              ? "請檢查資料包資料夾的讀寫權限或檔案占用狀況，不需要立即重新下載。"
+              : result.issue?.code === "storageFailure"
+                ? "請檢查磁碟可用空間與儲存裝置狀態後再試。"
+                : "更新未完成。請依下方原因處理；原有有效資料包會保留供離線使用。",
           detail: result.error ?? "請確認網路連線後再試一次。",
           tone: "danger",
           buttons: [{ label: "知道了", value: 0, variant: "primary" }],
@@ -143,6 +150,15 @@ export function createPreferencesController(options: {
         });
         showAppToast("資料包已更新，請重新啟動應用程式", "error");
         return;
+      }
+      if (result.warnings?.length) {
+        await showAppDialog({
+          eyebrow: "資料包已更新", title: "資料包可用，但仍有後續事項",
+          message: "安裝已完成，不需要重新下載。請查看以下清理或狀態檢查資訊。",
+          detail: result.warnings.map((issue) => issue.message).join("\n"),
+          tone: "warning", buttons: [{ label: "知道了", value: 0, variant: "primary" }],
+          defaultValue: 0, cancelValue: 0,
+        });
       }
       showAppToast("官方資料包已更新並套用", "success");
     } finally {

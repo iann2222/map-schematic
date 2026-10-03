@@ -13,8 +13,11 @@ import {
   setActivePack
 } from "./local-store";
 import { DataPackInstaller } from "./installer";
+import { withDatapackLock } from "./data-root-lock";
+import { datapackError, isInvalidOrMissingDatapack } from "./errors";
 import {
   DataPackDownloadReason,
+  DataPackIssue,
   DataPackRef,
   DataPackRelease,
   DataPackStatus,
@@ -101,12 +104,17 @@ export class DataPackManager {
   }
 
   private async validatePack(ref: DataPackRef): Promise<ReadyDataPack | null> {
+    return withDatapackLock(this.dataRoot, "access", () => this.validatePackUnlocked(ref));
+  }
+
+  private async validatePackUnlocked(ref: DataPackRef): Promise<ReadyDataPack | null> {
     const rootPath = getPackRoot(this.dataRoot, ref.id, ref.version);
     try {
       const manifest = await validateInstalledDatapackCached(rootPath, ref);
       return { ref, rootPath, manifest, source: "installed" };
-    } catch {
-      return null;
+    } catch (error) {
+      if (isInvalidOrMissingDatapack(error)) return null;
+      throw datapackError(error, "validation");
     }
   }
 
@@ -131,6 +139,11 @@ export class DataPackManager {
     return null;
   }
 
+  private async activatePack(ref: DataPackRef): Promise<void> {
+    try { await setActivePack(this.dataRoot, ref); }
+    catch (error) { throw datapackError(error, "activate"); }
+  }
+
   async getStatus(): Promise<DataPackStatus> {
     return this.runExclusive(() => this.getStatusOnce());
   }
@@ -139,7 +152,12 @@ export class DataPackManager {
     options: EnsureDataPackOptions
   ): Promise<ReadyDataPack> {
     let operation: Promise<ReadyDataPack>;
-    operation = this.runExclusive(() => this.ensureReadyOnce(options)).catch(
+    const warnings: DataPackIssue[] = [];
+    operation = this.runExclusive(async () => {
+      const ready = await this.ensureReadyOnce(options);
+      warnings.push(...(ready.warnings ?? []));
+      return { ...ready, warnings };
+    }, warnings).catch(
       (error) => {
         if (
           this.readyPromise === operation &&
@@ -153,8 +171,16 @@ export class DataPackManager {
     return operation;
   }
 
-  private runExclusive<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.operationTail.then(operation);
+  private runExclusive<T>(operation: () => Promise<T>, warnings?: DataPackIssue[]): Promise<T> {
+    const result = this.operationTail.then(() => withDatapackLock(this.dataRoot, "install", operation, {
+      onWarning: (issue) => {
+        if (warnings) warnings.push(issue);
+        else console.warn("Datapack cleanup:", issue.message);
+      },
+    })).catch((error) => {
+      if (error instanceof DatapackDownloadDeclinedError) throw error;
+      throw datapackError(error, "validation");
+    });
     this.operationTail = result.then(
       () => undefined,
       () => undefined
@@ -198,16 +224,16 @@ export class DataPackManager {
 
   private async ensureReadyOnce(options: EnsureDataPackOptions): Promise<ReadyDataPack> {
     await ensureDataRootExists(this.dataRoot);
-    const recovered = await this.installer.recoverInterruptedTarget(
-      (ref) => this.validatePack(ref)
+    const recovered = await withDatapackLock(this.dataRoot, "access", () =>
+      this.installer.recoverInterruptedTarget((ref) => this.validatePackUnlocked(ref))
     );
     if (recovered) {
-      await setActivePack(this.dataRoot, recovered.ref);
+      await this.activatePack(recovered.ref);
       return recovered;
     }
     const target = await this.validatePack(this.targetRef);
     if (target) {
-      await setActivePack(this.dataRoot, target.ref);
+      await this.activatePack(target.ref);
       return target;
     }
 
@@ -224,7 +250,7 @@ export class DataPackManager {
         : "initialization";
 
     if (reason === "update" && !options.allowUpdateDownload) {
-      await setActivePack(this.dataRoot, fallback!.ref);
+      await this.activatePack(fallback!.ref);
       return fallback!;
     }
 
@@ -234,7 +260,7 @@ export class DataPackManager {
         : false;
       if (!approved) {
         if (fallback) {
-          await setActivePack(this.dataRoot, fallback.ref);
+          await this.activatePack(fallback.ref);
           return fallback;
         }
         throw new DatapackDownloadDeclinedError(reason);
