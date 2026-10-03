@@ -1,8 +1,10 @@
 import type { DataPackStatus } from "../bridge.js";
 import type { AppDialogOptions } from "../ui/app-dialog.js";
 import { initializeThemePreferences } from "../ui/theme-preferences.js";
+import type { ModalManager } from "../ui/modal-manager.js";
 
 export function createPreferencesController(options: {
+  modals: ModalManager;
   reloadMap: () => Promise<void>;
   showDialog: (options: AppDialogOptions) => Promise<number>;
   showToast: (message: string, state: "loading" | "success" | "error", autoHideMs?: number) => void;
@@ -20,7 +22,6 @@ export function createPreferencesController(options: {
   const datapackUpdateLabel = root.getElementById("datapackUpdateLabel");
   const showAppDialog = options.showDialog;
   const showAppToast = options.showToast;
-  let preferencesPreviousFocus: HTMLElement | null = null;
   let updating = false;
   let statusRequest = 0;
 
@@ -154,29 +155,15 @@ export function createPreferencesController(options: {
     if (!preferencesModal) {
       return;
     }
-    preferencesPreviousFocus =
-      root.activeElement instanceof HTMLElement
-        ? root.activeElement
-        : null;
-    preferencesModal.classList.add("active");
-    void refreshDatapackPreferences();
-    window.requestAnimationFrame(() => {
-      themePreferenceButtons
-        .find((button) => button.classList.contains("active"))
-        ?.focus();
+    options.modals.open(preferencesModal, {
+      onDismiss: closePreferencesDialog,
+      initialFocus: () => themePreferenceButtons.find((button) => button.classList.contains("active")),
     });
+    void refreshDatapackPreferences();
   }
 
   function closePreferencesDialog(): void {
-    if (!preferencesModal?.classList.contains("active")) {
-      return;
-    }
-    preferencesModal.classList.remove("active");
-    const previousFocus = preferencesPreviousFocus;
-    preferencesPreviousFocus = null;
-    if (previousFocus?.isConnected) {
-      previousFocus.focus();
-    }
+    options.modals.close(preferencesModal);
   }
 
   function bind(): void {
@@ -185,13 +172,10 @@ export function createPreferencesController(options: {
     preferencesClose?.addEventListener("click", closePreferencesDialog);
     preferencesDone?.addEventListener("click", closePreferencesDialog);
     datapackUpdateButton?.addEventListener("click", () => { void handleDatapackUpdate(); });
-    preferencesModal?.addEventListener("click", (event) => {
-      if (event.target === preferencesModal) closePreferencesDialog();
-    });
   }
   return {
     open: openPreferencesDialog, close: closePreferencesDialog, bind,
-    isOpen: () => preferencesModal?.classList.contains("active") === true,
+    isOpen: () => options.modals.isOpen(preferencesModal),
     updateDatapack: handleDatapackUpdate
   };
 }

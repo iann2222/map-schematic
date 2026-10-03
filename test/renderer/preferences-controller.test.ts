@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPreferencesController } from "../../src/renderer/controllers/preferences-controller.js";
 import type { DatapackUpdateResult, DataPackStatus } from "../../src/shared/ipc-contract.js";
+import type { ModalManager } from "../../src/renderer/ui/modal-manager.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -18,7 +19,8 @@ function setup() {
   const reloadMap = vi.fn(async () => { });
   const showDialog = vi.fn(async () => 0);
   const showToast = vi.fn();
-  const controller = createPreferencesController({ root, reloadMap, showDialog, showToast });
+  const modals = { open: vi.fn(), close: vi.fn(), isOpen: vi.fn() } as unknown as ModalManager;
+  const controller = createPreferencesController({ modals, root, reloadMap, showDialog, showToast });
   return { controller, updateDatapack, getDatapackStatus, reloadMap, showDialog, showToast, elements };
 }
 

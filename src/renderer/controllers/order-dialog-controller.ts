@@ -1,3 +1,5 @@
+import type { ModalManager } from "../ui/modal-manager.js";
+
 export type OrderMode = "list" | "display";
 
 export type OrderDialogItem = {
@@ -14,6 +16,7 @@ export type OrderDialogElements = {
 };
 
 export type OrderDialogControllerOptions = {
+  modals: ModalManager;
   elements: OrderDialogElements;
   getItems: () => OrderDialogItem[];
   getOrder: (mode: OrderMode) => readonly string[];
@@ -85,11 +88,6 @@ export class OrderDialogController {
       this.open();
     });
     this.elements.closeButton?.addEventListener("click", () => this.close());
-    this.elements.modal?.addEventListener("click", (event) => {
-      if (event.target === this.elements.modal) {
-        this.close();
-      }
-    });
     window.addEventListener("pointermove", this.handlePointerMove, {
       passive: true,
     });
@@ -104,7 +102,7 @@ export class OrderDialogController {
   }
 
   isOpen(): boolean {
-    return this.elements.modal?.classList.contains("active") === true;
+    return this.options.modals.isOpen(this.elements.modal);
   }
 
   open(): void {
@@ -112,17 +110,14 @@ export class OrderDialogController {
       return;
     }
     this.render();
-    this.elements.modal.classList.add("active");
-    window.requestAnimationFrame(() => {
-      this.elements.modal
-        ?.querySelector<HTMLElement>("button, [tabindex]")
-        ?.focus();
+    this.options.modals.open(this.elements.modal, {
+      onDismiss: () => this.close(),
     });
   }
 
   close(): void {
     this.cancelActiveDrag();
-    this.elements.modal?.classList.remove("active");
+    this.options.modals.close(this.elements.modal);
   }
 
   render(): void {

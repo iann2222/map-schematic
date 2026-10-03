@@ -1889,7 +1889,7 @@
 
 /* Dialogs, export flow, preferences, and notifications */
 .modal-backdrop {
-  z-index: 50;
+  z-index: calc(50 + var(--modal-stack-index, 0));
   align-items: center;
   justify-content: center;
   padding: 24px;

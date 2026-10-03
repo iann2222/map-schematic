@@ -1,5 +1,6 @@
 import type { ExportState } from "../app-state.js";
 import type { ExportFormat } from "../bridge.js";
+import type { ModalManager } from "../ui/modal-manager.js";
 import {
   applyExportFrame,
   type ExportFrameStyle,
@@ -34,6 +35,7 @@ export type ExportControllerElements = {
 };
 
 export type ExportControllerOptions = {
+  modals: ModalManager;
   state: ExportState;
   elements: ExportControllerElements;
   pngScale: number;
@@ -60,18 +62,18 @@ export class ExportController {
   }
 
   openCompleteDialog(): void {
-    this.elements.completeModal?.classList.add("active");
-    window.requestAnimationFrame(() => {
-      this.elements.completePngButton?.focus();
+    this.options.modals.open(this.elements.completeModal, {
+      onDismiss: () => this.closeCompleteDialog(),
+      initialFocus: () => this.elements.completePngButton,
     });
   }
 
   closeCompleteDialog(): void {
-    this.elements.completeModal?.classList.remove("active");
+    this.options.modals.close(this.elements.completeModal);
   }
 
   closeFrameDialog(value: ExportFrameStyle | null): void {
-    this.elements.frameModal?.classList.remove("active");
+    this.options.modals.close(this.elements.frameModal);
     const resolver = this.state.frameResolver;
     this.state.frameResolver = null;
     resolver?.(value);
@@ -83,11 +85,6 @@ export class ExportController {
     });
     this.elements.completeCloseButton?.addEventListener("click", () => {
       this.closeCompleteDialog();
-    });
-    this.elements.completeModal?.addEventListener("click", (event) => {
-      if (event.target === this.elements.completeModal) {
-        this.closeCompleteDialog();
-      }
     });
     const exportFromComplete = (format: ExportFormat) => {
       this.closeCompleteDialog();
@@ -123,23 +120,6 @@ export class ExportController {
     this.elements.frameApplyButton?.addEventListener("click", () =>
       this.closeFrameDialog(this.state.selectedFrame),
     );
-    this.elements.frameModal?.addEventListener("click", (event) => {
-      if (event.target === this.elements.frameModal) {
-        this.closeFrameDialog(null);
-      }
-    });
-  }
-
-  handleEscape(): boolean {
-    if (this.elements.frameModal?.classList.contains("active")) {
-      this.closeFrameDialog(null);
-      return true;
-    }
-    if (this.elements.completeModal?.classList.contains("active")) {
-      this.closeCompleteDialog();
-      return true;
-    }
-    return false;
   }
 
   async export(format: ExportFormat): Promise<void> {
@@ -228,14 +208,12 @@ export class ExportController {
       return Promise.resolve(null);
     }
     this.renderFrameOptions();
-    this.elements.frameModal.classList.add("active");
-    window.requestAnimationFrame(() => {
-      this.elements.frameModal
-        ?.querySelector<HTMLElement>(".frame-option.active")
-        ?.focus();
-    });
     return new Promise((resolve) => {
       this.state.frameResolver = resolve;
+      this.options.modals.open(this.elements.frameModal, {
+        onDismiss: () => this.closeFrameDialog(null),
+        initialFocus: () => this.elements.frameModal?.querySelector<HTMLElement>(".frame-option.active"),
+      });
     });
   }
 }

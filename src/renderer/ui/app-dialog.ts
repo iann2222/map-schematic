@@ -1,4 +1,5 @@
 import type { AppDialogButton, AppDialogOptions } from "../bridge.js";
+import type { ModalManager } from "./modal-manager.js";
 
 export type { AppDialogOptions } from "../bridge.js";
 
@@ -28,15 +29,13 @@ export type AppDialogService = {
     tone?: "info" | "warning" | "danger";
   }) => Promise<void>;
   closeCancel: () => void;
-  handleKeyDown: (event: KeyboardEvent) => boolean;
 };
 
-export function createAppDialogService(elements: AppDialogElements): AppDialogService {
+export function createAppDialogService(elements: AppDialogElements, modals: ModalManager): AppDialogService {
   const queue: QueuedAppDialog[] = [];
   let active: QueuedAppDialog | null = null;
   let defaultValue = 0;
   let cancelValue = 0;
-  let previousFocus: HTMLElement | null = null;
 
   const close = (response: number): void => {
     if (!active || !elements.modal) {
@@ -44,15 +43,11 @@ export function createAppDialogService(elements: AppDialogElements): AppDialogSe
     }
     const current = active;
     active = null;
-    elements.modal.classList.remove("active");
+    modals.close(elements.modal);
     elements.actions?.replaceChildren();
     current.resolve(response);
-    const focusTarget = previousFocus;
-    previousFocus = null;
     if (queue.length > 0) {
-      window.requestAnimationFrame(presentNext);
-    } else if (focusTarget?.isConnected) {
-      focusTarget.focus();
+      presentNext();
     }
   };
 
@@ -75,8 +70,6 @@ export function createAppDialogService(elements: AppDialogElements): AppDialogSe
     const { options } = active;
     defaultValue = options.defaultValue;
     cancelValue = options.cancelValue;
-    previousFocus =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const tone = options.tone ?? "info";
     elements.dialog.dataset.tone = tone;
     if (elements.icon) {
@@ -117,15 +110,21 @@ export function createAppDialogService(elements: AppDialogElements): AppDialogSe
         defaultButton = button;
       }
     });
-    elements.modal.classList.add("active");
-    window.requestAnimationFrame(() => {
-      (defaultButton ?? elements.actions?.querySelector<HTMLButtonElement>("button"))?.focus();
+    modals.open(elements.modal, {
+      onDismiss: () => close(cancelValue),
+      initialFocus: () => defaultButton,
+      onKeyDown: (event) => {
+        if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
+          event.preventDefault();
+          close(defaultValue);
+        }
+      },
     });
   };
 
   return {
     show(options) {
-      if (!elements.modal || !elements.dialog || !elements.actions) {
+      if (!elements.modal || !elements.dialog || !elements.actions || !elements.title || !elements.message) {
         return Promise.resolve(options.cancelValue);
       }
       return new Promise((resolve) => {
@@ -143,44 +142,6 @@ export function createAppDialogService(elements: AppDialogElements): AppDialogSe
     },
     closeCancel() {
       close(cancelValue);
-    },
-    handleKeyDown(event) {
-      if (!elements.modal?.classList.contains("active")) {
-        return false;
-      }
-      const buttons = Array.from(
-        elements.actions?.querySelectorAll<HTMLButtonElement>("button") ?? [],
-      );
-      if (event.key === "Escape") {
-        event.preventDefault();
-        close(cancelValue);
-        return true;
-      }
-      if (event.key === "Enter") {
-        if (
-          event.target instanceof HTMLButtonElement &&
-          elements.actions?.contains(event.target)
-        ) {
-          return false;
-        }
-        event.preventDefault();
-        close(defaultValue);
-        return true;
-      }
-      if (event.key === "Tab" && buttons.length > 0) {
-        event.preventDefault();
-        const activeIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
-        const direction = event.shiftKey ? -1 : 1;
-        const nextIndex =
-          activeIndex < 0
-            ? event.shiftKey
-              ? buttons.length - 1
-              : 0
-            : (activeIndex + direction + buttons.length) % buttons.length;
-        buttons[nextIndex]?.focus();
-        return true;
-      }
-      return false;
     },
   };
 }

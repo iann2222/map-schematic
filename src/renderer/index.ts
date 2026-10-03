@@ -3,6 +3,7 @@ export { };
 import { ProjectSnapshot } from "./project/project-snapshot.js";
 import { createObjectController } from "./controllers/object-controller.js";
 import { createPreferencesController } from "./controllers/preferences-controller.js";
+import { ModalManager } from "./ui/modal-manager.js";
 import { createExportRenderer } from "./export/export-renderer.js";
 
 import type { MapProject } from "./bridge.js";
@@ -62,6 +63,7 @@ import { MapInitializationController } from "./controllers/map-initialization-co
 import { BasemapRenderer } from "./map/basemap-renderer.js";
 
 const appState = createAppState();
+const modals = new ModalManager();
 
 const statusEl = document.getElementById("status");
 const workspaceStatusEl =
@@ -115,7 +117,7 @@ const appDialog = createAppDialogService({
   message: appDialogMessage,
   detail: appDialogDetail,
   actions: appDialogActions,
-});
+}, modals);
 const showAppDialog = (options: AppDialogOptions): Promise<number> =>
   appDialog.show(options);
 const showAppNotice = (options: {
@@ -383,6 +385,7 @@ const projectSnapshot = new ProjectSnapshot({
   mapWidth: MAP_WIDTH, mapHeight: MAP_HEIGHT,
 });
 const objectController = createObjectController({
+  modals,
   core: editorCore, state: appState.objects, selectionState, order: objectOrderModel,
   getActiveStep: () => appState.workflow.activeStep,
   getDefaultLayerId: () => projectSnapshot.defaultLayerId(),
@@ -671,6 +674,7 @@ function getOverlayRefs(): OrderDialogItem[] {
 }
 
 const orderDialogController = new OrderDialogController({
+  modals,
   elements: {
     triggerButton: listOrderSettingsBtn,
     modal: listOrderModal,
@@ -750,7 +754,7 @@ const selectionController = new SelectionController({
   mapPointFromEvent: (event) => mapViewport.mapPointFromEvent(event),
   commitTransaction: commitEditorTransaction,
   updateTransactionObject: (id, update) => editorCore.updateTransactionObject(id, update),
-  hasOpenModal: () => Boolean(document.querySelector(".modal-backdrop.active")),
+  hasOpenModal: () => modals.hasOpenModal,
   mapElement: svg,
 });
 
@@ -951,6 +955,7 @@ const exportRenderer = createExportRenderer({
   mapWidth: MAP_WIDTH, mapHeight: MAP_HEIGHT,
 });
 const exportController = new ExportController({
+  modals,
   state: appState.export,
   elements: {
     completeModal,
@@ -1022,6 +1027,7 @@ const mapInitializationController = new MapInitializationController({
 });
 
 const preferencesController = createPreferencesController({
+  modals,
   reloadMap: () => mapInitializationController.initialize(),
   showDialog: showAppDialog, showToast: showAppToast,
 });
@@ -1154,11 +1160,6 @@ clearMarkersButton?.addEventListener("click", async () => {
 });
 undoButton?.addEventListener("click", undoEditorChange);
 redoButton?.addEventListener("click", redoEditorChange);
-appDialogModal?.addEventListener("click", (event) => {
-  if (event.target === appDialogModal) {
-    appDialog.closeCancel();
-  }
-});
 exportController.bind();
 
 function nudgeSelectedObject(event: KeyboardEvent): boolean {
@@ -1245,16 +1246,7 @@ async function showAbout(): Promise<void> {
 
 const appCommandController = new AppCommandController({
   getActiveStep: () => appState.workflow.activeStep,
-  handleAppDialogKeyDown: (event) => appDialog.handleKeyDown(event),
-  isPreferencesOpen: preferencesController.isOpen,
-  closePreferences: preferencesController.close,
-  handleExportEscape: () => exportController.handleEscape(),
-  isOrderDialogOpen: () => orderDialogController.isOpen(),
-  closeOrderDialog: () => orderDialogController.close(),
-  isCoordinateDialogOpen: objectController.isCoordinateDialogOpen,
-  cancelCoordinateDialog: objectController.cancelCoordinateDialog,
-  isCompletionDialogOpen: () =>
-    completeModal?.classList.contains("active") === true,
+  hasOpenModal: () => modals.hasOpenModal,
   undo: undoEditorChange,
   redo: redoEditorChange,
   nudgeSelection: nudgeSelectedObject,

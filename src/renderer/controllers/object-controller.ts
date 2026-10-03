@@ -9,8 +9,10 @@ import { isMarker, isShape, type Marker, type ShapeItem } from "../editor/types.
 import type { ObjectOrderModel } from "../overlay/object-order-model.js";
 import { normalizeLongitude, project } from "../map/geometry.js";
 import { bindFirstClickSelect } from "../ui/input-selection.js";
+import type { ModalManager } from "../ui/modal-manager.js";
 
 export function createObjectController(options: {
+  modals: ModalManager;
   core: EditorCore;
   state: ObjectToolState;
   selectionState: SelectionState;
@@ -415,12 +417,7 @@ export function createObjectController(options: {
       return;
     }
     state.editingCoordMarker = marker;
-    coordEditModal.classList.add("active");
     coordLabelInput.value = marker.labelName ?? "";
-    window.requestAnimationFrame(() => {
-      coordLabelInput.focus();
-      coordLabelInput.select();
-    });
     const radios = coordEditModal.querySelectorAll<HTMLInputElement>(
       'input[name="coordLabelMode"]',
     );
@@ -436,14 +433,19 @@ export function createObjectController(options: {
         draft.labelMode = selected?.value === "name" ? "name" : "coords";
       });
       state.editingCoordMarker = null;
-      coordEditModal.classList.remove("active");
+      options.modals.close(coordEditModal);
       renderMarkers();
       renderMarkerList();
     };
     coordEditCancel.onclick = () => {
       state.editingCoordMarker = null;
-      coordEditModal.classList.remove("active");
+      options.modals.close(coordEditModal);
     };
+    options.modals.open(coordEditModal, {
+      onDismiss: () => coordEditCancel.click(),
+      initialFocus: () => coordLabelInput,
+    });
+    coordLabelInput.select();
   }
 
   function isCoordLabelDefault(): boolean {
@@ -471,16 +473,13 @@ export function createObjectController(options: {
       });
     });
     bindFirstClickSelect(coordLabelInput, isCoordLabelDefault);
-    coordEditModal?.addEventListener("click", (event) => {
-      if (event.target === coordEditModal) coordEditCancel?.click();
-    });
   }
   function resetTransient(): void {
     state.previewMarker = null;
     state.previewToolMarker = null;
     state.previewShape = null;
     state.editingCoordMarker = null;
-    coordEditModal?.classList.remove("active");
+    options.modals.close(coordEditModal);
   }
   function clearToolPreviews(): void {
     state.previewToolMarker = null;
@@ -508,6 +507,6 @@ export function createObjectController(options: {
     updateMarkerObject, updateShapeObject, deleteMarker, deleteShape, handleClearMarkers,
     openCoordEditor, clearToolPreviews, clearMarkerPreview, clearSearchPreview, previewCoordinateMarker, getEditableMarker,
     cancelCoordinateDialog: () => coordEditCancel?.click(),
-    isCoordinateDialogOpen: () => coordEditModal?.classList.contains("active") === true
+    isCoordinateDialogOpen: () => options.modals.isOpen(coordEditModal)
   };
 }

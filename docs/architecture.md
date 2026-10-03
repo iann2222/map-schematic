@@ -116,7 +116,12 @@
   - 保留跨控制器的畫面刷新與流程接線；物件操作、專案快照與匯出內容由獨立模組處理。
 - `src/renderer/app-state.ts`
   - 定義 renderer 的 `AppState` 根結構，集中工作流程、專案生命週期、搜尋、匯出、選取、物件工具／預覽及目前資料包版本。
-  - Core 擁有編輯文件與歷史，Crop Controller 擁有裁切與畫布設定，Basemap Renderer 擁有底圖設定；偏好設定的焦點與更新請求由自己的控制器管理，不重複存入 App State。
+  - Core 擁有編輯文件與歷史，Crop Controller 擁有裁切與畫布設定，Basemap Renderer 擁有底圖設定；Modal Manager 擁有對話框堆疊與焦點，偏好設定控制器擁有更新請求，不重複存入 App State。
+- `src/renderer/ui/modal-manager.ts`
+  - 所有應用內對話框共用同一個管理器，集中開啟／關閉、初始焦點、焦點恢復、Tab 邊界及 Escape／背景點擊取消；各控制器保留自己的確認、取消與清理動作。
+  - 開啟時以 `inert` 暫停背景及下層對話框；巢狀確認框只關閉最上層，並恢復至下層原控制項。最後關閉時恢復背景原有的 `inert` 狀態與焦點。
+  - Tab 在對話框首尾循環，內部保留瀏覽器原生表單與 radio group 行為；沒有可操作控制項時改由對話框本身承接焦點。
+  - 確認框佇列依序呈現，每次回應只完成一個請求；排序拖曳清理與匯出外框的 Promise 完成都走控制器原有關閉流程。
 - `src/renderer/controllers/*`
   - `workflow-controller.ts` 管理步驟切換、導覽、工作區分頁與搜尋模式分頁。
   - `project-controller.ts` 管理載入、儲存、另存、未儲存狀態與資料包版本確認，並透過 operation coordinator 序列化操作。
@@ -127,6 +132,7 @@
   - `search-controller.ts` 管理離線地名搜尋、座標解析、結果排序與結果清單。
   - `export-controller.ts` 管理匯出格式、外框選擇、進度與輸出請求。
   - `app-command-controller.ts` 集中全域快捷鍵、Electron menu action 與 dialog request 路由。
+  - Modal 開啟時不執行背景編輯快捷鍵或一般選單操作；Main 要求的確認框仍可疊加，關閉前儲存的生命週期回應也可繼續執行。
   - `order-dialog-controller.ts` 管理項目排序 dialog、置頂／置底操作、拖曳 session 與 FLIP 動畫，排序結果再透過 Editor Core 命令提交。
   - `inspector-controller.ts` 協調 Step 3 屬性面板的選取、顯示與欄位綁定；每次只提交當次編輯欄位，並檢查物件種類，不將整組控制項回寫至物件。
   - 畫面同步不產生編輯命令；修改顏色、大小等樣式不會重設字型、顯示文字或座標標示模式，物件變更仍透過 Editor Core 提交。

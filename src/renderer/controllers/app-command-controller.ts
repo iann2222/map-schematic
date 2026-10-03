@@ -7,15 +7,7 @@ import type {
 
 export type AppCommandControllerOptions = {
   getActiveStep: () => WorkflowStep;
-  handleAppDialogKeyDown: (event: KeyboardEvent) => boolean;
-  isPreferencesOpen: () => boolean;
-  closePreferences: () => void;
-  handleExportEscape: () => boolean;
-  isOrderDialogOpen: () => boolean;
-  closeOrderDialog: () => void;
-  isCoordinateDialogOpen: () => boolean;
-  cancelCoordinateDialog: () => void;
-  isCompletionDialogOpen: () => boolean;
+  hasOpenModal: () => boolean;
   undo: () => void;
   redo: () => void;
   nudgeSelection: (event: KeyboardEvent) => boolean;
@@ -57,18 +49,9 @@ export class AppCommandController {
   }
 
   private handleKeyDown(event: KeyboardEvent): void {
+    if (event.defaultPrevented || this.options.hasOpenModal()) return;
     const key = event.key.toLowerCase();
     const textEditing = isTextEditingTarget(event.target);
-    if (this.options.handleAppDialogKeyDown(event) || event.defaultPrevented) {
-      return;
-    }
-    if (this.options.isPreferencesOpen()) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        this.options.closePreferences();
-      }
-      return;
-    }
     if ((event.ctrlKey || event.metaKey) && !event.altKey) {
       if (textEditing) {
         return;
@@ -92,17 +75,6 @@ export class AppCommandController {
       return;
     }
     if (event.key === "Escape") {
-      if (this.options.handleExportEscape()) {
-        return;
-      }
-      if (this.options.isOrderDialogOpen()) {
-        this.options.closeOrderDialog();
-        return;
-      }
-      if (this.options.isCoordinateDialogOpen()) {
-        this.options.cancelCoordinateDialog();
-        return;
-      }
       if (this.options.getActiveStep() === "3" && !textEditing) {
         this.options.clearSelection();
       }
@@ -110,14 +82,15 @@ export class AppCommandController {
     if (
       event.key === "Delete" &&
       this.options.getActiveStep() === "3" &&
-      !textEditing &&
-      !this.options.isCompletionDialogOpen()
+      !textEditing
     ) {
       this.options.deleteSelection();
     }
   }
 
   private handleMenuAction(action: MenuAction): void {
+    // The close-confirmation response is a lifecycle continuation, not an editor command.
+    if (this.options.hasOpenModal() && action !== "project:saveBeforeClose") return;
     switch (action) {
       case "edit:undo":
         this.options.undo();
