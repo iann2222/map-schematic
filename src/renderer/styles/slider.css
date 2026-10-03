@@ -1,0 +1,75 @@
+@layer components {
+.slider {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+}
+.slider-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--ui-slider-track);
+}
+.slider-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  border-radius: 999px;
+  background: var(--ui-accent);
+}
+.slider-thumb {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--ui-accent);
+  border: 2px solid var(--ui-on-accent);
+  box-shadow: 0 0 0 1px var(--ui-accent-border);
+  cursor: grab;
+}
+.slider-thumb:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.8);
+  outline-offset: 2px;
+}
+.slider.dragging .slider-thumb {
+  cursor: grabbing;
+}
+.slider-marks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 8px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 1;
+}
+.slider-mark {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.slider-mark .tick {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ui-slider-dot);
+  box-shadow: none;
+}
+.slider-mark.active .tick {
+  background: var(--ui-accent);
+}
+.slider-mark.active {
+  opacity: 0;
+}
+}

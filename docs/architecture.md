@@ -98,13 +98,16 @@
 - `src/renderer/styles/cascade.css`
   - 固定 `legacy → tokens → base → components → utilities` 的 cascade layer 順序，避免載入順序或 selector specificity 意外改變覆寫結果。
 - `src/renderer/styles/legacy.css`
-  - 保存尚待淘汰的相容樣式，位於最低優先的 `legacy` layer；目前設計系統規則可穩定覆寫。
+  - 保存尚待淘汰的相容樣式，位於 `legacy` layer；一般宣告由目前設計系統覆寫，`!important` 的 layer 優先序相反，不能用來維持已遷移元件的尺寸。
 - `src/renderer/styles/tokens.css`
   - 定義深色／淺色主題 token、尺寸、陰影與舊變數的相容映射。
 - `src/renderer/styles/base.css`
   - 定義 box model、應用程式根布局、字型、表單控制與鍵盤 focus 基礎規則。
 - `src/renderer/styles.css`
-  - 位於 `components` cascade layer，依共用控制、工作流程、地圖、屬性面板、dialog 與 responsive 區段組織。
+  - 位於 `components` cascade layer，依共用控制、工作流程、地圖、dialog 與 responsive 區段組織。
+- `src/renderer/styles/inspector.css` 與 `slider.css`
+  - 分別擁有屬性面板（含色票、旋轉控制）與共用拉桿的完整規則，legacy 不再保留同名規則或色彩彈窗的廢棄樣式。
+  - 屬性標籤欄寬、欄位間距與色票偏移使用同一組局部 token，顏色框尺寸不依賴 `!important` 覆寫。
 - `src/renderer/styles/utilities.css`
   - 位於最高優先的 `utilities` layer，保存 `hidden` 等單一用途狀態契約。
 - `src/renderer/index.ts`
@@ -125,7 +128,8 @@
   - `export-controller.ts` 管理匯出格式、外框選擇、進度與輸出請求。
   - `app-command-controller.ts` 集中全域快捷鍵、Electron menu action 與 dialog request 路由。
   - `order-dialog-controller.ts` 管理項目排序 dialog、置頂／置底操作、拖曳 session 與 FLIP 動畫，排序結果再透過 Editor Core 命令提交。
-  - `inspector-controller.ts` 管理 Step 3 屬性面板的欄位同步、色票、滑桿、旋轉控制與編輯事件，物件變更仍透過 Editor Core 命令提交。
+  - `inspector-controller.ts` 協調 Step 3 屬性面板的選取、顯示與欄位綁定；每次只提交當次編輯欄位，並檢查物件種類，不將整組控制項回寫至物件。
+  - 畫面同步不產生編輯命令；修改顏色、大小等樣式不會重設字型、顯示文字或座標標示模式，物件變更仍透過 Editor Core 提交。
   - `selection-controller.ts` 集中選取狀態、物件拖曳、鍵盤微調、空白區域取消選取與 Inspector 同步。
   - `crop-controller.ts` 管理 Step 1 比例選擇、裁切框、專案裁切狀態、地圖 clip 與遮罩；純幾何運算位於 `crop-geometry.ts`。
   - `map-viewport-controller.ts` 管理地圖縮放、平移、畫布適配、座標換算與循環世界偏移。
@@ -166,6 +170,10 @@
   - 標示與圖形使用同一個 SVG 物件容器，每個物件的文字、圖形及命中範圍位於同一群組，依共用顯示順序排列；畫面與匯出沿用相同順序。
 - `src/renderer/ui/slider.ts`
   - 提供共用滑桿建立、鍵盤操作、數值吸附與畫面同步。
+- `src/renderer/ui/color-control.ts`
+  - 統一顏色輸入、色票點選、HEX 正規化、選取狀態與無障礙標籤；各物件面板只提供自己的欄位更新 callback。
+- `src/renderer/ui/rotation-control.ts`
+  - 線段與箭頭共用 0–360 度輸入、首次點擊全選及按鈕連按控制；選取物件改變或視窗失焦時停止連按。
 - `src/renderer/ui/input-selection.ts`
   - 提供輸入框首次點擊全選行為，供屬性面板、座標 dialog 與比例欄位共用。
 

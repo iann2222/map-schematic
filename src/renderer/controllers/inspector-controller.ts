@@ -1,6 +1,8 @@
 import { defaultMarkerStyle } from "../editor/defaults.js";
 import { formatCoordinates } from "../editor/presentation.js";
 import type { Marker, ShapeItem } from "../editor/types.js";
+import { ColorControl } from "../ui/color-control.js";
+import { bindRotationControl } from "../ui/rotation-control.js";
 import { bindFirstClickSelect } from "../ui/input-selection.js";
 import {
   initSlider,
@@ -45,10 +47,6 @@ type InspectorElements = {
   markerTextSize: HTMLDivElement | null;
   markerDotColor: HTMLInputElement | null;
   markerTextColor: HTMLInputElement | null;
-  markerDotHex: HTMLInputElement | null;
-  markerTextHex: HTMLInputElement | null;
-  dotColorChip: HTMLSpanElement | null;
-  textColorChip: HTMLSpanElement | null;
   markerFont: HTMLSelectElement | null;
   markerLabelInput: HTMLInputElement | null;
   markerCoordsInput: HTMLInputElement | null;
@@ -67,6 +65,15 @@ type InspectorElements = {
   shapeAreaStroke: HTMLInputElement | null;
   shapeAreaStrokeWidth: HTMLDivElement | null;
 };
+
+type ColorInputId =
+  | "markerDotColor"
+  | "markerTextColor"
+  | "shapeTextColor"
+  | "shapeLineColor"
+  | "shapeArrowColor"
+  | "shapeAreaFill"
+  | "shapeAreaStroke";
 
 function element<T extends HTMLElement>(
   root: Document,
@@ -91,10 +98,6 @@ function collectElements(root: Document): InspectorElements {
     markerTextSize: element(root, "markerTextSize"),
     markerDotColor: element(root, "markerDotColor"),
     markerTextColor: element(root, "markerTextColor"),
-    markerDotHex: element(root, "markerDotHex"),
-    markerTextHex: element(root, "markerTextHex"),
-    dotColorChip: element(root, "dotColorChip"),
-    textColorChip: element(root, "textColorChip"),
     markerFont: element(root, "markerFont"),
     markerLabelInput: element(root, "markerLabelInput"),
     markerCoordsInput: element(root, "markerCoordsInput"),
@@ -115,28 +118,12 @@ function collectElements(root: Document): InspectorElements {
   };
 }
 
-export function normalizeHexColor(input: string): string | null {
-  let value = input.trim();
-  if (!value) {
-    return null;
-  }
-  if (!value.startsWith("#")) {
-    value = `#${value}`;
-  }
-  const short = /^#([0-9a-fA-F]{3})$/;
-  if (short.test(value)) {
-    const [red, green, blue] = value.slice(1).split("");
-    return `#${red}${red}${green}${green}${blue}${blue}`.toLowerCase();
-  }
-  return /^#([0-9a-fA-F]{6})$/.test(value)
-    ? value.toLowerCase()
-    : null;
-}
-
 export class InspectorController {
   private readonly options: InspectorControllerOptions;
   private readonly elements: InspectorElements;
   private readonly root: Document;
+  private bound = false;
+  private readonly colors = new Map<ColorInputId, ColorControl>();
   private sliders: SliderControl[] = [];
   private dotSizeSlider: SliderControl | null = null;
   private textSizeSlider: SliderControl | null = null;
@@ -156,6 +143,8 @@ export class InspectorController {
   }
 
   bind(): void {
+    if (this.bound) return;
+    this.bound = true;
     this.bindMarkerControls();
     this.bindShapeControls();
     this.elements.itemNameInput?.addEventListener("input", () =>
@@ -167,42 +156,19 @@ export class InspectorController {
       this.elements.shapeTextInput,
       () => this.isShapeTextDefault(),
     );
-    bindFirstClickSelect(this.elements.shapeLineRotation, () => true);
-    bindFirstClickSelect(this.elements.shapeArrowRotation, () => true);
     this.initializeSliders();
   }
 
   syncMarker(marker: Marker | null): void {
     this.updateVisibility(marker, null);
-    const {
-      markerDotSize,
-      markerTextSize,
-      markerDotColor,
-      markerTextColor,
-      markerFont,
-      markerLabelInput,
-      markerCoordsInput,
-    } = this.elements;
-    if (
-      !markerDotSize ||
-      !markerTextSize ||
-      !markerDotColor ||
-      !markerTextColor ||
-      !markerFont
-    ) {
-      return;
-    }
+    const { markerFont, markerLabelInput, markerCoordsInput } = this.elements;
+    const style = marker?.style ?? defaultMarkerStyle();
+    if (this.dotSizeSlider) setSliderValue(this.dotSizeSlider, style.dotSize, true);
+    if (this.textSizeSlider) setSliderValue(this.textSizeSlider, style.textSize, true);
+    this.colors.get("markerDotColor")?.sync(style.dotColor);
+    this.colors.get("markerTextColor")?.sync(style.textColor);
+    if (markerFont) markerFont.value = style.fontFamily;
     if (!marker) {
-      const defaults = defaultMarkerStyle();
-      this.dotSizeSlider &&
-        setSliderValue(this.dotSizeSlider, defaults.dotSize, true);
-      this.textSizeSlider &&
-        setSliderValue(this.textSizeSlider, defaults.textSize, true);
-      markerDotColor.value = defaults.dotColor;
-      markerTextColor.value = defaults.textColor;
-      markerFont.value = defaults.fontFamily;
-      this.syncMarkerColorInputs("dot", defaults.dotColor);
-      this.syncMarkerColorInputs("text", defaults.textColor);
       if (markerLabelInput) {
         markerLabelInput.value = "";
         markerLabelInput.disabled = true;
@@ -213,15 +179,6 @@ export class InspectorController {
       }
       return;
     }
-    this.dotSizeSlider &&
-      setSliderValue(this.dotSizeSlider, marker.style.dotSize, true);
-    this.textSizeSlider &&
-      setSliderValue(this.textSizeSlider, marker.style.textSize, true);
-    markerDotColor.value = marker.style.dotColor;
-    markerTextColor.value = marker.style.textColor;
-    markerFont.value = marker.style.fontFamily;
-    this.syncMarkerColorInputs("dot", marker.style.dotColor);
-    this.syncMarkerColorInputs("text", marker.style.textColor);
     if (markerLabelInput) {
       const canEdit =
         marker.sourceType === "geonames" || marker.sourceType === "coords";
@@ -258,7 +215,7 @@ export class InspectorController {
         this.elements.shapeTextInput.value = shape.text ?? "";
       }
       if (this.elements.shapeTextColor) {
-        this.elements.shapeTextColor.value = shape.style.textColor;
+        this.colors.get("shapeTextColor")?.sync(shape.style.textColor);
       }
       if (this.elements.shapeTextFont) {
         this.elements.shapeTextFont.value = shape.style.fontFamily;
@@ -270,40 +227,24 @@ export class InspectorController {
           true,
         );
     }
-    if (shape.type === "line") {
-      if (this.elements.shapeLineColor) {
-        this.elements.shapeLineColor.value = shape.style.strokeColor;
-      }
-      this.shapeLineWidthSlider &&
-        setSliderValue(
-          this.shapeLineWidthSlider,
-          shape.style.strokeWidth,
-          true,
-        );
-      if (this.elements.shapeLineRotation) {
-        this.elements.shapeLineRotation.value = String(shape.rotation ?? 0);
-      }
-    }
-    if (shape.type === "arrow") {
-      if (this.elements.shapeArrowColor) {
-        this.elements.shapeArrowColor.value = shape.style.strokeColor;
-      }
-      this.shapeArrowWidthSlider &&
-        setSliderValue(
-          this.shapeArrowWidthSlider,
-          shape.style.strokeWidth,
-          true,
-        );
-      if (this.elements.shapeArrowRotation) {
-        this.elements.shapeArrowRotation.value = String(shape.rotation ?? 0);
-      }
+    if (shape.type === "line" || shape.type === "arrow") {
+      const line = shape.type === "line";
+      const slider = line ? this.shapeLineWidthSlider : this.shapeArrowWidthSlider;
+      const rotation = line
+        ? this.elements.shapeLineRotation
+        : this.elements.shapeArrowRotation;
+      this.colors
+        .get(line ? "shapeLineColor" : "shapeArrowColor")
+        ?.sync(shape.style.strokeColor);
+      if (slider) setSliderValue(slider, shape.style.strokeWidth, true);
+      if (rotation) rotation.value = String(shape.rotation ?? 0);
     }
     if (shape.type === "area") {
       if (this.elements.shapeAreaFill) {
-        this.elements.shapeAreaFill.value = shape.style.fillColor;
+        this.colors.get("shapeAreaFill")?.sync(shape.style.fillColor);
       }
       if (this.elements.shapeAreaStroke) {
-        this.elements.shapeAreaStroke.value = shape.style.strokeColor;
+        this.colors.get("shapeAreaStroke")?.sync(shape.style.strokeColor);
       }
       this.shapeAreaOpacitySlider &&
         setSliderValue(
@@ -318,7 +259,6 @@ export class InspectorController {
           true,
         );
     }
-    this.syncShapeColorPalettes();
     this.syncItemName();
   }
 
@@ -366,40 +306,51 @@ export class InspectorController {
     this.dotSizeSlider = initSlider(
       this.elements.markerDotSize,
       7,
-      () => this.updateMarkerFromControls(this.markerMergeKey("dot-size")),
+      (value) => this.editMarker("dot-size", (draft) => {
+        draft.style.dotSize = value;
+      }),
     );
     this.textSizeSlider = initSlider(
       this.elements.markerTextSize,
       7,
-      () => this.updateMarkerFromControls(this.markerMergeKey("text-size")),
+      (value) => this.editMarker("text-size", (draft) => {
+        draft.style.textSize = value;
+      }),
     );
     this.shapeTextSizeSlider = initSlider(
       this.elements.shapeTextSize,
       7,
-      () => this.updateShapeFromControls(this.shapeMergeKey("text-size")),
+      (value) => this.editShape("text", "text-size", (draft) => {
+        draft.style.textSize = value;
+      }),
     );
     this.shapeLineWidthSlider = initSlider(
       this.elements.shapeLineWidth,
       2,
-      () => this.updateShapeFromControls(this.shapeMergeKey("line-width")),
+      (value) => this.editShape("line", "line-width", (draft) => {
+        draft.style.strokeWidth = value;
+      }),
     );
     this.shapeArrowWidthSlider = initSlider(
       this.elements.shapeArrowWidth,
       2,
-      () => this.updateShapeFromControls(this.shapeMergeKey("arrow-width")),
+      (value) => this.editShape("arrow", "arrow-width", (draft) => {
+        draft.style.strokeWidth = value;
+      }),
     );
     this.shapeAreaOpacitySlider = initSlider(
       this.elements.shapeAreaOpacity,
       0.4,
-      () => this.updateShapeFromControls(this.shapeMergeKey("area-opacity")),
+      (value) => this.editShape("area", "area-opacity", (draft) => {
+        draft.style.fillOpacity = value;
+      }),
     );
     this.shapeAreaStrokeWidthSlider = initSlider(
       this.elements.shapeAreaStrokeWidth,
       2,
-      () =>
-        this.updateShapeFromControls(
-          this.shapeMergeKey("area-stroke-width"),
-        ),
+      (value) => this.editShape("area", "area-stroke-width", (draft) => {
+        draft.style.strokeWidth = value;
+      }),
     );
     this.sliders = [
       this.dotSizeSlider,
@@ -410,14 +361,6 @@ export class InspectorController {
       this.shapeAreaOpacitySlider,
       this.shapeAreaStrokeWidthSlider,
     ].filter((slider): slider is SliderControl => slider !== null);
-  }
-
-  private markerMergeKey(property: string): string {
-    return `marker:${this.options.getEditableMarker()?.id ?? "none"}:${property}`;
-  }
-
-  private shapeMergeKey(property: string): string {
-    return `shape:${this.options.getSelectedShape()?.id ?? "none"}:${property}`;
   }
 
   private updateItemName(): void {
@@ -487,318 +430,106 @@ export class InspectorController {
     }
   }
 
-  private bindMarkerControls(): void {
-    const update = (property: string) =>
-      this.updateMarkerFromControls(this.markerMergeKey(property));
-    this.elements.markerLabelInput?.addEventListener("input", () =>
-      update("label"),
+  private bindColor(
+    id: ColorInputId,
+    palette: string,
+    onChange: (color: string, source: "input" | "palette") => boolean,
+  ): void {
+    const input = this.elements[id];
+    if (!input) return;
+    const control = new ColorControl(
+      input,
+      Array.from(this.root.querySelectorAll<HTMLButtonElement>(`#${palette} .color-swatch`)),
+      onChange,
     );
-    this.elements.markerDotColor?.addEventListener("input", () => {
-      this.syncMarkerColorInputs(
-        "dot",
-        this.elements.markerDotColor?.value ?? "",
-      );
-      update("dot-color");
-    });
-    this.elements.markerTextColor?.addEventListener("input", () => {
-      this.syncMarkerColorInputs(
-        "text",
-        this.elements.markerTextColor?.value ?? "",
-      );
-      update("text-color");
-    });
-    this.bindHexInput("dot");
-    this.bindHexInput("text");
-    this.elements.markerFont?.addEventListener("change", () => update("font"));
-    this.root
-      .querySelectorAll<HTMLButtonElement>(".color-swatch")
-      .forEach((swatch) => {
-        swatch.addEventListener("click", () => {
-          const color = swatch.dataset.color ?? "";
-          const target = swatch.dataset.colorTarget;
-          if (!this.options.getEditableMarker() || !color) {
-            return;
-          }
-          if (target === "dot" && this.elements.markerDotColor) {
-            this.elements.markerDotColor.value = color;
-            this.syncMarkerColorInputs("dot", color);
-          }
-          if (target === "text" && this.elements.markerTextColor) {
-            this.elements.markerTextColor.value = color;
-            this.syncMarkerColorInputs("text", color);
-          }
-          this.updateMarkerFromControls();
-        });
-      });
+    this.colors.set(id, control);
+    control.bind();
   }
 
-  private bindHexInput(target: "dot" | "text"): void {
-    const input =
-      target === "dot"
-        ? this.elements.markerDotHex
-        : this.elements.markerTextHex;
-    const colorInput =
-      target === "dot"
-        ? this.elements.markerDotColor
-        : this.elements.markerTextColor;
-    input?.addEventListener("input", () => {
-      const color = normalizeHexColor(input.value);
-      if (!color || !colorInput) {
-        return;
-      }
-      colorInput.value = color;
-      this.syncMarkerColorInputs(target, color);
-      this.updateMarkerFromControls(this.markerMergeKey(`${target}-color`));
+  private bindMarkerControls(): void {
+    const { markerLabelInput, markerFont } = this.elements;
+    markerLabelInput?.addEventListener("input", () => {
+      const marker = this.options.getEditableMarker();
+      if (marker?.sourceType !== "geonames" && marker?.sourceType !== "coords") return;
+      this.editMarker("label", (draft) => {
+        draft.labelName = markerLabelInput.value.trim() || undefined;
+        draft.labelMode = "name";
+      });
     });
+    markerFont?.addEventListener("change", () =>
+      this.editMarker("font", (draft) => {
+        draft.style.fontFamily = markerFont.value;
+      }),
+    );
+    this.bindColor("markerDotColor", "dotPalette", (color, source) =>
+      this.editMarker("dot-color", (draft) => {
+        draft.style.dotColor = color;
+      }, source === "input"),
+    );
+    this.bindColor("markerTextColor", "textPalette", (color, source) =>
+      this.editMarker("text-color", (draft) => {
+        draft.style.textColor = color;
+      }, source === "input"),
+    );
   }
 
   private bindShapeControls(): void {
-    const update = (property: string) =>
-      this.updateShapeFromControls(this.shapeMergeKey(property));
-    this.bindRotationInput(this.elements.shapeLineRotation, update);
-    this.bindRotationInput(this.elements.shapeArrowRotation, update);
-    this.bindRotationSteppers(update);
-    this.elements.shapeTextInput?.addEventListener("input", () =>
-      update("text"),
+    const { shapeTextInput, shapeTextFont } = this.elements;
+    shapeTextInput?.addEventListener("input", () =>
+      this.editShape("text", "text", (draft) => {
+        draft.text = shapeTextInput.value.trim() || "文字標示";
+      }),
     );
-    this.bindShapeInput(this.elements.shapeTextColor, "text-color", update);
-    this.elements.shapeTextFont?.addEventListener("change", () =>
-      update("font"),
+    shapeTextFont?.addEventListener("change", () =>
+      this.editShape("text", "font", (draft) => {
+        draft.style.fontFamily = shapeTextFont.value;
+      }),
     );
-    this.bindShapeInput(this.elements.shapeLineColor, "line-color", update);
-    this.bindShapeInput(this.elements.shapeArrowColor, "arrow-color", update);
-    this.bindShapeInput(this.elements.shapeAreaFill, "area-fill", update);
-    this.bindShapeInput(this.elements.shapeAreaStroke, "area-stroke", update);
-    this.bindShapeSwatches(update);
+    this.bindColor("shapeTextColor", "shapeTextPalette", (color) =>
+      this.editShape("text", "text-color", (draft) => {
+        draft.style.textColor = color;
+      }),
+    );
+    this.bindLineControls("line");
+    this.bindLineControls("arrow");
+    this.bindColor("shapeAreaFill", "shapeAreaFillPalette", (color) =>
+      this.editShape("area", "area-fill", (draft) => {
+        draft.style.fillColor = color;
+      }),
+    );
+    this.bindColor("shapeAreaStroke", "shapeAreaStrokePalette", (color) =>
+      this.editShape("area", "area-stroke", (draft) => {
+        draft.style.strokeColor = color;
+      }),
+    );
   }
 
-  private bindShapeInput(
-    input: HTMLInputElement | null,
-    property: string,
-    update: (property: string) => void,
-  ): void {
-    input?.addEventListener("input", () => {
-      this.syncShapeColorPalettes();
-      update(property);
-    });
-  }
-
-  private bindRotationInput(
-    input: HTMLInputElement | null,
-    update: (property: string) => void,
-  ): void {
-    input?.addEventListener("input", () => {
-      if (!Number.isFinite(input.valueAsNumber)) {
-        return;
-      }
-      const rotation = Math.max(0, Math.min(360, input.valueAsNumber));
-      if (rotation !== input.valueAsNumber) {
-        input.value = String(rotation);
-      }
-      update("rotation");
-    });
-    input?.addEventListener("change", () => {
-      if (!Number.isFinite(input.valueAsNumber)) {
-        input.value = String(
-          this.options.getSelectedShape()?.rotation ?? 0,
-        );
-      }
-    });
-  }
-
-  private bindRotationSteppers(
-    update: (property: string) => void,
-  ): void {
-    this.root
-      .querySelectorAll<HTMLButtonElement>("[data-rotation-target]")
-      .forEach((button) => {
-        const targetId = button.dataset.rotationTarget;
-        const step = Number(button.dataset.rotationStep);
-        const input = targetId
-          ? element<HTMLInputElement>(this.root, targetId)
+  private bindLineControls(type: "line" | "arrow"): void {
+    const line = type === "line";
+    const colorId = line ? "shapeLineColor" : "shapeArrowColor";
+    const rotation = line
+      ? this.elements.shapeLineRotation
+      : this.elements.shapeArrowRotation;
+    this.bindColor(colorId, line ? "shapeLinePalette" : "shapeArrowPalette", (color) =>
+      this.editShape(type, `${type}-color`, (draft) => {
+        draft.style.strokeColor = color;
+      }),
+    );
+    bindRotationControl(
+      rotation,
+      Array.from(this.root.querySelectorAll<HTMLButtonElement>(
+        `[data-rotation-target="${line ? "shapeLineRotation" : "shapeArrowRotation"}"]`,
+      )),
+      () => {
+        const shape = this.options.getSelectedShape();
+        return shape?.type === type
+          ? { id: shape.id, rotation: shape.rotation ?? 0 }
           : null;
-        if (!input || !Number.isFinite(step)) {
-          return;
-        }
-        let repeatDelay: number | null = null;
-        let repeatInterval: number | null = null;
-        const stop = (): void => {
-          if (repeatDelay !== null) {
-            window.clearTimeout(repeatDelay);
-            repeatDelay = null;
-          }
-          if (repeatInterval !== null) {
-            window.clearInterval(repeatInterval);
-            repeatInterval = null;
-          }
-        };
-        const apply = (): void => {
-          const current = Number.isFinite(input.valueAsNumber)
-            ? input.valueAsNumber
-            : (this.options.getSelectedShape()?.rotation ?? 0);
-          input.value = String(Math.max(0, Math.min(360, current + step)));
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-        };
-        button.addEventListener("pointerdown", (event) => {
-          if (event.button !== 0) {
-            return;
-          }
-          event.preventDefault();
-          apply();
-          button.setPointerCapture(event.pointerId);
-          repeatDelay = window.setTimeout(() => {
-            repeatDelay = null;
-            repeatInterval = window.setInterval(apply, 75);
-          }, 380);
-        });
-        button.addEventListener("pointerup", stop);
-        button.addEventListener("pointercancel", stop);
-        button.addEventListener("lostpointercapture", stop);
-        button.addEventListener("keydown", (event) => {
-          if (event.key !== "Enter" && event.key !== " ") {
-            return;
-          }
-          event.preventDefault();
-          if (!event.repeat) {
-            apply();
-          }
-        });
-      });
-  }
-
-  private bindShapeSwatches(
-    update: (property: string) => void,
-  ): void {
-    this.root
-      .querySelectorAll<HTMLButtonElement>("[data-shape-color]")
-      .forEach((button) => {
-        button.addEventListener("click", () => {
-          const color = button.dataset.shapeColor;
-          const shape = this.options.getSelectedShape();
-          if (!color || !shape) {
-            return;
-          }
-          const paletteId = button.closest<HTMLElement>(".color-palette")?.id;
-          const property = this.applyShapeSwatch(shape, paletteId, color);
-          if (property) {
-            this.syncShapeColorPalettes();
-            update(property);
-          }
-        });
-      });
-  }
-
-  private applyShapeSwatch(
-    shape: ShapeItem,
-    paletteId: string | undefined,
-    color: string,
-  ): string | null {
-    if (
-      shape.type === "text" &&
-      paletteId === "shapeTextPalette" &&
-      this.elements.shapeTextColor
-    ) {
-      this.elements.shapeTextColor.value = color;
-      return "text-color";
-    }
-    if (
-      shape.type === "line" &&
-      paletteId === "shapeLinePalette" &&
-      this.elements.shapeLineColor
-    ) {
-      this.elements.shapeLineColor.value = color;
-      return "line-color";
-    }
-    if (
-      shape.type === "arrow" &&
-      paletteId === "shapeArrowPalette" &&
-      this.elements.shapeArrowColor
-    ) {
-      this.elements.shapeArrowColor.value = color;
-      return "arrow-color";
-    }
-    if (
-      shape.type === "area" &&
-      paletteId === "shapeAreaFillPalette" &&
-      this.elements.shapeAreaFill
-    ) {
-      this.elements.shapeAreaFill.value = color;
-      return "area-fill";
-    }
-    if (
-      shape.type === "area" &&
-      paletteId === "shapeAreaStrokePalette" &&
-      this.elements.shapeAreaStroke
-    ) {
-      this.elements.shapeAreaStroke.value = color;
-      return "area-stroke";
-    }
-    return null;
-  }
-
-  private syncMarkerColorInputs(
-    target: "dot" | "text",
-    color: string,
-  ): void {
-    this.root
-      .querySelectorAll<HTMLButtonElement>(
-        `.color-swatch[data-color-target="${target}"]`,
-      )
-      .forEach((swatch) => this.syncColorSwatch(swatch, color));
-    if (target === "dot") {
-      if (this.elements.markerDotHex) {
-        this.elements.markerDotHex.value = color;
-      }
-      if (this.elements.dotColorChip) {
-        this.elements.dotColorChip.style.background = color;
-      }
-      return;
-    }
-    if (this.elements.markerTextHex) {
-      this.elements.markerTextHex.value = color;
-    }
-    if (this.elements.textColorChip) {
-      this.elements.textColorChip.style.background = color;
-    }
-  }
-
-  private syncColorSwatch(
-    swatch: HTMLButtonElement,
-    color: string,
-  ): void {
-    const swatchColor =
-      swatch.dataset.color ?? swatch.dataset.shapeColor ?? "";
-    const active = swatchColor.toLowerCase() === color.toLowerCase();
-    swatch.classList.toggle("active", active);
-    swatch.setAttribute("aria-pressed", String(active));
-    swatch.setAttribute(
-      "aria-label",
-      active ? `目前顏色 ${swatchColor}` : `選擇顏色 ${swatchColor}`,
+      },
+      (value) => { this.editShape(type, "rotation", (draft) => {
+        draft.rotation = value;
+      }); },
     );
-    swatch.title = swatchColor;
-  }
-
-  private syncShapeColorPalettes(): void {
-    this.syncPalette("shapeTextPalette", this.elements.shapeTextColor);
-    this.syncPalette("shapeLinePalette", this.elements.shapeLineColor);
-    this.syncPalette("shapeArrowPalette", this.elements.shapeArrowColor);
-    this.syncPalette("shapeAreaFillPalette", this.elements.shapeAreaFill);
-    this.syncPalette(
-      "shapeAreaStrokePalette",
-      this.elements.shapeAreaStroke,
-    );
-  }
-
-  private syncPalette(
-    paletteId: string,
-    input: HTMLInputElement | null,
-  ): void {
-    if (!input) {
-      return;
-    }
-    this.root
-      .querySelectorAll<HTMLButtonElement>(`#${paletteId} .color-swatch`)
-      .forEach((swatch) => this.syncColorSwatch(swatch, input.value));
   }
 
   private isShapeTextDefault(): boolean {
@@ -810,113 +541,30 @@ export class InspectorController {
     return text.length === 0 || /^文字標示\d*$/.test(text);
   }
 
-  private updateMarkerFromControls(mergeKey?: string): void {
+  private editMarker(
+    property: string,
+    update: (draft: Marker) => void,
+    merge = true,
+  ): boolean {
     const marker = this.options.getEditableMarker();
-    if (!marker) {
-      return;
+    if (!marker) return false;
+    const mergeKey = merge ? `marker:${marker.id}:${property}` : undefined;
+    if (this.options.updateMarker(marker, update, mergeKey)) {
+      this.options.renderMapObjects();
     }
-    this.options.updateMarker(
-      marker,
-      (draft) => {
-        if (this.dotSizeSlider) {
-          draft.style.dotSize = this.dotSizeSlider.value;
-        }
-        if (this.textSizeSlider) {
-          draft.style.textSize = this.textSizeSlider.value;
-        }
-        if (this.elements.markerDotColor) {
-          draft.style.dotColor = this.elements.markerDotColor.value;
-        }
-        if (this.elements.markerTextColor) {
-          draft.style.textColor = this.elements.markerTextColor.value;
-        }
-        if (this.elements.markerFont) {
-          draft.style.fontFamily = this.elements.markerFont.value;
-        }
-        if (
-          this.elements.markerLabelInput &&
-          (draft.sourceType === "geonames" || draft.sourceType === "coords")
-        ) {
-          const value = this.elements.markerLabelInput.value.trim();
-          draft.labelName = value || undefined;
-          draft.labelMode = "name";
-        }
-      },
-      mergeKey,
-    );
-    this.options.renderMapObjects();
+    return true;
   }
 
-  private updateShapeFromControls(mergeKey?: string): void {
+  private editShape(
+    type: ShapeItem["type"],
+    property: string,
+    update: (draft: ShapeItem) => void,
+  ): boolean {
     const shape = this.options.getSelectedShape();
-    if (!shape) {
-      return;
+    if (!shape || shape.type !== type) return false;
+    if (this.options.updateShape(shape, update, `shape:${shape.id}:${property}`)) {
+      this.options.renderMapObjects();
     }
-    this.options.updateShape(
-      shape,
-      (draft) => {
-        this.applyShapeControls(draft);
-      },
-      mergeKey,
-    );
-    this.options.renderMapObjects();
-  }
-
-  private applyShapeControls(draft: ShapeItem): void {
-    if (draft.type === "text") {
-      draft.text =
-        this.elements.shapeTextInput?.value.trim() || "文字標示";
-      if (this.elements.shapeTextColor) {
-        draft.style.textColor = this.elements.shapeTextColor.value;
-      }
-      if (this.elements.shapeTextFont) {
-        draft.style.fontFamily = this.elements.shapeTextFont.value;
-      }
-      if (this.shapeTextSizeSlider) {
-        draft.style.textSize = this.shapeTextSizeSlider.value;
-      }
-    }
-    if (draft.type === "line") {
-      if (this.elements.shapeLineColor) {
-        draft.style.strokeColor = this.elements.shapeLineColor.value;
-      }
-      if (this.shapeLineWidthSlider) {
-        draft.style.strokeWidth = this.shapeLineWidthSlider.value;
-      }
-      if (
-        this.elements.shapeLineRotation &&
-        Number.isFinite(this.elements.shapeLineRotation.valueAsNumber)
-      ) {
-        draft.rotation = this.elements.shapeLineRotation.valueAsNumber;
-      }
-    }
-    if (draft.type === "arrow") {
-      if (this.elements.shapeArrowColor) {
-        draft.style.strokeColor = this.elements.shapeArrowColor.value;
-      }
-      if (this.shapeArrowWidthSlider) {
-        draft.style.strokeWidth = this.shapeArrowWidthSlider.value;
-      }
-      if (
-        this.elements.shapeArrowRotation &&
-        Number.isFinite(this.elements.shapeArrowRotation.valueAsNumber)
-      ) {
-        draft.rotation = this.elements.shapeArrowRotation.valueAsNumber;
-      }
-    }
-    if (draft.type === "area") {
-      if (this.elements.shapeAreaFill) {
-        draft.style.fillColor = this.elements.shapeAreaFill.value;
-      }
-      if (this.elements.shapeAreaStroke) {
-        draft.style.strokeColor = this.elements.shapeAreaStroke.value;
-      }
-      if (this.shapeAreaOpacitySlider) {
-        draft.style.fillOpacity = this.shapeAreaOpacitySlider.value;
-      }
-      if (this.shapeAreaStrokeWidthSlider) {
-        draft.style.strokeWidth = this.shapeAreaStrokeWidthSlider.value;
-      }
-    }
+    return true;
   }
 }

@@ -84,4 +84,18 @@ describe("renderer static assets", () => {
       /^@layer utilities\s*\{/,
     );
   });
+
+  it("keeps inspector and slider rules out of the legacy cascade", () => {
+    const legacy = readRendererFile("styles/legacy.css");
+    const components = readRendererFile("styles.css");
+    const inspector = readRendererFile("styles/inspector.css");
+    const slider = readRendererFile("styles/slider.css");
+    expect(legacy).not.toMatch(/\.(?:color-head|color-palette|color-swatch|color-pop|color-chip|slider|settings-stack)\b/);
+    expect(components).not.toMatch(/\.(?:inspector-panel|color-swatch|rotation-number-field|slider)\b/);
+    expect(inspector).not.toContain("!important");
+    expect(inspector).toMatch(/^@layer components\s*\{/);
+    expect(slider).toMatch(/^@layer components\s*\{/);
+    expect(inspector).toContain("--inspector-field-offset");
+    expect(readRendererFile("index.html")).not.toMatch(/data-(?:shape-color|color-target)=/);
+  });
 });
