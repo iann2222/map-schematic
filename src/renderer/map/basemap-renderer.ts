@@ -1,5 +1,5 @@
 import type { WorkflowStep } from "../app-state.js";
-import type { ViewTransform, StageLayout } from "../controllers/crop-controller.js";
+import type { ViewTransform, StageLayout } from "../crop/types.js";
 import {
   buildHillshadeTexture,
   layerStyleFor,

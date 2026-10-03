@@ -4,7 +4,7 @@ import { EditorCore } from "../../src/renderer/editor/editor-core.js";
 import { defaultMarkerStyle } from "../../src/renderer/editor/defaults.js";
 import { ProjectSnapshot } from "../../src/renderer/project/project-snapshot.js";
 import type { Marker } from "../../src/renderer/editor/types.js";
-import type { CropBBox } from "../../src/renderer/controllers/crop-controller.js";
+import type { CropBBox } from "../../src/renderer/crop/types.js";
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 

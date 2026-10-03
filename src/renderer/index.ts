@@ -451,47 +451,24 @@ function applyViewTransform(): void {
   mapViewport.applyTransform();
 }
 
-function saveStepOneCropSnapshot(): void {
-  cropController.saveSnapshot();
-}
-
-function restoreStepOneCropSnapshot(): void {
-  cropController.restoreSnapshot();
-}
-
 function beforeWorkflowStepChange(
   previousStep: WorkflowStep,
   stepId: WorkflowStep,
 ): void {
   selectionController.finishDrag();
   hideMapStylePreview();
-  if (previousStep === "1" && (stepId === "2" || stepId === "3")) {
-    saveStepOneCropSnapshot();
-  }
-  if (
-    stepId === "1" &&
-    (previousStep === "2" || previousStep === "3") &&
-    cropController.hasSnapshot()
-  ) {
-    restoreStepOneCropSnapshot();
-  }
-  if (stepId === "1" && previousStep === "0") {
-    cropController.resetForLocationChange();
-  }
+  cropController.beforeStepChange(previousStep, stepId);
 }
 
 function afterWorkflowStepChange(
   previousStep: WorkflowStep,
   stepId: WorkflowStep,
 ): void {
-  cropController.updateStepPresentation(stepId);
+  cropController.afterStepChange(previousStep, stepId);
   const mapLocked = stepId === "2" || stepId === "3";
   if (svg) {
     svg.classList.remove("dragging", "boxing");
     svg.style.cursor = mapLocked ? "default" : "grab";
-  }
-  if (stepId === "1") {
-    cropController.updateFrame();
   }
   if (stepId === "0") {
     updateWrapTransforms(true);
@@ -502,11 +479,6 @@ function afterWorkflowStepChange(
     selectionState.markerDrag = null;
     selectionState.shapeDrag = null;
   }
-  if (stepId === "2" || stepId === "3") {
-    cropController.prepareLockedStep(previousStep, stepId);
-  }
-  cropController.applyMapClip();
-  cropController.updateOverlay();
   if (stepId === "3") {
     syncMarkerControls(getSelectedMarker());
   }
@@ -552,8 +524,6 @@ function updateCropFrame(): void {
 function syncStageSize(): void {
   mapViewport.syncStageSize();
   updateCropFrame();
-  cropController.applyMapClip();
-  cropController.updateOverlay();
 }
 
 function projectDisplayName(path: string | null): string {

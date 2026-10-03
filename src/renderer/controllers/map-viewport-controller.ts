@@ -1,5 +1,5 @@
 import type { WorkflowStep } from "../app-state.js";
-import type { CropBBox, StageLayout, ViewTransform } from "./crop-controller.js";
+import type { CropBBox, StageLayout, ViewTransform } from "../crop/types.js";
 import { project, unproject } from "../map/geometry.js";
 import {
   ensureMapRoot,

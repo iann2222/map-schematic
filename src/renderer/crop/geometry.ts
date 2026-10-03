@@ -1,4 +1,42 @@
-import type { CropBox } from "./crop-controller.js";
+import type { CropBBox, CropBox, StageLayout, StageSize, ViewTransform } from "./types.js";
+
+export function screenBoxToBounds(box: CropBox, layout: StageLayout, view: ViewTransform): CropBBox {
+  return {
+    x: ((box.left - layout.offsetX) / layout.scaleFit - view.tx) / view.scale,
+    y: ((box.top - layout.offsetY) / layout.scaleFit - view.ty) / view.scale,
+    width: box.width / layout.scaleFit / view.scale,
+    height: box.height / layout.scaleFit / view.scale,
+  };
+}
+
+export function boundsToScreenBox(bbox: CropBBox, layout: StageLayout, view: ViewTransform): CropBox {
+  return {
+    left: (bbox.x * view.scale + view.tx) * layout.scaleFit + layout.offsetX,
+    top: (bbox.y * view.scale + view.ty) * layout.scaleFit + layout.offsetY,
+    width: bbox.width * view.scale * layout.scaleFit,
+    height: bbox.height * view.scale * layout.scaleFit,
+  };
+}
+
+export function fitViewToCrop(bbox: CropBBox, stage: StageSize, layout: StageLayout, minScale: number, maxScale: number): ViewTransform {
+  const scale = Math.max(minScale, Math.min(maxScale,
+    stage.width / (bbox.width * layout.scaleFit),
+    stage.height / (bbox.height * layout.scaleFit),
+  ));
+  return {
+    scale,
+    tx: ((stage.width - bbox.width * scale * layout.scaleFit) / 2 - layout.offsetX) / layout.scaleFit - bbox.x * scale,
+    ty: ((stage.height - bbox.height * scale * layout.scaleFit) / 2 - layout.offsetY) / layout.scaleFit - bbox.y * scale,
+  };
+}
+
+export function clipScreenBox(box: CropBox, stage: StageSize): CropBox {
+  const left = Math.max(0, Math.min(box.left, stage.width));
+  const top = Math.max(0, Math.min(box.top, stage.height));
+  const right = Math.max(0, Math.min(box.left + box.width, stage.width));
+  const bottom = Math.max(0, Math.min(box.top + box.height, stage.height));
+  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
 
 export function centeredCropBox(
   stageWidth: number,

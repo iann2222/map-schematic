@@ -5,7 +5,7 @@ import {
   clampCropBox,
   cropHandleCursor,
   resizeCropBox,
-} from "../../src/renderer/controllers/crop-geometry.js";
+} from "../../src/renderer/crop/geometry.js";
 
 describe("crop geometry", () => {
   it("centers a fixed-ratio crop box inside the stage", () => {

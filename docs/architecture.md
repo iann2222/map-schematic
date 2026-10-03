@@ -131,7 +131,7 @@
   - `inspector-controller.ts` 協調 Step 3 屬性面板的選取、顯示與欄位綁定；每次只提交當次編輯欄位，並檢查物件種類，不將整組控制項回寫至物件。
   - 畫面同步不產生編輯命令；修改顏色、大小等樣式不會重設字型、顯示文字或座標標示模式，物件變更仍透過 Editor Core 提交。
   - `selection-controller.ts` 集中選取狀態、物件拖曳、鍵盤微調、空白區域取消選取與 Inspector 同步。
-  - `crop-controller.ts` 管理 Step 1 比例選擇、裁切框、專案裁切狀態、地圖 clip 與遮罩；純幾何運算位於 `crop-geometry.ts`。
+  - `crop-controller.ts` 協調裁切模型、畫面與互動，集中步驟切換前後的範圍保存／恢復；入口不再自行維護裁切快照或重複更新裁切框。
   - `map-viewport-controller.ts` 管理地圖縮放、平移、畫布適配、座標換算與循環世界偏移。
   - `map-interaction-controller.ts` 管理地圖滾輪、平移、框選縮放及指標事件生命週期。
   - `map-initialization-controller.ts` 統一首次啟動與資料包更新後的地圖載入、重繪、視角同步及互動初始化流程。
@@ -163,6 +163,14 @@
   - 集中處理專案畫布比例、px／mm 邏輯尺寸與匯出像素換算。
 - `src/renderer/map/geometry.ts`
   - 集中 EPSG:4326／EPSG:3857 投影、循環經度正規化、跨日期變更線範圍轉換與 GeoJSON 至 SVG path 轉換。
+- `src/renderer/crop/*`
+  - `types.ts` 明確區分專案裁切資料、畫面框、地圖 view 與步驟還原紀錄；地圖模組只依賴這些型別，不依賴裁切控制器。
+  - `crop-model.ts` 管理地圖座標範圍、畫布比例、自訂比例與 Step 1 還原紀錄，不讀取 DOM；畫面框與視窗尺寸屬於獨立的暫存狀態。
+  - Step 1 由畫面框提交地圖範圍；Step 2／3 只將保存範圍投影到畫面，調整視窗或縮放不回寫範圍與畫布。回到 Step 0 重新定位仍保留上次框大小與比例。
+  - 載入專案的新範圍時清除舊還原紀錄；返回 Step 1 若沒有還原紀錄，從載入範圍重建可編輯框。
+  - `geometry.ts` 統一畫面框與地圖範圍的雙向轉換、範圍適配、畫面交集及框選幾何，供遮罩、拖曳及匯出使用。
+  - `crop-view.ts` 負責比例控制項、裁切框、SVG clip 與遮罩的 DOM 呈現；自訂比例輸入值透過模型保存，不由專案系統直接讀取輸入框。
+  - `crop-interaction.ts` 擁有單一指標拖曳 session，僅在拖曳期間監聽文件移動／結束事件；放開、取消、失去捕捉、切換步驟或視窗失焦時清理監聽與捕捉。
 - `src/renderer/map/basemap-renderer.ts`
   - 載入官方資料包底圖並按需載入地形陰影，集中 Canvas 繪製、風格切換、預覽與匯出所需的底圖狀態。
 - `src/renderer/overlay/object-order-model.ts`
