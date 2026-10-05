@@ -4,6 +4,7 @@ import { ensureMapRoot, ensureObjectsContainer, ensureWrapGroup } from "../map/r
 import { labelOffsetScale, labelZoomScale, shapeStrokeScale } from "./overlay-presentation.js";
 import { insertDashedSelectionBox } from "./selection-box.js";
 import { createOverlayInteractionController } from "./interaction-controller.js";
+import { rendererPerformance } from "../performance/diagnostics.js";
 
 type OverlayRenderHost = {
   getState: () => {
@@ -58,6 +59,9 @@ type OverlayRenderHost = {
 
 export function createOverlayRenderer(host: OverlayRenderHost): { renderMarkers: () => void } {
 function renderMarkers() {
+  rendererPerformance.measure("overlay.rebuild", renderOnce);
+}
+function renderOnce() {
   const state = host.getState();
   const { svg, view, WRAPS, worldShift, activeStep, selectedMarkerId, selectedLabelMarkerId, previewMarker, previewToolMarker, labelDrag, lastScaleFit } = state;
   const { markerObjects, getDisplayRankMap, markerOverlayKey, markerLabelText, selectMarker, selectShape, mapPointFromEvent, beginEditorTransaction } = host;
@@ -222,7 +226,7 @@ function renderMarkers() {
       label.addEventListener("mousedown", startLabelDrag);
       wrap.appendChild(label);
 
-      const labelBox = label.getBBox();
+      const labelBox = rendererPerformance.measure("overlay.textMeasure", () => label.getBBox());
       const labelHit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       const renderedFontSize = marker.style.textSize * scale;
       const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.24);
@@ -565,7 +569,7 @@ function renderShapes(): void {
         label.addEventListener("mousedown", startTextShapeDrag);
         wrap.appendChild(label);
 
-        const labelBox = label.getBBox();
+        const labelBox = rendererPerformance.measure("overlay.textMeasure", () => label.getBBox());
         const renderedFontSize = shape.style.textSize * scale;
         const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.24);
         const textStroke = renderedFontSize * 0.045;

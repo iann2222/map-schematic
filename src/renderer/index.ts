@@ -1,5 +1,6 @@
 export { };
 
+import { rendererPerformance } from "./performance/diagnostics.js";
 import { ProjectSnapshot } from "./project/project-snapshot.js";
 import { createObjectController } from "./controllers/object-controller.js";
 import { createPreferencesController } from "./controllers/preferences-controller.js";
@@ -987,7 +988,9 @@ function mapPointFromEvent(event: MouseEvent): { x: number; y: number } {
 }
 
 async function reloadDatapackAssets(): Promise<void> {
-  const datapack = await window.mapSchematic?.getDatapack?.();
+  const datapack = await rendererPerformance.measureAsync(
+    "datapack.ready", async () => window.mapSchematic?.getDatapack?.(),
+  );
   await basemapRenderer.reload();
   if (!datapack) {
     throw new Error("資料包不可用");

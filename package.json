@@ -15,6 +15,7 @@
     "start:dev": "npm run build && node scripts/start-electron.mjs .",
     "package:win": "node packaging/package-win.mjs",
     "test": "npm run test:typecheck && vitest run",
+    "perf": "npm run build && node scripts/performance/run.mjs",
     "test:datapack-tools": "python -m unittest discover -s test/python -p \"test_*.py\"",
     "test:typecheck": "tsc -p tsconfig.test.json",
     "test:watch": "vitest"

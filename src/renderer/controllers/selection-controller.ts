@@ -7,6 +7,7 @@ import {
   WORLD_BBOX,
 } from "../map/geometry.js";
 import { labelOffsetScale } from "../overlay/overlay-presentation.js";
+import { rendererPerformance } from "../performance/diagnostics.js";
 
 export type SelectionTool = "marker" | "line" | "area" | "text" | "arrow";
 
@@ -139,6 +140,13 @@ export class SelectionController {
   }
 
   moveDrag(event: MouseEvent): boolean {
+    if (this.state.labelDrag || this.state.markerDrag || this.state.shapeDrag) {
+      return rendererPerformance.measure("interaction.dragUpdate", () => this.moveDragOnce(event));
+    }
+    return this.moveDragOnce(event);
+  }
+
+  private moveDragOnce(event: MouseEvent): boolean {
     const metrics = this.options.getMapMetrics();
     if (this.state.labelDrag) {
       const drag = this.state.labelDrag;

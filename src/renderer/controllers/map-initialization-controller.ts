@@ -1,3 +1,5 @@
+import { rendererPerformance } from "../performance/diagnostics.js";
+
 export type MapInitializationOptions = {
   reloadAssets: () => Promise<void>;
   prepareFirstReadyState: () => void;
@@ -24,7 +26,7 @@ export class MapInitializationController {
     if (this.operation) {
       return this.operation;
     }
-    const operation = this.initializeOnce();
+    const operation = rendererPerformance.measureAsync("startup.initialize", () => this.initializeOnce());
     this.operation = operation;
     void operation.then(
       () => this.clearOperation(operation),

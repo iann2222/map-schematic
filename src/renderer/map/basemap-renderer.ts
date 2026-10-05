@@ -6,6 +6,7 @@ import {
   loadHillshadeTexture,
 } from "./rendering-utils.js";
 import { geometryToPath, unproject } from "./geometry.js";
+import { rendererPerformance } from "../performance/diagnostics.js";
 
 export type ReliefEffect = "relief-soft" | "relief-natural" | "relief-strong";
 
@@ -198,6 +199,10 @@ export class BasemapRenderer {
   }
 
   draw(): void {
+    rendererPerformance.measure("basemap.draw", () => this.drawOnce());
+  }
+
+  private drawOnce(): void {
     const { canvas, view } = this.options;
     if (!canvas || this.layersValue.length === 0) {
       return;
@@ -248,31 +253,36 @@ export class BasemapRenderer {
   }
 
   async loadBasemap(): Promise<void> {
-    if (this.built || !window.mapSchematic?.getBasemapLayers) {
+    const bridge = window.mapSchematic;
+    if (this.built || !bridge?.getBasemapLayers) {
       return;
     }
-    const rawLayers = await window.mapSchematic.getBasemapLayers();
+    const rawLayers = await rendererPerformance.measureAsync(
+      "basemap.request", () => bridge.getBasemapLayers(),
+    );
     const layers: BasemapLayer[] = [];
     for (let index = 0; index < rawLayers.length; index += 1) {
       if (index > 0) {
         await nextRenderTurn();
       }
       const layer = rawLayers[index];
-      const geojson = JSON.parse(layer.geojson);
+      const geojson = rendererPerformance.measure("basemap.parse", () => JSON.parse(layer.geojson));
       const paths: Path2D[] = [];
       const pathData: string[] = [];
-      for (const feature of geojson.features ?? []) {
-        const data = geometryToPath(
-          feature.geometry,
-          this.options.mapWidth,
-          this.options.mapHeight,
-        );
-        if (!data) {
-          continue;
+      rendererPerformance.measure("basemap.geometryAndPaths", () => {
+        for (const feature of geojson.features ?? []) {
+          const data = geometryToPath(
+            feature.geometry,
+            this.options.mapWidth,
+            this.options.mapHeight,
+          );
+          if (!data) {
+            continue;
+          }
+          paths.push(new Path2D(data));
+          pathData.push(data);
         }
-        paths.push(new Path2D(data));
-        pathData.push(data);
-      }
+      });
       layers.push({ id: layer.id, paths, pathData });
     }
     this.layersValue = layers;
