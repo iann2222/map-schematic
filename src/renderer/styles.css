@@ -426,7 +426,13 @@
 }
 
 .layout.step-3 {
-  grid-template-columns: 280px minmax(0, 1fr) 300px;
+  --editor-sidebar-width: 280px;
+  --inspector-width: 300px;
+  grid-template-columns: var(--editor-sidebar-width) minmax(0, 1fr) var(--inspector-width);
+}
+
+.layout.step-3.inspector-collapsed {
+  --inspector-width: 48px;
 }
 
 .panel {
@@ -2408,7 +2414,8 @@
   }
 
   .layout.step-3 {
-    grid-template-columns: 252px minmax(0, 1fr) 280px;
+    --editor-sidebar-width: 252px;
+    --inspector-width: 280px;
   }
 
   .app-brand-name {
@@ -2477,7 +2484,8 @@
   }
 
   .layout.step-3 {
-    grid-template-columns: 236px minmax(0, 1fr) 268px;
+    --editor-sidebar-width: 236px;
+    --inspector-width: 268px;
   }
 
   .map-wrap {

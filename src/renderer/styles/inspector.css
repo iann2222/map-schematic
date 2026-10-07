@@ -39,12 +39,54 @@
   font-weight: 700;
 }
 
-.inspector-header-icon {
-  width: 21px;
-  height: 21px;
-  fill: none;
-  stroke: var(--ui-text-soft);
-  stroke-width: 1.4;
+.inspector-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text-soft);
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.inspector-toggle:hover {
+  background: var(--ui-surface-strong);
+  color: var(--ui-text);
+  border-color: var(--ui-border);
+}
+
+.inspector-toggle:active {
+  background: var(--ui-bg);
+}
+
+.inspector-toggle:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+.inspector-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding-top: 16px;
+}
+
+.inspector-rail-label {
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  color: var(--ui-text-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspector-toggle { transition: none; }
 }
 
 .inspector-panel .option-row {

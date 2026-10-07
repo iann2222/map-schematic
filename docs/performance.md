@@ -42,7 +42,7 @@ npm run perf -- --counts 100
 
 文字邊界快取使用內容、字型、實際字級及錨點作為 key，最多保留 2048 筆；位置改變可重用相對邊界，字型載入完成或失敗時清除並重新渲染。文字量測分成「讀取所有邊界」與「寫入命中／選取框」兩個階段。命中快取時 `overlay.textMeasure` 可以不存在，不代表未繪製文字。
 
-報告版本 2 新增 `regression` 驗證結果，固定效能案例版本保持不變。比較拖曳優化時應同時看 `overlay.rebuild`、`interaction.frameInterval` 與群組更新量，不要把同步資料更新移到動畫幀所降低的 handler 時間全部算成渲染加速。
+報告版本 2 新增 `regression` 驗證結果，固定效能案例版本保持不變。`inspectorCoverage` 另檢查非中央及跨日期變更線範圍在不同視窗尺寸反覆收合屬性欄後，仍完整置中、無裁切且不改變未儲存或歷史狀態；使用獨立暫存專案，不納入效能量測。比較拖曳優化時應同時看 `overlay.rebuild`、`interaction.frameInterval` 與群組更新量，不要把同步資料更新移到動畫幀所降低的 handler 時間全部算成渲染加速。
 
 `count`、`failures`、`totalMs`、`minMs`、`maxMs` 涵蓋該階段全部呼叫；p50／p95 使用最近最多 256 筆樣本，以 nearest-rank 計算。各指標會巢狀重疊，**不可相加**。重設時仍在執行的舊 span 不會混入新階段。
 

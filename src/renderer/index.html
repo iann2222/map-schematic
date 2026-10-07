@@ -709,14 +709,24 @@
           </div>
         </div>
       </div>
-      <aside class="panel right-panel inspector-panel">
-        <div class="step-panel" data-step-panel="3">
+      <aside class="panel right-panel inspector-panel" aria-label="屬性">
+        <div class="inspector-rail" id="inspectorRail" hidden>
+          <button type="button" class="inspector-toggle" id="inspectorExpand"
+            aria-label="展開屬性" title="展開屬性" aria-expanded="false" aria-controls="inspectorContent">
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="./icons.svg#icon-chevron-left"></use></svg>
+          </button>
+          <span class="inspector-rail-label" aria-hidden="true">屬性</span>
+        </div>
+        <div class="step-panel" id="inspectorContent" data-step-panel="3">
           <div class="inspector-header">
             <div>
               <div class="inspector-eyebrow">所選項目</div>
               <div class="inspector-title">屬性</div>
             </div>
-            <svg class="inspector-header-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="./icons.svg#icon-inspector"></use></svg>
+            <button type="button" class="inspector-toggle" id="inspectorCollapse"
+              aria-label="收起屬性" title="收起屬性" aria-expanded="true" aria-controls="inspectorContent">
+              <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="./icons.svg#icon-chevron-right"></use></svg>
+            </button>
           </div>
           <div class="option-row" id="itemNameRow" hidden>
             <label class="ratio-label">項目名稱</label>

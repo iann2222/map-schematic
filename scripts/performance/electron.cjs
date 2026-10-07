@@ -61,6 +61,8 @@ async function poll(win, expression, label) {
     if (result) return result;
     const modal = await win.webContents.executeJavaScript("document.querySelector('.modal-backdrop.active')?.textContent.trim()");
     if (modal) throw new Error(`Unexpected dialog during ${label}: ${modal}`);
+    const failure = await win.webContents.executeJavaScript("document.getElementById('status').textContent.startsWith('載入失敗') ? document.getElementById('status').textContent : null");
+    if (failure) throw new Error(`${label}: ${failure}`);
     await delay(50);
   }
   throw new Error(`Timed out waiting for ${label}`);
@@ -89,6 +91,8 @@ process.on("SIGINT", () => { void finish(1, new Error("Performance run interrupt
 process.on("SIGTERM", () => { void finish(1, new Error("Performance run terminated")); });
 
 app.once("browser-window-created", (_event, win) => {
+  // Diagnostic frames must keep running when another window receives focus.
+  win.webContents.setBackgroundThrottling(false);
   const loadFile = win.loadFile.bind(win);
   win.loadFile = (file, options = {}) => loadFile(file, { ...options, query: { ...options.query, performance: "1" } });
   win.webContents.session.webRequest.onBeforeRequest({ urls: ["http://*/*", "https://*/*"] }, (_details, callback) => callback({ cancel: true }));
@@ -174,6 +178,14 @@ async function benchmark(win) {
     cases.push({ objectCount: count, renderedObjectGroups: nodes, renderedUniqueObjects: uniqueObjects, load, drag, dragAndUndoVerified: true });
   }
   console.log("Verifying property edits, zoom, ordering and exports...");
+  const inspectorCoverage = await require("./inspector-coverage.cjs")(
+    win, async (project, name) => {
+      fixturePath = path.join(tempRoot, `${name}.mapproj`);
+      await fs.writeFile(fixturePath, JSON.stringify(project), "utf8");
+      await evaluate(win, "document.getElementById('loadBtn').click()");
+      await poll(win, `document.getElementById('status').textContent.includes(${JSON.stringify(fixturePath)})`, "coverage project load");
+    }, createPerformanceProject, pack,
+  );
   fixturePath = path.join(tempRoot, "regression.mapproj");
   const regressionProject = createPerformanceProject(10, pack);
   regressionProject.objects[0].style.sourceType = "coords";
@@ -189,7 +201,7 @@ async function benchmark(win) {
       devicePixelRatio: await evaluate(win, "window.devicePixelRatio"),
       build: JSON.parse(await fs.readFile(path.join(root, "out/build-info.json"), "utf8")) },
     datapack: { id: pack.id, version: pack.version },
-    startupWallMs, startup, mainBasemapReadsMs: reads, cases, regression,
+    startupWallMs, startup, mainBasemapReadsMs: reads, cases, regression, inspectorCoverage,
   };
   const output = path.join(root, "performance-results", `${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
   await fs.mkdir(path.dirname(output), { recursive: true });

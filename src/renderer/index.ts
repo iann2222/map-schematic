@@ -51,6 +51,7 @@ import {
   type OrderMode,
 } from "./controllers/order-dialog-controller.js";
 import { InspectorController } from "./controllers/inspector-controller.js";
+import { InspectorPanelController } from "./controllers/inspector-panel-controller.js";
 import { SelectionController } from "./controllers/selection-controller.js";
 import { CropController } from "./controllers/crop-controller.js";
 import { MapViewportController } from "./controllers/map-viewport-controller.js";
@@ -521,7 +522,14 @@ function updateCropFrame(): void {
 }
 
 function syncStageSize(): void {
-  mapViewport.syncStageSize();
+  const step = appState.workflow.activeStep;
+  if ((step === "2" || step === "3") && cropController.bbox) {
+    // Locked steps always fit the saved extent; vertical pan clamping can displace it.
+    mapViewport.lastScaleFit = resizeCanvasToStage().scaleFit;
+    cropController.zoomToBounds();
+  } else {
+    mapViewport.syncStageSize();
+  }
   updateCropFrame();
 }
 
@@ -1286,6 +1294,28 @@ basemapRenderer.bind();
 orderDialogController.bind();
 cropController.bind();
 inspectorController.bind();
+const inspectorContent = document.getElementById("inspectorContent");
+const inspectorRail = document.getElementById("inspectorRail");
+const inspectorCollapse = document.getElementById("inspectorCollapse") as HTMLButtonElement | null;
+const inspectorExpand = document.getElementById("inspectorExpand") as HTMLButtonElement | null;
+if (layoutEl && inspectorContent && inspectorRail && inspectorCollapse && inspectorExpand) {
+  new InspectorPanelController({
+    layout: layoutEl,
+    content: inspectorContent,
+    rail: inspectorRail,
+    collapseButton: inspectorCollapse,
+    expandButton: inspectorExpand,
+    isActive: () => appState.workflow.activeStep === "3",
+    beforeLayoutChange: () => {
+      selectionController.finishDrag();
+    },
+    onLayoutChange: () => {
+      syncStageSize();
+      requestBasemapDraw();
+      inspectorController.resize();
+    },
+  }).bind();
+}
 editorCore.subscribe((change) => {
   if (change.kind === "transaction") return;
   syncHistoryControls();
@@ -1305,7 +1335,6 @@ boot();
 window.addEventListener("resize", () => {
   syncWorkspaceStatusIcon();
   syncStageSize();
-  updateCropFrame();
   requestBasemapDraw();
   inspectorController.resize();
 });

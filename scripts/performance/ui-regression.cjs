@@ -22,14 +22,83 @@ module.exports = async function verifyUi(win, tempRoot, poll) {
     element.value = value;
     element.dispatchEvent(new Event(type, { bubbles: true }));
   }, id, value, type);
-  const settle = () => evaluate(() => document.fonts.ready.then(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
+  const settle = () => evaluate(async () => {
+    await document.fonts.ready;
+    const panel = document.querySelector('.inspector-panel');
+    while (panel.getAnimations({ subtree: true }).length) {
+      await Promise.all(panel.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
+    }
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
   const check = (value, message) => { if (!value) throw new Error(message); };
   const labelSelector = '[data-marker="label"][data-id="bench-0"]';
 
+  await click(labelSelector);
+  const panelBefore = await evaluate((selector) => {
+    const rect = document.querySelector(selector).getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2,
+      width: document.querySelector('.map-stage').clientWidth,
+      name: document.getElementById('itemNameInput').value,
+      dirty: document.getElementById('projectStateText').textContent,
+      undoDisabled: document.getElementById('undoBtn').disabled };
+  }, labelSelector);
+  const capture = async (name) => {
+    if (process.env.MAPSCHEM_UI_SCREENSHOTS !== "1") return;
+    await evaluate(() => Promise.all(document.getAnimations()
+      .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+      .map(animation => animation.finished.catch(() => {}))));
+    const directory = path.join(process.cwd(), "performance-results");
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, `inspector-${name}.png`), (await win.webContents.capturePage()).toPNG());
+  };
+  await settle();
+  await capture("expanded-dark");
+  await click('#inspectorCollapse');
+  check(await evaluate(() => {
+    const animations = document.getElementById('inspectorContent').getAnimations();
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return animations.length === 0;
+    const effect = animations[0]?.effect;
+    const frames = effect?.getKeyframes();
+    return effect?.getTiming().duration === 70 && frames?.at(-1).transform === 'translateX(6px)';
+  }), 'Inspector exit motion was missing or did not respect reduced motion');
+  await settle();
+  const panelAfter = await evaluate((selector) => {
+    const rect = document.querySelector(selector).getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2,
+      width: document.querySelector('.map-stage').clientWidth,
+      hidden: document.getElementById('inspectorContent').hidden,
+      focus: document.activeElement.id,
+      dirty: document.getElementById('projectStateText').textContent,
+      undoDisabled: document.getElementById('undoBtn').disabled };
+  }, labelSelector);
+  check(await evaluate((before, selector) => {
+    return document.querySelector('.map-stage').clientWidth - before.width > 160
+      && document.getElementById('inspectorContent').hidden
+      && document.activeElement.id === 'inspectorExpand'
+      && document.getElementById('projectStateText').textContent === before.dirty
+      && document.getElementById('undoBtn').disabled === before.undoDisabled;
+  }, panelBefore, labelSelector), `Collapsing changed dirty state, history or focus: ${JSON.stringify({ panelBefore, panelAfter })}`);
+  await capture("collapsed-dark");
+  await click('[data-shape="area"][data-id="bench-4"]');
+  check(await evaluate(() => document.getElementById('inspectorContent').hidden), 'Selection forced the inspector open');
+  await click('[data-step-jump="2"]');
+  check(await evaluate(() => getComputedStyle(document.querySelector('.right-panel')).display === 'none'), 'Inspector rail leaked into Step 2');
+  await click('[data-step-jump="3"]');
+  await settle();
+  check(await evaluate(() => document.getElementById('inspectorContent').hidden && !document.getElementById('inspectorRail').hidden), 'Step change lost panel visibility');
+  await evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+  await settle();
+  await capture("collapsed-light");
+  await click('#inspectorExpand');
+  await settle();
+  await capture("expanded-light");
+  check(await evaluate(() => document.activeElement.id === 'inspectorCollapse' && !document.getElementById('inspectorContent').hidden), 'Expanding did not restore focus and content');
+  await evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  await click(labelSelector);
+  check(await evaluate((before) => document.getElementById('itemNameInput').value === before.name && document.querySelector('.map-stage').clientWidth === before.width, panelBefore), 'Panel toggle lost the selected item or original layout');
   await evaluate(() => {
     window.__regressionStable = [...document.querySelectorAll('[data-order-key="marker:bench-5"]')].map(node => node.querySelector('[data-marker="dot"]'));
   });
-  await click(labelSelector);
   await input("markerLabelInput", "Edited annotation for cache verification");
   await input("markerTextColor", "#2563eb");
   const previousFont = await evaluate((selector) => document.querySelector(selector).getAttribute("font-family"), labelSelector);
@@ -62,14 +131,36 @@ module.exports = async function verifyUi(win, tempRoot, poll) {
   await click('[data-step-jump="3"]');
   win.setContentSize(1120, 820);
   await settle();
-  check(await evaluate(() => {
+  const textBounds = await evaluate(() => {
     for (const label of document.querySelectorAll('text[data-marker="label"], text[data-shape="text"]')) {
       const hit = [...label.parentElement.children].find(node => node.getAttribute("data-export-ignore") === "true" && node.tagName === "rect");
       const box = label.getBBox();
-      if (!hit || box.width <= 0 || Number(hit.getAttribute("x")) > box.x + 0.1 || Number(hit.getAttribute("y")) > box.y + 0.1 || Number(hit.getAttribute("width")) < box.width - 0.1 || Number(hit.getAttribute("height")) < box.height - 0.1 || Number(hit.getAttribute("width")) - box.width > 5) return false;
+      const matrix = label.getScreenCTM();
+      const screenScale = Math.hypot(matrix.a, matrix.b);
+      // Hit padding is at most 2.4 map units per side; allow one CSS pixel for font metrics.
+      const maximumExtraWidth = 4.8 + 1 / screenScale;
+      if (!hit || box.width <= 0 || Number(hit.getAttribute("x")) > box.x + 0.1 || Number(hit.getAttribute("y")) > box.y + 0.1 || Number(hit.getAttribute("width")) < box.width - 0.1 || Number(hit.getAttribute("height")) < box.height - 0.1 || Number(hit.getAttribute("width")) - box.width > maximumExtraWidth) return { text: label.textContent, box: { x: box.x, y: box.y, width: box.width, height: box.height }, hit: hit?.outerHTML };
     }
     return true;
-  }), "Text hit areas became stale after edits, zoom or resize");
+  });
+  check(textBounds === true, `Text hit areas became stale after edits, zoom or resize: ${JSON.stringify(textBounds)}`);
+
+  for (const width of [900, 1440]) {
+    win.setContentSize(width, 820);
+    await settle();
+    await click('#inspectorCollapse');
+    await settle();
+    check(await evaluate(() => {
+      const panel = document.querySelector('.inspector-panel').getBoundingClientRect();
+      const button = document.getElementById('inspectorExpand').getBoundingClientRect();
+      return Math.abs(panel.width - 48) < 1 && button.left >= panel.left
+        && button.right <= panel.right && document.querySelector('.map-stage').clientWidth > 300;
+    }), `Collapsed inspector layout failed at ${width}px`);
+    await click('#inspectorExpand');
+    await settle();
+  }
+  win.setContentSize(1120, 820);
+  await settle();
 
   const originalOrder = await evaluate(() => [...document.querySelector('g[data-wrap="object-0"]').children].map(node => node.getAttribute("data-order-key")));
   await click("#listOrderSettingsBtn");
@@ -104,6 +195,8 @@ module.exports = async function verifyUi(win, tempRoot, poll) {
     return Math.abs(rect.x - x) < 1 && Math.abs(rect.y - y) < 1;
   }, burst.beforeX, burst.beforeY), "Burst drag was not undone as one operation");
 
+  await click('#inspectorCollapse');
+  await settle();
   const exports = {};
   for (const format of ["svg", "png", "pdf"]) {
     await click(`#completeExport${format[0].toUpperCase()}${format.slice(1)}`);

@@ -68,6 +68,34 @@ function createController() {
 }
 
 describe("CropController workflow and frame ownership", () => {
+  it.each([
+    { x: 960, y: 90, width: 140, height: 200 },
+    { x: 1160, y: 240, width: 100, height: 180 },
+    { x: 70, y: 70, width: 300, height: 50 },
+  ])("keeps off-center extent $x/$y complete during repeated panel resizing", (bbox) => {
+    const f = createController();
+    f.controller.setBBox(bbox);
+    f.transition("3");
+    const canvas = structuredClone(f.controller.projectCanvas);
+    f.onProjectChanged.mockClear();
+    for (const width of [600, 852, 600, 852, 400, 1000, 600]) {
+      f.stage.width = width;
+      f.view.tx += 123;
+      f.view.ty -= 87;
+      f.controller.zoomToBounds();
+      f.controller.updateFrame();
+      const rect = f.controller.currentExportRect()!;
+      expect(rect.left + rect.width / 2).toBeCloseTo(width / 2);
+      expect(rect.top + rect.height / 2).toBeCloseTo(f.stage.height / 2);
+      expect(rect.width / rect.height).toBeCloseTo(bbox.width / bbox.height);
+      expect(rect.width).toBeLessThanOrEqual(width + 0.001);
+      expect(rect.height).toBeLessThanOrEqual(f.stage.height + 0.001);
+      expect(Math.max(rect.width / width, rect.height / f.stage.height)).toBeCloseTo(1);
+      expect(f.controller.bbox).toEqual(bbox);
+      expect(f.controller.projectCanvas).toEqual(canvas);
+    }
+    expect(f.onProjectChanged).not.toHaveBeenCalled();
+  });
   it("inherits the relocated Step 0 view without discarding the last frame or ratio", () => {
     const f = createController();
     f.transition("1");
