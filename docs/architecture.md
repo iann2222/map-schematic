@@ -186,6 +186,10 @@
 - `src/renderer/overlay/object-order-model.ts`
   - 集中標示顯示名稱、唯一名稱、顯示順位與重複物件判斷，保持查詢無副作用。
   - 標示與圖形使用同一個 SVG 物件容器，每個物件的文字、圖形及命中範圍位於同一群組，依共用顯示順序排列；畫面與匯出沿用相同順序。
+- `src/renderer/overlay/overlay-renderer.ts`、`retained-scene.ts`、`text-layout.ts`、`frame-scheduler.ts`
+  - 根據物件、選取狀態與視圖設定更新有變動的 SVG 群組，保留其餘節點與事件；刪除、預覽及跨種類排序由同一場景管理。
+  - 文字邊界以有上限的相對座標快取跨世界複本共用，批次讀取量測後才寫入命中／選取框，字型載入事件使快取失效。
+  - 拖曳畫面更新合併至 rAF；拖曳結束、同步渲染及匯出前 flush。縮放與選取沿用同一條物件渲染流程，不再另有僅更新標示文字的樣式寫入器。
 - `src/renderer/ui/slider.ts`
   - 提供共用滑桿建立、鍵盤操作、數值吸附與畫面同步。
 - `src/renderer/ui/color-control.ts`

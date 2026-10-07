@@ -24,6 +24,7 @@ export type SelectionControllerOptions = {
   syncItemName: () => void;
   updateMarkerStyles: () => void;
   renderMapObjects: () => void;
+  requestMapObjects?: () => void;
   renderObjectList: () => void;
   updateMarker: (
     marker: Marker,
@@ -161,7 +162,7 @@ export class SelectionController {
           draft.style.textOffsetX = drag.startOffsetX + (current.x - drag.startX) / offsetScale;
           draft.style.textOffsetY = drag.startOffsetY + (current.y - drag.startY) / offsetScale;
         });
-        this.options.renderMapObjects();
+        (this.options.requestMapObjects ?? this.options.renderMapObjects)();
       }
       return true;
     }
@@ -188,7 +189,7 @@ export class SelectionController {
           draft.longitude = normalizeLongitude(longitude);
           draft.latitude = latitude;
         });
-        this.options.renderMapObjects();
+        (this.options.requestMapObjects ?? this.options.renderMapObjects)();
       }
       return true;
     }
@@ -215,7 +216,7 @@ export class SelectionController {
           draft.longitude = normalizeLongitude(longitude);
           draft.latitude = latitude;
         });
-        this.options.renderMapObjects();
+        (this.options.requestMapObjects ?? this.options.renderMapObjects)();
       }
       return true;
     }
@@ -225,7 +226,6 @@ export class SelectionController {
   finishDrag(): boolean {
     if (this.state.labelDrag) {
       this.state.labelDrag = null;
-      this.options.renderMapObjects();
     } else if (this.state.markerDrag) {
       this.state.markerDrag = null;
     } else if (this.state.shapeDrag) {
@@ -234,6 +234,7 @@ export class SelectionController {
     } else {
       return false;
     }
+    this.options.renderMapObjects();
     this.options.commitTransaction();
     return true;
   }

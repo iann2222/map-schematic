@@ -28,13 +28,15 @@ describe("SelectionController drag transactions", () => {
       markerId: "m", startX: 0, startY: 0, startOffsetX: 8, startOffsetY: -6,
     };
     const updateTransactionObject = vi.fn((id, update) => core.updateTransactionObject(id, update));
+    const requestMapObjects = vi.fn();
+    const renderMapObjects = vi.fn();
     const controller = new SelectionController({
       state, getActiveStep: () => "3",
       getMarkers: () => core.document.objects.filter((object): object is Marker => object.objectKind === "marker"),
       getShapes: () => core.document.objects.filter((object): object is ShapeItem => object.objectKind === "shape"),
       clearToolPreviews: vi.fn(), clearMarkerPreview: vi.fn(), setActiveTool: vi.fn(),
       syncMarkerInspector: vi.fn(), syncShapeInspector: vi.fn(), syncItemName: vi.fn(),
-      updateMarkerStyles: vi.fn(), renderMapObjects: vi.fn(), renderObjectList: vi.fn(),
+      updateMarkerStyles: vi.fn(), renderMapObjects, requestMapObjects, renderObjectList: vi.fn(),
       updateMarker: vi.fn(), updateShape: vi.fn(),
       getMapMetrics: () => ({ scale: 1, scaleFit: 1, width: 1200, height: 800 }),
       mapPointFromEvent: (event) => ({ x: event.clientX, y: event.clientY }),
@@ -46,9 +48,12 @@ describe("SelectionController drag transactions", () => {
       expect(controller.moveDrag({ clientX, clientY: 10 } as MouseEvent)).toBe(true);
     }
     expect(updateTransactionObject).toHaveBeenCalledTimes(2);
+    expect(requestMapObjects).toHaveBeenCalledTimes(2);
+    expect(renderMapObjects).not.toHaveBeenCalled();
     expect(JSON.stringify(core.document)).not.toBe(before);
     expect(core.undoCount).toBe(0);
     expect(controller.finishDrag()).toBe(true);
+    expect(renderMapObjects).toHaveBeenCalledTimes(1);
     expect(core.undoCount).toBe(1);
     core.undo();
     expect(JSON.stringify(core.document)).toBe(before);

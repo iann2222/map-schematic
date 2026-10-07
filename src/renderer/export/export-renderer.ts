@@ -13,6 +13,7 @@ export function createExportRenderer(options: {
   basemapRenderer: Pick<BasemapRenderer, "hasLayers" | "layers" | "exportStyle" | "exportWrapSpan" | "reliefEnabled" | "hillshadeTexture" | "reliefAlpha">;
   mapWidth: number;
   mapHeight: number;
+  flushOverlay?: () => void;
 }) {
   const { canvas, svg, mapStage, cropController, mapViewport, basemapRenderer,
     mapWidth: MAP_WIDTH, mapHeight: MAP_HEIGHT } = options;
@@ -24,6 +25,7 @@ export function createExportRenderer(options: {
     width: number;
     height: number;
   } | null> {
+    options.flushOverlay?.();
     if (!canvas || !svg || !mapStage) {
       return null;
     }
@@ -100,6 +102,7 @@ export function createExportRenderer(options: {
     width: number;
     height: number;
   } | null {
+    options.flushOverlay?.();
     if (!svg || !mapStage || !basemapRenderer.hasLayers) {
       return null;
     }

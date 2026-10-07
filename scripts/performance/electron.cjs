@@ -13,6 +13,11 @@ let finished = false;
 // Reuse the production main/preload/renderer in a separate diagnostic process.
 app.getAppPath = () => root;
 dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [fixturePath] });
+dialog.showSaveDialog = async (...args) => {
+  const extension = args.at(-1)?.filters?.[0]?.extensions?.[0];
+  if (!tempRoot || !["svg", "png", "pdf"].includes(extension)) return { canceled: true };
+  return { canceled: false, filePath: path.join(tempRoot, `regression.${extension}`) };
+};
 for (const protocol of ["node:http", "node:https"]) {
   const transport = require(protocol);
   transport.get = transport.request = () => { throw new Error("Performance runs must stay offline; install an official pack first."); };
@@ -158,7 +163,7 @@ async function benchmark(win) {
     win.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, x: input.x + 40, y: input.y + 20 });
     await delay(100);
     const drag = await evaluate(win, "window.__perfFrames.active = false; window.mapSchematicPerformance.snapshot()");
-    assertMetrics(drag, ["interaction.dragUpdate", "overlay.rebuild", "overlay.textMeasure", "interaction.frameInterval"]);
+    assertMetrics(drag, ["interaction.dragUpdate", "overlay.rebuild", "interaction.frameInterval"]);
     const moved = await evaluate(win, `(() => { const r = ${targetExpression}; return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`);
     if (!moved || Math.abs(moved.x - target.x - 40) > 3 || Math.abs(moved.y - target.y - 20) > 3) throw new Error("Drag did not reach the expected position");
     await evaluate(win, "document.getElementById('undoBtn').click()");
@@ -168,14 +173,23 @@ async function benchmark(win) {
     if (!await evaluate(win, "document.getElementById('undoBtn').disabled")) throw new Error("One drag must produce exactly one undo entry");
     cases.push({ objectCount: count, renderedObjectGroups: nodes, renderedUniqueObjects: uniqueObjects, load, drag, dragAndUndoVerified: true });
   }
+  console.log("Verifying property edits, zoom, ordering and exports...");
+  fixturePath = path.join(tempRoot, "regression.mapproj");
+  const regressionProject = createPerformanceProject(10, pack);
+  regressionProject.objects[0].style.sourceType = "coords";
+  regressionProject.objects[0].provenance = { source: "manual", query: "coords" };
+  await fs.writeFile(fixturePath, JSON.stringify(regressionProject), "utf8");
+  await evaluate(win, "document.getElementById('loadBtn').click()");
+  await poll(win, `document.getElementById('status').textContent.includes(${JSON.stringify(fixturePath)})`, "regression project load");
+  const regression = await require("./ui-regression.cjs")(win, tempRoot, poll);
   const report = {
-    reportVersion: 1, scenarioVersion: SCENARIO_VERSION, generatedAt: new Date().toISOString(),
+    reportVersion: 2, scenarioVersion: SCENARIO_VERSION, generatedAt: new Date().toISOString(),
     environment: { versions: process.versions, platform: process.platform, arch: process.arch,
       cpu: os.cpus()[0]?.model, memoryBytes: os.totalmem(), viewport: [1200, 880],
       devicePixelRatio: await evaluate(win, "window.devicePixelRatio"),
       build: JSON.parse(await fs.readFile(path.join(root, "out/build-info.json"), "utf8")) },
     datapack: { id: pack.id, version: pack.version },
-    startupWallMs, startup, mainBasemapReadsMs: reads, cases,
+    startupWallMs, startup, mainBasemapReadsMs: reads, cases, regression,
   };
   const output = path.join(root, "performance-results", `${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
   await fs.mkdir(path.dirname(output), { recursive: true });

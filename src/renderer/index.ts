@@ -16,10 +16,6 @@ import {
 import { markerLabelText } from "./editor/presentation.js";
 import type { EditorDocument, Marker, ShapeItem } from "./editor/types.js";
 import { isMarker, isShape } from "./editor/types.js";
-import {
-  labelOffsetScale,
-  labelZoomScale,
-} from "./overlay/overlay-presentation.js";
 import { renderObjectList } from "./overlay/object-list.js";
 import {
   markerListName,
@@ -29,7 +25,6 @@ import {
   shapeOrderKey,
 } from "./overlay/object-order-model.js";
 import { createOverlayRenderer } from "./overlay/overlay-renderer.js";
-import { updateMarkerStyles as updateOverlayMarkerStyles } from "./overlay/marker-style-updater.js";
 import {
   createAppDialogService,
   type AppDialogOptions,
@@ -648,14 +643,7 @@ function renderMarkers(): void {
   overlayRenderer.renderMarkers();
 }
 function updateMarkerStyles(): void {
-  updateOverlayMarkerStyles({
-    svg,
-    scale: view.scale,
-    activeStep: appState.workflow.activeStep,
-    selectedMarkerId: selectionState.markerId,
-    labelZoomScale,
-    labelOffsetScale,
-  });
+  overlayRenderer.renderMarkers();
 }
 
 function markerOverlayKey(markerId: string): string {
@@ -743,6 +731,7 @@ const selectionController = new SelectionController({
   syncItemName: syncItemNameControl,
   updateMarkerStyles,
   renderMapObjects: renderMarkers,
+  requestMapObjects: () => overlayRenderer.requestRender(),
   renderObjectList: renderMarkerList,
   updateMarker: objectController.updateMarkerObject,
   updateShape: objectController.updateShapeObject,
@@ -953,6 +942,7 @@ function handleLoad(): Promise<void> {
 
 const exportRenderer = createExportRenderer({
   canvas, svg, mapStage, cropController, mapViewport, basemapRenderer,
+  flushOverlay: renderMarkers,
   mapWidth: MAP_WIDTH, mapHeight: MAP_HEIGHT,
 });
 const exportController = new ExportController({

@@ -1,10 +1,13 @@
 ﻿import type { Marker, ShapeItem } from "../editor/types.js";
 import { project } from "../map/geometry.js";
-import { ensureMapRoot, ensureObjectsContainer, ensureWrapGroup } from "../map/rendering-utils.js";
+import { ensureMapRoot, ensureObjectsContainer } from "../map/rendering-utils.js";
 import { labelOffsetScale, labelZoomScale, shapeStrokeScale } from "./overlay-presentation.js";
 import { insertDashedSelectionBox } from "./selection-box.js";
 import { createOverlayInteractionController } from "./interaction-controller.js";
 import { rendererPerformance } from "../performance/diagnostics.js";
+import { RetainedScene } from "./retained-scene.js";
+import { TextLayout } from "./text-layout.js";
+import { FrameScheduler } from "./frame-scheduler.js";
 
 type OverlayRenderHost = {
   getState: () => {
@@ -57,9 +60,28 @@ type OverlayRenderHost = {
   } | null) => void;
 };
 
-export function createOverlayRenderer(host: OverlayRenderHost): { renderMarkers: () => void } {
+export function createOverlayRenderer(host: OverlayRenderHost) {
+  const scene = new RetainedScene();
+  const textLayout = new TextLayout();
+  const scheduler = new FrameScheduler(() => rendererPerformance.measure("overlay.rebuild", () => {
+    try { renderOnce(); }
+    catch (error) {
+      scene.invalidate();
+      textLayout.discard();
+      throw error;
+    }
+  }));
+  const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+  const invalidateFonts = () => {
+    textLayout.clear();
+    scene.invalidate();
+    scheduler.schedule();
+  };
+  fonts?.addEventListener("loadingdone", invalidateFonts);
+  fonts?.addEventListener("loadingerror", invalidateFonts);
+
 function renderMarkers() {
-  rendererPerformance.measure("overlay.rebuild", renderOnce);
+  scheduler.flush();
 }
 function renderOnce() {
   const state = host.getState();
@@ -96,6 +118,7 @@ function renderOnce() {
   const root = ensureMapRoot(svg);
   const markerWrap = ensureObjectsContainer(root);
   const rankMap = getDisplayRankMap();
+  scene.begin(markerWrap, WRAPS, width, worldShift);
   const sortedMarkers = [...markerObjects()].sort((a, b) => {
     const ra = rankMap.get(markerOverlayKey(a.id)) ?? Number.MAX_SAFE_INTEGER;
     const rb = rankMap.get(markerOverlayKey(b.id)) ?? Number.MAX_SAFE_INTEGER;
@@ -113,20 +136,22 @@ function renderOnce() {
   if (previewToolMarker) {
     renderItems.push({ marker: previewToolMarker, preview: true });
   }
+  const signatures = new Map(renderItems.map(({ marker, preview }) => [marker, JSON.stringify([
+    marker, markerLabelText(marker), preview, width, height, view.scale, lastScaleFit,
+    activeStep, selectedMarkerId === marker.id, selectedLabelMarkerId === marker.id,
+    labelDrag?.markerId === marker.id,
+  ])]));
 
   for (const i of WRAPS) {
-    const worldWrap = ensureWrapGroup(
-      markerWrap,
-      `object-${i}`,
-      (i + worldShift) * width,
-    );
-    worldWrap.replaceChildren();
     for (const item of renderItems) {
       const marker = item.marker;
-      const wrap = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const key = `${item.preview ? "preview:" : ""}${markerOverlayKey(marker.id)}`;
+      const wrap = scene.update(i, key, signatures.get(marker)!);
+      if (!wrap) continue;
+      rendererPerformance.record("overlay.changedGroups", 0);
       wrap.setAttribute("data-order-key", markerOverlayKey(marker.id));
       if (item.preview) wrap.setAttribute("data-preview", "true");
-      worldWrap.appendChild(wrap);
+      else wrap.removeAttribute("data-preview");
       const [x, y] = project(marker.longitude, marker.latitude, width, height);
       const circle = document.createElementNS(
         "http://www.w3.org/2000/svg",
@@ -226,53 +251,56 @@ function renderOnce() {
       label.addEventListener("mousedown", startLabelDrag);
       wrap.appendChild(label);
 
-      const labelBox = rendererPerformance.measure("overlay.textMeasure", () => label.getBBox());
-      const labelHit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      const renderedFontSize = marker.style.textSize * scale;
-      const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.24);
-      const textStroke = renderedFontSize * 0.045;
-      const desiredScreenStroke = Math.max(
-        0.85,
-        Math.min(3.2, zoomStroke + textStroke),
-      );
-      const dragStroke =
-        desiredScreenStroke / Math.max(0.001, view.scale * lastScaleFit);
-      const selectionPad = Math.max(
-        0.35,
-        Math.min(2.4, renderedFontSize * 0.045 + dragStroke * 1.15),
-      );
-      const hitPad = selectionPad;
-      labelHit.setAttribute("x", (labelBox.x - hitPad).toFixed(2));
-      labelHit.setAttribute("y", (labelBox.y - hitPad).toFixed(2));
-      labelHit.setAttribute("width", (labelBox.width + hitPad * 2).toFixed(2));
-      labelHit.setAttribute("height", (labelBox.height + hitPad * 2).toFixed(2));
-      labelHit.setAttribute("fill", "transparent");
-      labelHit.setAttribute("data-marker", "label-hit");
-      labelHit.setAttribute("data-id", marker.id);
-      labelHit.setAttribute("data-export-ignore", "true");
-      labelHit.style.pointerEvents = "all";
-      labelHit.addEventListener("click", (event) => {
-        interactions.selectLabel(event, marker, item.preview);
-      });
-      labelHit.addEventListener("mousedown", startLabelDrag);
-      wrap.insertBefore(labelHit, label);
-      if (isLabelSelected) {
-        insertDashedSelectionBox({
-          parent: wrap,
-          before: label,
-          x: labelBox.x,
-          y: labelBox.y,
-          width: labelBox.width,
-          height: labelBox.height,
-          padding: selectionPad,
-          strokeWidth: dragStroke,
-          dataAttribute: "data-marker",
-          dataValue: "label-drag-box",
+      textLayout.enqueue(label, (labelBox) => {
+        const labelHit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const renderedFontSize = marker.style.textSize * scale;
+        const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.24);
+        const textStroke = renderedFontSize * 0.045;
+        const desiredScreenStroke = Math.max(
+          0.85,
+          Math.min(3.2, zoomStroke + textStroke),
+        );
+        const dragStroke =
+          desiredScreenStroke / Math.max(0.001, view.scale * lastScaleFit);
+        const selectionPad = Math.max(
+          0.35,
+          Math.min(2.4, renderedFontSize * 0.045 + dragStroke * 1.15),
+        );
+        const hitPad = selectionPad;
+        labelHit.setAttribute("x", (labelBox.x - hitPad).toFixed(2));
+        labelHit.setAttribute("y", (labelBox.y - hitPad).toFixed(2));
+        labelHit.setAttribute("width", (labelBox.width + hitPad * 2).toFixed(2));
+        labelHit.setAttribute("height", (labelBox.height + hitPad * 2).toFixed(2));
+        labelHit.setAttribute("fill", "transparent");
+        labelHit.setAttribute("data-marker", "label-hit");
+        labelHit.setAttribute("data-id", marker.id);
+        labelHit.setAttribute("data-export-ignore", "true");
+        labelHit.style.pointerEvents = "all";
+        labelHit.addEventListener("click", (event) => {
+          interactions.selectLabel(event, marker, item.preview);
         });
-      }
+        labelHit.addEventListener("mousedown", startLabelDrag);
+        wrap.insertBefore(labelHit, label);
+        if (isLabelSelected) {
+          insertDashedSelectionBox({
+            parent: wrap,
+            before: label,
+            x: labelBox.x,
+            y: labelBox.y,
+            width: labelBox.width,
+            height: labelBox.height,
+            padding: selectionPad,
+            strokeWidth: dragStroke,
+            dataAttribute: "data-marker",
+            dataValue: "label-drag-box",
+          });
+        }
+      });
     }
   }
   renderShapes();
+  scene.finish(rankMap);
+  textLayout.flush();
 }
 
 function renderShapes(): void {
@@ -307,8 +335,6 @@ function renderShapes(): void {
   });
   const width = svg.viewBox.baseVal.width || 1200;
   const height = svg.viewBox.baseVal.height || 800;
-  const root = ensureMapRoot(svg);
-  const shapeWrap = ensureObjectsContainer(root);
   const rankMap = getDisplayRankMap();
   const sortedShapes = [...shapeObjects()].sort((a, b) => {
     const ra = rankMap.get(shapeOverlayKey(a.id)) ?? Number.MAX_SAFE_INTEGER;
@@ -324,18 +350,20 @@ function renderShapes(): void {
   if (previewShape) {
     renderItems.push({ shape: previewShape, preview: true });
   }
+  const signatures = new Map(renderItems.map(({ shape, preview }) => [shape, JSON.stringify([
+    shape, preview, width, height, view.scale, lastScaleFit, activeStep,
+    selectedShapeId === shape.id, shapeDrag?.shapeId === shape.id,
+  ])]));
   for (const i of WRAPS) {
-    const worldWrap = ensureWrapGroup(
-      shapeWrap,
-      `object-${i}`,
-      (i + worldShift) * width,
-    );
     for (const item of renderItems) {
       const shape = item.shape;
-      const wrap = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const key = `${item.preview ? "preview:" : ""}${shapeOverlayKey(shape.id)}`;
+      const wrap = scene.update(i, key, signatures.get(shape)!);
+      if (!wrap) continue;
+      rendererPerformance.record("overlay.changedGroups", 0);
       wrap.setAttribute("data-order-key", shapeOverlayKey(shape.id));
       if (item.preview) wrap.setAttribute("data-preview", "true");
-      worldWrap.appendChild(wrap);
+      else wrap.removeAttribute("data-preview");
       const [x, y] = project(shape.longitude, shape.latitude, width, height);
       const rotation = Number.isFinite(shape.rotation) ? (shape.rotation ?? 0) : 0;
       const rotationTransform = `rotate(${rotation.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})`;
@@ -569,69 +597,72 @@ function renderShapes(): void {
         label.addEventListener("mousedown", startTextShapeDrag);
         wrap.appendChild(label);
 
-        const labelBox = rendererPerformance.measure("overlay.textMeasure", () => label.getBBox());
-        const renderedFontSize = shape.style.textSize * scale;
-        const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.24);
-        const textStroke = renderedFontSize * 0.045;
-        const desiredScreenStroke = Math.max(
-          0.85,
-          Math.min(3.2, zoomStroke + textStroke),
-        );
-        const dragStroke =
-          desiredScreenStroke / Math.max(0.001, view.scale * lastScaleFit);
-        const selectionPad = Math.max(
-          0.35,
-          Math.min(2.4, renderedFontSize * 0.045 + dragStroke * 1.15),
-        );
-        const hitPad = selectionPad;
-        const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        hit.setAttribute("x", (labelBox.x - hitPad).toFixed(2));
-        hit.setAttribute("y", (labelBox.y - hitPad).toFixed(2));
-        hit.setAttribute("width", (labelBox.width + hitPad * 2).toFixed(2));
-        hit.setAttribute("height", (labelBox.height + hitPad * 2).toFixed(2));
-        hit.setAttribute("fill", "transparent");
-        hit.setAttribute("data-shape", "text");
-        hit.setAttribute("data-id", shape.id);
-        hit.setAttribute("data-export-ignore", "true");
-        hit.addEventListener("mousedown", startTextShapeDrag);
-        hit.addEventListener("click", (event) => {
-          if (activeStep !== "3") {
-            return;
-          }
-          event.stopPropagation();
-          if (!item.preview) {
-            selectShape(shape.id);
+        textLayout.enqueue(label, (labelBox) => {
+          const renderedFontSize = shape.style.textSize * scale;
+          const zoomStroke = 2.65 / Math.pow(Math.max(1, view.scale), 0.24);
+          const textStroke = renderedFontSize * 0.045;
+          const desiredScreenStroke = Math.max(
+            0.85,
+            Math.min(3.2, zoomStroke + textStroke),
+          );
+          const dragStroke =
+            desiredScreenStroke / Math.max(0.001, view.scale * lastScaleFit);
+          const selectionPad = Math.max(
+            0.35,
+            Math.min(2.4, renderedFontSize * 0.045 + dragStroke * 1.15),
+          );
+          const hitPad = selectionPad;
+          const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          hit.setAttribute("x", (labelBox.x - hitPad).toFixed(2));
+          hit.setAttribute("y", (labelBox.y - hitPad).toFixed(2));
+          hit.setAttribute("width", (labelBox.width + hitPad * 2).toFixed(2));
+          hit.setAttribute("height", (labelBox.height + hitPad * 2).toFixed(2));
+          hit.setAttribute("fill", "transparent");
+          hit.setAttribute("data-shape", "text");
+          hit.setAttribute("data-id", shape.id);
+          hit.setAttribute("data-export-ignore", "true");
+          hit.addEventListener("mousedown", startTextShapeDrag);
+          hit.addEventListener("click", (event) => {
+            if (activeStep !== "3") {
+              return;
+            }
+            event.stopPropagation();
+            if (!item.preview) {
+              selectShape(shape.id);
+            }
+          });
+          wrap.insertBefore(hit, label);
+          const isTextSelected =
+            !item.preview &&
+            (selectedShapeId === shape.id || shapeDrag?.shapeId === shape.id);
+          if (isTextSelected) {
+            insertDashedSelectionBox({
+              parent: wrap,
+              before: label,
+              x: labelBox.x,
+              y: labelBox.y,
+              width: labelBox.width,
+              height: labelBox.height,
+              padding: selectionPad,
+              strokeWidth: dragStroke,
+              dataAttribute: "data-shape",
+              dataValue: "text-selection",
+            });
           }
         });
-        wrap.insertBefore(hit, label);
-        const isTextSelected =
-          !item.preview &&
-          (selectedShapeId === shape.id || shapeDrag?.shapeId === shape.id);
-        if (isTextSelected) {
-          insertDashedSelectionBox({
-            parent: wrap,
-            before: label,
-            x: labelBox.x,
-            y: labelBox.y,
-            width: labelBox.width,
-            height: labelBox.height,
-            padding: selectionPad,
-            strokeWidth: dragStroke,
-            dataAttribute: "data-shape",
-            dataValue: "text-selection",
-          });
-        }
       }
     }
-    const orderedGroups = Array.from(worldWrap.children).sort((left, right) => {
-      const rank = (element: Element) => element.hasAttribute("data-preview")
-        ? Number.MAX_SAFE_INTEGER
-        : rankMap.get(element.getAttribute("data-order-key") ?? "") ?? Number.MAX_SAFE_INTEGER - 1;
-      return rank(left) - rank(right);
-    });
-    orderedGroups.forEach((group) => worldWrap.appendChild(group));
   }
 }
 
-  return { renderMarkers };
+  return {
+    renderMarkers,
+    requestRender: () => scheduler.schedule(),
+    dispose: () => {
+      scheduler.dispose();
+      textLayout.clear();
+      fonts?.removeEventListener("loadingdone", invalidateFonts);
+      fonts?.removeEventListener("loadingerror", invalidateFonts);
+    },
+  };
 }
